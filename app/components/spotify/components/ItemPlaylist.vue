@@ -149,7 +149,7 @@ function onRowPlay(idx: number) {
 
         <img
           :src="t.album?.images?.[2]?.url || t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || 'https://via.placeholder.com/96x96?text=♪'"
-          class="h-12 w-12 rounded object-cover"
+          class="h-18 w-18 rounded object-cover"
           :alt="t.name"
         />
 

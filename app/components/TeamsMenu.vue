@@ -11,7 +11,7 @@ const teams = ref([{
     src: 'https://github.com/nuxt.png',
     alt: 'Nuxt'
   }
-}, {
+}/*  {
   label: 'NuxtHub',
   avatar: {
     src: 'https://github.com/nuxt-hub.png',
@@ -23,7 +23,7 @@ const teams = ref([{
     src: 'https://github.com/nuxtlabs.png',
     alt: 'NuxtLabs'
   }
-}])
+} */])
 const selectedTeam = ref(teams.value[0])
 
 const items = computed<DropdownMenuItem[][]>(() => {
@@ -42,7 +42,7 @@ const items = computed<DropdownMenuItem[][]>(() => {
 })
 </script>
 
-<template>
+<template >
   <UDropdownMenu
     :items="items"
     :content="{ align: 'center', collisionPadding: 12 }"

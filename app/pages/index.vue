@@ -14,12 +14,6 @@ const items = [[{
   icon: 'i-lucide-user-plus',
   to: '/customers'
 }]] satisfies DropdownMenuItem[][]
-
-const range = shallowRef<Range>({
-  start: sub(new Date(), { days: 14 }),
-  end: new Date()
-})
-const period = ref<Period>('daily')
 </script>
 
 <template>
@@ -51,7 +45,7 @@ const period = ref<Period>('daily')
       </UDashboardNavbar>
 
       <!-- <UDashboardToolbar> -->
-        <!-- <template #left>
+      <!-- <template #left>
           NOTE: The `-ms-1` class is used to align with the `DashboardSidebarCollapse` button here.
           <HomeDateRangePicker v-model="range" class="-ms-1" />
           <HomePeriodSelect v-model="period" :range="range" />

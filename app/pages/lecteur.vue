@@ -1,14 +1,15 @@
-<!-- DeviceSlideover.vue -->
+/* /device */
+
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import http from '@/src/lib/https'
 import config from '@/src/config'
-import { useToast, useDebounceFn, useDashboard } from '#imports'
+import { useToast, useDashboard } from '#imports'
 
-/* ---------- Dashboard / Slideover ---------- */
-const { isDeviceSlideoverOpen, activeDeviceKey } = useDashboard()
+const { isDeviceSlideoverOpen, activeDeviceKey, menue } = useDashboard?.() ?? { isDeviceSlideoverOpen: ref(true), activeDeviceKey: ref<string | null>(null) }
 
 /* ---------- Types ---------- */
+
 type RawDevice = {
   id: number
   name: string
@@ -54,8 +55,9 @@ type TypeFilter = 'all' | '2.0' | '4.2' | '5.1' | '7.1'
 type StatusFilter = 'all' | 'online' | 'offline'
 
 /* ---------- State ---------- */
+
 const devices = ref<Device[]>([])
-const loading = ref(false)
+const loading = ref(true)
 const errorMsg = ref<string | null>(null)
 const toast = useToast?.()
 
@@ -63,39 +65,28 @@ const q = ref('')
 const typeFilter = ref<TypeFilter>('all')
 const statusFilter = ref<StatusFilter>('all')
 
-/** États audio: clé = IP utilisée dans `from` / `targetIp` */
+/** États audio reçus: clé = IP réellement utilisée dans `from` / `targetIp` */
 const audioByKey = ref<Record<string, StateAudio>>({})
 
-/** Sliders master */
+/** Master sliders */
 const outPercent = ref<Record<string, number>>({})
 const inPercent = ref<Record<string, number>>({})
 
-/** Sliders par canal */
+/** Sliders par canal: par clé -> { channel: percent } */
 const outChannelPercent = ref<Record<string, Record<string, number>>>({})
 const inChannelPercent = ref<Record<string, Record<string, number>>>({})
 
-/** Réfs DOM des lignes (key -> element) */
-const deviceRows = ref<Record<string, HTMLElement | null>>({})
+/* ---------- WebSocket /lecteur ---------- */
 
-function setDeviceRowRef (key: string, el: HTMLElement | null) {
-  if (!key) return
-  if (!deviceRows.value) deviceRows.value = {}
-  deviceRows.value[key] = el
-}
-function getDeviceRow (key: string): HTMLElement | null {
-  return deviceRows.value?.[key] ?? null
-}
-
-/* ---------- WebSocket /controlOfDevice ---------- */
 const wsStatus = ref<'disconnected' | 'connecting' | 'connected'>('disconnected')
 const wsErrorMsg = ref<string | null>(null)
 
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-const wsUrl = computed(() => `${config.WS_URL}/controlOfDevice`)
+const wsUrl = computed(() => `${config.WS_URL}/lecteur`)
 
-/* ---------- Utils ---------- */
+/* ---------- Clé réseau ALIGNÉE avec msg.from ---------- */
 function getKeyForDevice(d: Device): string {
   return (
     d.ip ||
@@ -107,6 +98,7 @@ function getKeyForDevice(d: Device): string {
 }
 
 /* ---------- WebSocket ---------- */
+
 function connectWs() {
   if (typeof window === 'undefined') return
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
@@ -132,6 +124,7 @@ function connectWs() {
   ws.onopen = () => {
     wsStatus.value = 'connected'
     wsErrorMsg.value = null
+    // Demande les états audio à tous les devices
     ws!.send(JSON.stringify({ method: 'Gui.RequestAllState' }))
   }
 
@@ -198,6 +191,7 @@ function sendCommand(targetKey: string, method: string, extra: Record<string, an
 }
 
 /* ---------- HTTP: /objet ---------- */
+
 async function fetchDevices() {
   try {
     loading.value = true
@@ -245,13 +239,14 @@ async function fetchDevices() {
   } catch (e: any) {
     console.error('[devices] fetch error', e)
     errorMsg.value = 'Impossible de charger la liste des devices.'
-    toast?.add?.({ title: 'Erreur chargement devices', color: 'red' })
+    toast?.add?.({ title: 'Erreur chargement devices', color: 'error' })
   } finally {
     loading.value = false
   }
 }
 
-/* ---------- Helpers UI ---------- */
+/* ---------- Helpers ---------- */
+
 const filteredDevices = computed(() => {
   let list = [...devices.value]
 
@@ -305,26 +300,17 @@ function getInputLevel(key: string): number {
   return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
 }
 
-/* ---------- Sliders (avec debounce master) ---------- */
-const setVolumeDebounced = useDebounceFn?.(async (key: string, kind: 'output' | 'input', pct: number) => {
-  if (kind === 'output') {
-    sendCommand(key, 'Set.output.volume', { percent: pct })
-  } else {
-    sendCommand(key, 'Set.input.volume', { percent: pct })
-  }
-}, 120) ?? ((key: string, kind: 'output' | 'input', pct: number) => {
-  if (kind === 'output') sendCommand(key, 'Set.output.volume', { percent: pct })
-  else sendCommand(key, 'Set.input.volume', { percent: pct })
-})
+/* ---------- Sliders ---------- */
 
+// Master
 function handleOutputSlider(key: string, value: number) {
   outPercent.value[key] = value
-  setVolumeDebounced(key, 'output', value)
+  sendCommand(key, 'Set.output.volume', { percent: value })
 }
 
 function handleInputSlider(key: string, value: number) {
   inPercent.value[key] = value
-  setVolumeDebounced(key, 'input', value)
+  sendCommand(key, 'Set.input.volume', { percent: value })
 }
 
 // Par canal
@@ -340,19 +326,13 @@ function handleInputChannelSlider(key: string, channel: string, value: number) {
   sendCommand(key, 'Set.input.channel', { channel, percent: value })
 }
 
-/* ---------- Scroll + highlight ---------- */
-function scrollAndHighlight(key: string) {
-  if (!key) return
-  const el = getDeviceRow(key)
-  if (!el) return
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  el.classList.add('ring-2', 'ring-primary', 'ring-offset-2')
-  setTimeout(() => {
-    el.classList.remove('ring-2', 'ring-primary', 'ring-offset-2')
-  }, 1500)
+const openServ = (ip: string) => {
+  activeDeviceKey.value = ip // ex "192.168.1.40"
+  isDeviceSlideoverOpen.value = true
 }
 
 /* ---------- Lifecycle ---------- */
+
 onMounted(() => {
   fetchDevices()
   connectWs()
@@ -362,91 +342,105 @@ onBeforeUnmount(() => {
   if (reconnectTimer) clearTimeout(reconnectTimer)
   if (ws && ws.readyState === WebSocket.OPEN) ws.close()
 })
-
-/* Quand le slideover s’ouvre, on synchronise la liste et on scrolle vers la clé active */
-watch(isDeviceSlideoverOpen, async (open) => {
-  if (!open) return
-  await fetchDevices()
-  if (!ws || ws.readyState !== WebSocket.OPEN) connectWs()
-
-  const key = activeDeviceKey.value ? String(activeDeviceKey.value) : ''
-  if (key) q.value = key
-
-  await nextTick()
-  if (key) scrollAndHighlight(key)
-})
-
-/* Si la clé active change pendant que le panneau est ouvert */
-watch(activeDeviceKey, async (key) => {
-  if (!key) return
-  if (!isDeviceSlideoverOpen.value) isDeviceSlideoverOpen.value = true
-  q.value = key
-  await nextTick()
-  scrollAndHighlight(key)
-})
 </script>
 
 <template>
-  <USlideover
-    v-model:open="isDeviceSlideoverOpen"
-    title="Devices"
-    :ui="{ content: 'max-w-6xl w-screen', header: 'px-4 py-4', body: 'px-0 py-0' }"
-  >
-    <template #header>
-      <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-default">
-        <div>
-          <div class="font-medium text-sm">Devices audio</div>
-          <div class="text-[11px] text-dimmed">
-            {{ devices.length }} device(s) · WS:
-            <span
-              :class="[
-                'px-2 py-0.5 rounded-full text-[10px]',
-                wsStatus === 'connected' && 'bg-emerald-500/10 text-emerald-400',
-                wsStatus === 'connecting' && 'bg-amber-500/10 text-amber-400',
-                wsStatus === 'disconnected' && 'bg-red-500/10 text-red-400'
-              ]"
+  <div class="flex flex-col gap-6 pb-10 px-3 sm:px-4 lg:px-6">
+    <!-- HEADER -->
+    <div
+      class="sticky top-0 z-20 -mx-3 sm:-mx-4 lg:-mx-6 px-3 sm:px-4 lg:px-6 pt-4 pb-3"
+    >
+      <UDashboardNavbar class="sticky top-1 z-20 bg-background/80 backdrop-blur border-b border-default" style="height: 80px;">
+        <template #leading>
+          <UPageCard
+            title="Lecteur"
+            description="Liste des Lecteurs reliés au système"
+            variant="naked"
+            orientation="horizontal"
+            class="mb-0"
+          >
+          </UPageCard>
+        </template>
+        <template #right>
+          <div class="flex flex-wrap gap-2 w-full lg:w-auto lg:ms-auto items-stretch">
+            <div class="hidden sm:flex items-center gap-2 text-xs text-dimmed">
+              <span>Total: {{ devices.length }}</span>
+              <span>· En ligne: {{ devices.filter(d => d.online).length }}</span>
+              <span>· Hors ligne: {{ devices.filter(d => !d.online).length }}</span>
+            </div>
+            <div class="flex items-center gap-2 text-[10px] text-dimmed">
+              <span>WS:</span>
+              <span
+                :class="[
+                  'px-2 py-0.5 rounded-full',
+                  wsStatus === 'connected' && 'bg-emerald-500/10 text-emerald-400',
+                  wsStatus === 'connecting' && 'bg-amber-500/10 text-amber-400',
+                  wsStatus === 'disconnected' && 'bg-red-500/10 text-red-400'
+                ]"
+              >
+                {{ wsStatus }}
+              </span>
+            </div>
+            <UButton
+              icon="i-lucide-refresh-ccw"
+              color="neutral"
+              :loading="loading"
+              @click="fetchDevices"
             >
-              {{ wsStatus }}
-            </span>
+              Rafraîchir
+            </UButton>
           </div>
-        </div>
-        <div class="flex items-center gap-2">
+        </template>
+      </UDashboardNavbar>
+    </div>
+
+    <!-- ALERTES -->
+    <UAlert v-if="errorMsg" color="error" :title="errorMsg" />
+    <UAlert
+      v-else-if="!loading && !devices.length"
+      color="neutral"
+      title="Aucun device détecté."
+    />
+    <UAlert v-if="wsErrorMsg" color="error" :title="wsErrorMsg" />
+
+    <!-- FILTRES -->
+    <UPageCard
+      variant="subtle"
+      :ui="{ container: 'p-3 sm:p-4 gap-y-0', wrapper: 'items-stretch' }"
+    >
+      <div class="flex flex-col md:flex-row gap-3 md:items-center">
+        <div class="flex-1">
           <UInput
             v-model="q"
             icon="i-lucide-search"
             placeholder="Rechercher par nom, IP, description…"
-            size="xs"
-            class="w-52"
+            :disabled="loading || !devices.length"
           />
-          <UButton
-            icon="i-lucide-refresh-ccw"
-            size="xs"
-            color="neutral"
-            :loading="loading"
-            @click="fetchDevices"
-          >
-            Refresh
-          </UButton>
         </div>
-      </div>
-    </template>
 
-    <template #body>
-      <div class="px-4 py-2 flex flex-wrap gap-3 items-center text-[10px] border-b border-default/60">
-        <div class="flex items-center gap-1">
+        <div class="flex flex-wrap gap-2 items-center text-xs">
           <span class="text-dimmed">Type</span>
           <UButton
-            v-for="t in ['all','2.0','4.2','5.1','7.1']"
+            size="2xs"
+            variant="ghost"
+            :color="typeFilter === 'all' ? 'primary' : 'neutral'"
+            @click="typeFilter = 'all'"
+          >
+            Tous
+          </UButton>
+          <UButton
+            v-for="t in ['2.0', '4.2', '5.1', '7.1']"
             :key="t"
             size="2xs"
             variant="ghost"
             :color="typeFilter === t ? 'primary' : 'neutral'"
-            @click="typeFilter = t as TypeFilter"
+            @click="typeFilter = t as any"
           >
-            {{ t === 'all' ? 'Tous' : t }}
+            {{ t }}
           </UButton>
         </div>
-        <div class="flex items-center gap-1">
+
+        <div class="flex flex-wrap gap-2 items-center text-xs">
           <span class="text-dimmed">Statut</span>
           <UButton
             size="2xs"
@@ -473,97 +467,100 @@ watch(activeDeviceKey, async (key) => {
             Hors ligne
           </UButton>
         </div>
-        <div class="ms-auto text-[10px] text-dimmed">
+
+        <div class="text-xs text-dimmed md:ms-auto">
           {{ filteredDevices.length }} device(s) affiché(s)
         </div>
       </div>
+    </UPageCard>
 
-      <div class="p-3 space-y-2">
-        <UAlert v-if="errorMsg" color="red" :title="errorMsg" />
-        <UAlert
-          v-else-if="!loading && !filteredDevices.length"
-          color="neutral"
-          title="Aucun device détecté."
-        />
-
-        <div
-          v-for="d in filteredDevices"
-          :key="d.id"
-          :data-key="getKeyForDevice(d)"
-          :ref="el => setDeviceRowRef(getKeyForDevice(d), el as HTMLElement | null)"
-          class="px-3 py-3 rounded-xl border border-default/60 bg-background/60 hover:bg-elevated/40 transition flex flex-col gap-2"
-        >
-          <!-- Entête -->
-          <div class="flex items-start justify-between gap-3">
-            <div class="space-y-0.5">
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-monitor-speaker" class="w-5 h-5" />
-                <span class="font-medium text-sm">
-                  {{ d.name || 'Sans nom' }}
-                </span>
-                <UBadge
-                  :color="d.online ? 'primary' : 'neutral'"
-                  variant="subtle"
-                  class="text-[9px]"
-                >
-                  {{ d.online ? 'En ligne' : 'Hors ligne' }}
-                </UBadge>
-                <!-- Bouton qui ouvre sur la bonne clé -->
-                <UButton
-                  size="2xs"
-                  variant="ghost"
-                  color="neutral"
-                  @click="() => {
-                    const key = getKeyForDevice(d) || ''
-                    if (!key) return
-                    activeDeviceKey.value = key
-                    isDeviceSlideoverOpen.value = true
-                    q.value = key
-                    nextTick().then(() => scrollAndHighlight(key))
-                  }"
-                >
-                  Ouvrir
-                </UButton>
-              </div>
-              <div class="text-[10px] text-dimmed">
-                {{ d.description || d.label || 'Aucune description' }}
-              </div>
-              <div class="text-[9px] text-dimmed font-mono">
-                {{ d.ip }}:{{ d.port }} · {{ d.type || 'n/a' }}
-              </div>
+    <!-- LISTE DES DEVICES -->
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <UPageCard
+        v-for="d in filteredDevices"
+        :key="d.id"
+        variant="subtle"
+        :ui="{ container: 'p-4 gap-y-3' }"
+      >
+        <!-- Header device -->
+        <div class="flex items-start justify-between gap-3">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-monitor-speaker" style="height: 30px; width: 30px;" />
+              <span class="font-medium text-base">
+                {{ d.name || 'Sans nom' }}
+              </span>
+              <UBadge
+                :color="d.online ? 'primary' : 'neutral'"
+                variant="subtle"
+                class="text-[10px]"
+              >
+                {{ d.online ? 'En ligne' : 'Hors ligne' }}
+              </UBadge>
+              <UButton @click="openServ(getKeyForDevice(d))" size="xs" variant="ghost" color="neutral">
+                {{ d.name || 'Sans nom' }}
+              </UButton>
             </div>
-
-            <div class="text-[9px] text-right text-dimmed space-y-0.5">
-              <div class="font-mono truncate max-w-[160px]">
-                {{ d.serverUrl }}
-              </div>
-              <div v-if="d.vban" class="font-mono">
-                VBAN: {{ d.vban.host }}:{{ d.vban.port }} ·
-                {{ d.vban.channels }}ch {{ d.vban.rate }}Hz
-              </div>
+            <div class="text-xs text-dimmed">
+              Type: <span class="font-mono">{{ d.type || 'n/a' }}</span>
+            </div>
+            <div class="text-xs text-dimmed">
+              {{ d.description || d.label || 'Aucune description' }}
             </div>
           </div>
 
-          <!-- Audio -->
+          <div class="flex flex-col items-end gap-1 text-[10px]">
+            <div class="font-mono">
+              {{ d.ip }}:{{ d.port }}
+            </div>
+            <span class="text-dimmed">ID #{{ d.id }}</span>
+          </div>
+        </div>
+
+        <!-- Infos -->
+        <div class="grid grid-cols-2 gap-3 text-[11px] mt-2">
+          <div class="space-y-1">
+            <div class="text-dimmed">VBAN</div>
+            <div v-if="d.vban">
+              <div class="font-mono truncate">
+                {{ d.vban.host || 'host' }}:{{ d.vban.port || 'port' }}
+              </div>
+              <div class="font-mono">
+                {{ d.vban.channels || '?' }}ch · {{ d.vban.rate || '?' }}Hz
+              </div>
+              <div class="font-mono">
+                {{ d.vban.name || '' }} {{ d.vban.format || '' }}
+              </div>
+            </div>
+            <div v-else class="text-dimmed">
+              Non configuré
+            </div>
+          </div>
+        </div>
+
+        <!-- AUDIO LIVE -->
+        <template v-if="getKeyForDevice(d)">
           <div
-            v-if="getKeyForDevice(d) && getAudioForKey(getKeyForDevice(d))"
-            class="mt-1 pt-2 border-t border-default/40 space-y-2"
+            v-if="getAudioForKey(getKeyForDevice(d))"
+            class="mt-3 border-t border-default/40 pt-2 space-y-2 text-[10px]"
           >
-            <div class="flex justify-between text-[9px] text-dimmed">
-              <span>Audio</span>
-              <span class="font-mono">
+            <div class="flex items-center justify-between">
+              <span class="text-dimmed">Audio live</span>
+              <span class="font-mono text-dimmed">
                 {{ getAudioForKey(getKeyForDevice(d))?.pcm || '' }}
               </span>
             </div>
 
-            <!-- SORTIE -->
+            <!-- OUTPUT -->
             <div v-if="getAudioForKey(getKeyForDevice(d))?.output" class="space-y-1">
               <div class="flex items-center justify-between">
-                <span class="text-[9px] font-semibold text-dimmed">Sortie</span>
+                <span class="font-semibold text-[10px] text-dimmed">Sortie</span>
                 <span
-                  class="px-1.5 py-0.5 rounded border text-[8px]"
+                  class="px-1.5 py-0.5 rounded border"
                   :class="[
-                    /on|yes|1/i.test(formatMute(getAudioForKey(getKeyForDevice(d))?.output?.mute || ''))
+                    /on|yes|1/i.test(
+                      formatMute(getAudioForKey(getKeyForDevice(d))?.output?.mute || '')
+                    )
                       ? 'border-amber-500/60 text-amber-400'
                       : 'border-default text-dimmed'
                   ]"
@@ -572,49 +569,63 @@ watch(activeDeviceKey, async (key) => {
                 </span>
               </div>
 
-              <!-- Slider global sortie -->
-              <div class="flex items-center gap-2">
-                <UIcon
-                  :name="(outPercent[getKeyForDevice(d)] ?? getOutputLevel(getKeyForDevice(d))) === 0
-                    ? 'i-lucide-volume-x'
-                    : (outPercent[getKeyForDevice(d)] ?? getOutputLevel(getKeyForDevice(d))) < 50
-                      ? 'i-lucide-volume-1'
-                      : 'i-lucide-volume-2'"
-                  class="w-3 h-3 text-dimmed"
-                />
+              <!-- Slider master output -->
+              <div class="flex flex-col gap-1 mt-1">
+                <div class="flex justify-between items-center text-[9px] text-dimmed">
+                  <span>Volume global</span>
+                  <span class="font-mono">
+                    {{
+                      outPercent[getKeyForDevice(d)]
+                        ?? getOutputLevel(getKeyForDevice(d))
+                    }}%
+                  </span>
+                </div>
                 <input
                   type="range"
                   min="0"
                   max="100"
-                  :value="outPercent[getKeyForDevice(d)] ?? getOutputLevel(getKeyForDevice(d))"
+                  :value="
+                    outPercent[getKeyForDevice(d)]
+                      ?? getOutputLevel(getKeyForDevice(d))
+                  "
                   class="w-full accent-current h-1.5 range-primary-0"
+                  :disabled="!getAudioForKey(getKeyForDevice(d))?.output"
                   @input="handleOutputSlider(
                     getKeyForDevice(d),
                     ($event.target as HTMLInputElement).valueAsNumber
                   )"
                 />
-                <span class="w-8 text-right text-[9px] font-mono">
-                  {{ outPercent[getKeyForDevice(d)] ?? getOutputLevel(getKeyForDevice(d)) }}%
-                </span>
               </div>
 
-              <!-- Sliders par canal sortie -->
-              <div class="grid grid-cols-2 gap-1 mt-1 text-[8px]">
+              <!-- Sliders par canal output -->
+              <div class="max-h-32 overflow-auto space-y-1 mt-2">
                 <div
                   v-for="(val, ch) in getAudioForKey(getKeyForDevice(d))?.output?.volume"
                   :key="ch"
-                  class="flex flex-col gap-0.5"
+                  class="space-y-0.5"
                 >
-                  <div class="flex justify-between gap-1">
+                  <div class="flex justify-between items-center gap-2">
                     <span class="text-dimmed truncate">{{ ch }}</span>
-                    <span class="font-mono">{{ val }}</span>
+                    <span class="font-mono w-10 text-right">
+                      {{
+                        (outChannelPercent[getKeyForDevice(d)]
+                          && outChannelPercent[getKeyForDevice(d)][ch] !== undefined)
+                          ? outChannelPercent[getKeyForDevice(d)][ch]
+                          : val
+                      }}%
+                    </span>
                   </div>
                   <input
                     type="range"
                     min="0"
                     max="100"
-                    :value="outChannelPercent[getKeyForDevice(d)]?.[ch] ?? Number(val)"
-                    class="w-full accent-current h-1 range-primary-0"
+                    :value="
+                      (outChannelPercent[getKeyForDevice(d)]
+                        && outChannelPercent[getKeyForDevice(d)][ch] !== undefined)
+                        ? outChannelPercent[getKeyForDevice(d)][ch]
+                        : val
+                    "
+                    class="w-full accent-current h-1.5 range-primary-0"
                     @input="handleOutputChannelSlider(
                       getKeyForDevice(d),
                       ch,
@@ -624,7 +635,7 @@ watch(activeDeviceKey, async (key) => {
                 </div>
               </div>
 
-              <!-- Actions rapides sortie -->
+              <!-- Boutons rapides -->
               <div class="flex flex-wrap gap-1 mt-1">
                 <UButton
                   size="2xs"
@@ -651,14 +662,16 @@ watch(activeDeviceKey, async (key) => {
               </div>
             </div>
 
-            <!-- ENTREE -->
+            <!-- INPUT -->
             <div v-if="getAudioForKey(getKeyForDevice(d))?.input" class="space-y-1">
               <div class="flex items-center justify-between">
-                <span class="text-[9px] font-semibold text-dimmed">Entrée</span>
+                <span class="font-semibold text-[10px] text-dimmed">Entrée</span>
                 <span
-                  class="px-1.5 py-0.5 rounded border text-[8px]"
+                  class="px-1.5 py-0.5 rounded border"
                   :class="[
-                    /on|yes|1/i.test(formatMute(getAudioForKey(getKeyForDevice(d))?.input?.mute || ''))
+                    /on|yes|1/i.test(
+                      formatMute(getAudioForKey(getKeyForDevice(d))?.input?.mute || '')
+                    )
                       ? 'border-amber-500/60 text-amber-400'
                       : 'border-default text-dimmed'
                   ]"
@@ -667,49 +680,63 @@ watch(activeDeviceKey, async (key) => {
                 </span>
               </div>
 
-              <!-- Slider global entrée -->
-              <div class="flex items-center gap-2">
-                <UIcon
-                  :name="(inPercent[getKeyForDevice(d)] ?? getInputLevel(getKeyForDevice(d))) === 0
-                    ? 'i-lucide-volume-x'
-                    : (inPercent[getKeyForDevice(d)] ?? getInputLevel(getKeyForDevice(d))) < 50
-                      ? 'i-lucide-volume-1'
-                      : 'i-lucide-volume-2'"
-                  class="w-3 h-3 text-dimmed"
-                />
+              <!-- Slider master input -->
+              <div class="flex flex-col gap-1 mt-1">
+                <div class="flex justify-between items-center text-[9px] text-dimmed">
+                  <span>Gain global</span>
+                  <span class="font-mono">
+                    {{
+                      inPercent[getKeyForDevice(d)]
+                        ?? getInputLevel(getKeyForDevice(d))
+                    }}%
+                  </span>
+                </div>
                 <input
                   type="range"
                   min="0"
                   max="100"
-                  :value="inPercent[getKeyForDevice(d)] ?? getInputLevel(getKeyForDevice(d))"
+                  :value="
+                    inPercent[getKeyForDevice(d)]
+                      ?? getInputLevel(getKeyForDevice(d))
+                  "
                   class="w-full accent-current h-1.5 range-primary-0"
+                  :disabled="!getAudioForKey(getKeyForDevice(d))?.input"
                   @input="handleInputSlider(
                     getKeyForDevice(d),
                     ($event.target as HTMLInputElement).valueAsNumber
                   )"
                 />
-                <span class="w-8 text-right text-[9px] font-mono">
-                  {{ inPercent[getKeyForDevice(d)] ?? getInputLevel(getKeyForDevice(d)) }}%
-                </span>
               </div>
 
-              <!-- Sliders par canal entrée -->
-              <div class="grid grid-cols-2 gap-1 mt-1 text-[8px]">
+              <!-- Sliders par canal input -->
+              <div class="max-h-32 overflow-auto space-y-1 mt-2">
                 <div
                   v-for="(val, ch) in getAudioForKey(getKeyForDevice(d))?.input?.volume"
                   :key="ch"
-                  class="flex flex-col gap-0.5"
+                  class="space-y-0.5"
                 >
-                  <div class="flex justify-between gap-1">
+                  <div class="flex justify-between items-center gap-2">
                     <span class="text-dimmed truncate">{{ ch }}</span>
-                    <span class="font-mono">{{ val }}</span>
+                    <span class="font-mono w-10 text-right">
+                      {{
+                        (inChannelPercent[getKeyForDevice(d)]
+                          && inChannelPercent[getKeyForDevice(d)][ch] !== undefined)
+                          ? inChannelPercent[getKeyForDevice(d)][ch]
+                          : val
+                      }}%
+                    </span>
                   </div>
                   <input
                     type="range"
                     min="0"
                     max="100"
-                    :value="inChannelPercent[getKeyForDevice(d)]?.[ch] ?? Number(val)"
-                    class="w-full accent-current h-1 range-primary-0"
+                    :value="
+                      (inChannelPercent[getKeyForDevice(d)]
+                        && inChannelPercent[getKeyForDevice(d)][ch] !== undefined)
+                        ? inChannelPercent[getKeyForDevice(d)][ch]
+                        : val
+                    "
+                    class="w-full accent-current h-1.5 range-primary-0"
                     @input="handleInputChannelSlider(
                       getKeyForDevice(d),
                       ch,
@@ -719,7 +746,7 @@ watch(activeDeviceKey, async (key) => {
                 </div>
               </div>
 
-              <!-- Actions rapides entrée -->
+              <!-- Boutons rapides -->
               <div class="flex flex-wrap gap-1 mt-1">
                 <UButton
                   size="2xs"
@@ -746,8 +773,18 @@ watch(activeDeviceKey, async (key) => {
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </template>
-  </USlideover>
+        </template>
+
+        <!-- Détails config -->
+        <details class="mt-3 text-[10px] text-dimmed">
+          <summary class="cursor-pointer select-none">
+            Détails bruts allconfig
+          </summary>
+          <pre class="mt-2 max-h-56 overflow-auto bg-default/10 rounded p-2">
+{{ JSON.stringify(d.allconfig, null, 2) }}
+          </pre>
+        </details>
+      </UPageCard>
+    </div>
+  </div>
 </template>

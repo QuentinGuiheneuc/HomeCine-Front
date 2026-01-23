@@ -1,6 +1,5 @@
 export enum CookieName {
-  TOKEN = 'TOKEN',
-  AUTH_UI = 'AUTH_UI'
+  TOKEN = 'TOKEN'
 }
 
 export type CookieSetOptions = Partial<{
@@ -30,7 +29,7 @@ export function getCookie(name: string): string | null {
 }
 
 export function deleteCookie(name: string, options: Pick<CookieSetOptions, 'path' | 'domain'> = {}): void {
-  setCookie(name, '', { ...options, 'max-age': 0 })
+  setCookie(name, '', { ...options })
 }
 
 export const getToken = (): string | null => getCookie(CookieName.TOKEN)

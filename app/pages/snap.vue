@@ -1,5 +1,7 @@
 <!-- /pages/snap.vue -->
 <script setup lang="ts">
+import config from '@/src/config'
+const { menue } = useDashboard()
 /** ========= Types ========= */
 type SnapVolume = { muted: boolean; percent: number }
 type HostInfo = { arch?: string; ip: string; mac: string; name: string; os?: string }
@@ -20,7 +22,7 @@ type SnapGroup = {
 type SnapStream = { id: string; uri?: { raw?: string } }
 
 /** ========= Config ========= */
-const SNAP_GUI_WS = 'ws://192.168.4.207:8099/Snap' // proxy Node GUI
+const SNAP_GUI_WS = `${config.WS_URL}/Snap` // proxy Node GUI
 const DEBUG = false
 
 /** ========= State ========= */
@@ -240,34 +242,39 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
 <template>
   <!-- Page autonome : header sticky + main scrollable -->
   <div class="flex flex-col min-h-0 flex-1">
-    <!-- Header sticky -->
-    <header class="sticky top-0 z-20 bg-background/80 backdrop-blur border-b border-default">
-      <UPageCard
-        title="Snapcast"
-        :description="`État: ${connected ? 'connecté' : 'déconnecté'} • Groupes: ${groups.length} • Flux: ${streams.length}`"
-        variant="naked"
-        orientation="horizontal"
-        :ui="{ container: 'p-4 sm:p-4 gap-3' }"
-        class="mb-0"
-      >
-        <div class="flex items-center gap-2 w-full lg:w-auto lg:ms-auto">
-          <UButton
-            :color="connected ? 'green' : 'red'"
+    <UDashboardNavbar class="sticky top-1 z-20 bg-background/80 backdrop-blur border-b border-default" style="height: 120px;">
+      <template #leading>
+        <!-- <UButton
             :icon="connected ? 'i-lucide-link-2' : 'i-lucide-link-2-off'"
-            @click="connected ? disconnectSnap() : connectSnap()"
-          >
-            {{ connected ? 'Connecté' : 'Déconnecté' }}
-          </UButton>
-          <UButton color="neutral" icon="i-lucide-refresh-ccw" @click="refresh">
-            Rafraîchir
-          </UButton>
-          <UButton color="primary" icon="i-lucide-plus" @click="openCreate">
-            Nouveau groupe
-          </UButton>
-        </div>
-      </UPageCard>
-    </header>
 
+          /> -->
+        <UPageCard
+          title="SnapCast"
+          :description="`État: ${connected ? 'connecté' : 'déconnecté'} • Groupes: ${groups.length} • Flux: ${streams.length}`"
+          variant="naked"
+          orientation="horizontal"
+          :ui="{ container: 'p-4 sm:p-4 gap-3' }"
+          class="mb-0 flex items-center"
+        >
+          <div class="flex items-center gap-2 w-full lg:w-auto lg:ms-auto">
+            <UButton
+              :color="connected ? 'primary' : 'error'"
+              :icon="connected ? 'i-lucide-link-2' : 'i-lucide-link-2-off'"
+              @click="connected ? disconnectSnap() : connectSnap()"
+            >
+              {{ connected ? 'Connecté' : 'Déconnecté' }}
+            </UButton>
+            <UButton color="neutral" icon="i-lucide-refresh-ccw" @click="refresh">
+              Rafraîchir
+            </UButton>
+            <UButton color="primary" icon="i-lucide-plus" @click="openCreate">
+              Nouveau groupe
+            </UButton>
+          </div>
+        </UPageCard>
+      </template>
+    </UDashboardNavbar>
+    <!-- Header sticky -->
     <!-- Main scrollable -->
     <main class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8">
       <div class="w-full lg:max-w-12xl py-6 sm:py-8 lg:py-12">
@@ -299,18 +306,18 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
                 <div class="font-medium truncate">{{ g.name || g.id }}</div>
                 <div class="text-xs text-dimmed">{{ g.clients?.length || 0 }} client(s)</div>
                 <div v-if="getFirstClient(g)" class="mt-1 text-xs flex items-center gap-2">
-                  <UBadge :color="getFirstClient(g)?.connected ? 'green' : 'red'" variant="subtle">
+                  <UBadge :color="getFirstClient(g)?.connected ? 'primary' : 'error'" variant="subtle">
                     {{ alive(!!getFirstClient(g)?.connected) }}
                   </UBadge>
                   <UBadge variant="subtle" color="primary">{{ g.stream_id || '—' }}</UBadge>
                 </div>
               </div>
 
-              <div class="ms-auto flex items-center gap-1">
+                <div class="ms-auto flex items-center gap-1">
                 <UButton size="xs" color="neutral" icon="i-lucide-rotate-ccw" variant="ghost" @click="refresh" />
                 <UTooltip :text="g.clients?.length ? 'Réassigne d’abord les clients' : 'Supprimer localement'">
                   <UButton
-                    size="xs" color="red" icon="i-lucide-trash-2" variant="ghost"
+                    size="xs" color="error" icon="i-lucide-trash-2" variant="ghost"
                     :disabled="!!g.clients?.length"
                     @click="groups = groups.filter(x => x.id !== g.id)"
                   />
@@ -352,14 +359,14 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
                   <div class="text-sm truncate">
                     {{ c.host?.name || c.id }} <span class="text-dimmed">· {{ c.host?.ip }}</span>
                   </div>
-                  <UBadge :color="c.connected ? 'green':'red'" variant="subtle">{{ alive(c.connected) }}</UBadge>
+                  <UBadge :color="c.connected ? 'primary' : 'error'" variant="subtle">{{ alive(c.connected) }}</UBadge>
                 </div>
 
                 <div v-if="c.connected" class="flex items-center justify-between">
                   <UBadge variant="subtle">{{ c.config?.volume?.percent ?? 0 }}%</UBadge>
                   <UButton
                     size="xs"
-                    :color="c.config?.volume?.muted ? 'red' : 'neutral'"
+                    :color="c.config?.volume?.muted ? 'error' : 'neutral'"
                     :icon="c.config?.volume?.muted ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
                     @click="toggleMute(c.id, c.config?.volume)"
                   />

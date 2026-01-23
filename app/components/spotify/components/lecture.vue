@@ -3,7 +3,7 @@ import { useDebounceFn } from '@vueuse/core'
 import http from '@/src/lib/https'
 import type { AxiosError, AxiosResponse } from 'axios'
 
-const { isDeviceSlideoverOpen } = useDashboard()
+const { isDevicSpotifyeSlideoverOpen } = useDashboard()
 /** ===== Types (subset de ta réponse API) ===== */
 type Image = { url: string; width: number; height: number }
 type Artist = { id: string; name: string }
@@ -69,14 +69,13 @@ async function loadPlayback() {
     })
 
     const data = res.data
-
-    playback.value   = data
-    device.value     = data.device
-    isPlaying.value  = data.is_playing
-    shuffle.value    = !!data.shuffle_state
-    repeat.value     = data.repeat_state
+    playback.value = data
+    device.value = data.device
+    isPlaying.value = data.is_playing
+    shuffle.value = !!data.shuffle_state
+    repeat.value = data.repeat_state
     positionMs.value = data.progress_ms ?? 0
-    volume.value     = clamp(data.device?.volume_percent ?? 0, 0, 100)
+    volume.value = clamp(data.device?.volume_percent ?? 0, 0, 100)
   } catch (err) {
     const e = err as AxiosError
     console.error('loadPlayback failed:', e.response?.status, e.response?.data || e.message)
@@ -175,7 +174,7 @@ function onWheelMaster(e: WheelEvent) {
     <div class="w-full px-4">
       <div class="w-full grid grid-cols-1 md:grid-cols-12 items-center gap-2 p-2">
         <!-- LEFT -->
-        <div class="flex items-center gap-3 min-w-0 md:col-span-3 xl:col-span-2">
+        <div class="flex items-center gap-3 min-w-0 md:col-span-4 xl:col-span-3">
           <img :src="cover" :alt="title" class="h-16 w-16 md:h-20 md:w-20 rounded object-cover" />
           <div class="min-w-0">
             <p class="truncate text-sm font-medium">{{ title }}</p>
@@ -188,8 +187,8 @@ function onWheelMaster(e: WheelEvent) {
         </div>
 
         <!-- CENTER -->
-        <div class="md:col-span-6 xl:col-span-8 flex flex-col items-center gap-3">
-          <div class="flex items-center gap-3">
+        <div class="md:col-span-6 xl:col-span-5 flex flex-col items-center gap-3">
+          <div class="flex items-center gap-4">
             <UButton :color="shuffle ? 'primary' : 'neutral'" variant="ghost" icon="i-lucide-shuffle" size="sm" square @click="toggleShuffle" />
             <UButton variant="ghost" color="neutral" icon="i-lucide-skip-back" size="sm" square @click="prev" />
             <UButton :icon="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'" size="xl" class="rounded-full h-12 w-12 justify-center items-center" @click="togglePlay" />
@@ -197,7 +196,7 @@ function onWheelMaster(e: WheelEvent) {
             <UButton :color="repeat !== 'off' ? 'primary' : 'neutral'" variant="ghost" :icon="repeat === 'track' ? 'i-lucide-repeat-1' : 'i-lucide-repeat'" size="sm" square @click="cycleRepeat" />
           </div>
 
-          <div class="flex items-center gap-3 w-full max-w-3xl">
+          <div class="flex items-center gap-3 w-full max-w-6xl">
             <span class="text-xs tabular-nums text-dimmed w-10 text-right">{{ toTime(positionMs) }}</span>
             <div class="flex-1">
               <input
@@ -211,20 +210,22 @@ function onWheelMaster(e: WheelEvent) {
         </div>
 
         <!-- RIGHT -->
-        <div class="md:col-span-3 xl:col-span-2 flex items-center justify-end gap-2">
-          <UButton variant="ghost" color="neutral" icon="i-lucide-list-music" square />
-          <UButton variant="ghost" color="neutral" icon="i-lucide-monitor-speaker" square @click="isDeviceSlideoverOpen = true" />
+        <div class="md:col-span-3 xl:col-span-4 flex items-center justify-end gap-2">
+          <UButton variant="ghost" color="neutral" icon="material-symbols:event-list-sharp" style="rotate: 180deg;" size="lg" square />
+          <UButton variant="ghost" color="neutral" icon="i-lucide-list-music" size="lg" square />
+          <UButton variant="ghost" color="neutral" icon="i-lucide-monitor-speaker" size="lg" square @click="isDevicSpotifyeSlideoverOpen = true" />
           <div class="flex items-center gap-2 w-40 max-w-[12rem]" @wheel.prevent="onWheelMaster">
             <UButton
               variant="ghost" color="neutral"
-              :icon="volume === 0 ? 'i-lucide-volume-x' : volume < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2'"
+              :icon="volume === 0 ? 'i-lucide-volume-x' : volume < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2'" size="lg"
               square
               @click="setVolume(volume === 0 ? 60 : 0)"
               :disabled="!device?.supports_volume"
             />
             <input
               type="range" min="0" max="100" :value="volume"
-              class="w-full accent-current h-1.5 range-primary-0"
+              class="w-full accent-current h-2 range-primary-0"
+              style="width: 131px; height: 12px;"
               @input="setVolume(($event.target as HTMLInputElement).valueAsNumber)"
               :disabled="!device?.supports_volume"
             />

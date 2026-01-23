@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import http from '@/src/lib/https'
-
+const { menue } = useDashboard()
 /* ── Props : tenir compte du header sticky et du lecteur ── */
 const props = withDefaults(defineProps<{
   headerHeight?: number
@@ -202,6 +202,9 @@ const scrollStyle = computed(() => ({
     <!-- HEADER sticky -->
     <div class="sticky top-0 z-10 bg-elevated/60 backdrop-blur border-b border-default">
       <div class="px-3 pt-3 flex items-center gap-2">
+        <UTooltip text="Menu">
+          <UButton icon="i-lucide:menu" color="neutral" variant="ghost" square @click="menue = !menue" />
+        </UTooltip>
         <UInput
           v-model="q"
           placeholder="Rechercher…"
@@ -293,7 +296,7 @@ const scrollStyle = computed(() => ({
           >
             <img
               :src="p.images?.[0]?.url || 'https://via.placeholder.com/64x64?text=PL'"
-              class="h-8 w-8 rounded object-cover"
+              class="h-10 w-10 rounded object-cover"
               alt=""
             />
             <div class="min-w-0">

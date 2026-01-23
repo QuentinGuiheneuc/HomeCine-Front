@@ -84,7 +84,7 @@ input[type="range"].range-blue-180::-webkit-slider-thumb {
   outline: none;
   border-radius: 15px;
   overflow: hidden;
-  box-shadow: inset 0 0 5px #000000;
+  box-shadow: inset 0 0 5px var(--ui-bg-accented);
   padding: 0 !important;
   position: relative;
   transform-origin: 50% 50%;

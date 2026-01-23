@@ -325,7 +325,7 @@ const problems = computed(() => {
 
 <template>
   <!-- 100% vertical + scroll -->
-  <div class="min-h-screen flex flex-colh-full">
+  <div class="min-h-screen flex-colh-full">
     <!-- Barre d’actions sticky en haut (Haut/Bas) -->
     <div class="sticky top-0 z-20 bg-background/80 backdrop-blur border-b border-default">
       <UPageCard
@@ -348,7 +348,7 @@ const problems = computed(() => {
     </div>
 
     <!-- Contenu scrollable (tout en colonne) -->
-    <div class="px-4 py-6 space-y-6">
+    <div class="px-4 py-6 space-y-6 lg:max-w-12xl">
       <UAlert v-if="errorMsg" color="red" :title="errorMsg" />
       <UAlert v-if="okMsg" color="green" :title="okMsg" />
 

@@ -8,14 +8,13 @@ const links = [[
   { label: 'Notifications', icon: 'i-lucide-bell',      to: '/settings/notifications' },
   { label: 'Security',      icon: 'i-lucide-shield',    to: '/settings/security' }
 ], [
-  { label: 'Documentation', icon: 'i-lucide-book-open', to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt', target: '_blank' }
+  /* { label: 'Documentation', icon: 'i-lucide-book-open', to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt', target: '_blank' } */
 ]] satisfies NavigationMenuItem[][]
 </script>
 
 <template>
   <!-- Remplace UDashboardPanel -->
   <div id="settings" class="relative flex flex-col min-w-0 min-h-svh flex-1">
-
     <!-- Header (ne scrolle pas) -->
     <div class="shrink-0 border-b border-default">
       <UDashboardNavbar title="Settings">

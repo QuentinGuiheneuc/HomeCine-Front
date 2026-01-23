@@ -33,7 +33,7 @@ function onDblClick() {
 
     <img
       :src="track.album?.images?.[2]?.url || track.album?.images?.[1]?.url || track.album?.images?.[0]?.url"
-      class="h-12 w-12 rounded object-cover"
+      class="h-32 w-32 rounded object-cover"
       :alt="track.name"
     />
 

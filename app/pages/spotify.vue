@@ -1,5 +1,15 @@
 <script setup lang="ts">
 /* --------------------------- */
+/* Imports                     */
+/* --------------------------- */
+import Lecture from '@/components/spotify/components/lecture.vue'
+import LibrarySidebar from '@/components/spotify/components/LibrarySidebar.vue'
+import ItemPlaylist from '@/components/spotify/components/ItemPlaylist.vue'
+import PlaylistList from '@/components/spotify/components/PlaylistList.vue'
+import { usePlaylists } from '@/components/spotify/composable/usePlaylists'
+import { useEventListener } from '@vueuse/core'
+import http from '@/src/lib/https'
+/* --------------------------- */
 /* Types (déclarés en premier) */
 /* --------------------------- */
 type SavedTrack = {
@@ -34,17 +44,6 @@ type PlaylistDetail = {
 }
 
 /* --------------------------- */
-/* Imports                     */
-/* --------------------------- */
-import Lecture from '@/components/spotify/components/lecture.vue'
-import LibrarySidebar from '@/components/spotify/components/LibrarySidebar.vue'
-import ItemPlaylist from '@/components/spotify/components/ItemPlaylist.vue'
-import PlaylistList from '@/components/spotify/components/PlaylistList.vue'
-import { usePlaylists } from '@/components/spotify/composable/usePlaylists'
-import { useEventListener } from '@vueuse/core'
-import http from '@/src/lib/https'
-
-/* --------------------------- */
 /* Setup & state               */
 /* --------------------------- */
 const playerHeight = 104
@@ -59,7 +58,7 @@ const error = ref<string | null>(null)
 
 /* Titres likés “comme une playlist” (chargés en entier) */
 const likedDetail = ref<PlaylistDetail | null>(null)
-const likedUris   = ref<string[]>([])
+const likedUris = ref<string[]>([])
 
 /* --------------------------- */
 /* Helpers                     */

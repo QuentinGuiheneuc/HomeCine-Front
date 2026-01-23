@@ -1,4 +1,6 @@
-# Nuxt Dashboard Template
+# Basse of My Projet The Nuxt Dashboard Template
+
+[source ]()
 
 [![Nuxt UI](https://img.shields.io/badge/Made%20with-Nuxt%20UI-00DC82?logo=nuxt&labelColor=020420)](https://ui.nuxt.com)
 
@@ -19,7 +21,7 @@ Get started with the Nuxt dashboard template with multiple pages, collapsible si
 
 ## Quick Start
 
-```bash [Terminal]
+```bash
 npm create nuxt@latest -- -t github:nuxt-ui-templates/dashboard
 ```
 

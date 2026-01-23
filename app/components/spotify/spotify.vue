@@ -59,7 +59,7 @@ const error = ref<string | null>(null)
 
 /* Titres likés “comme une playlist” (chargés en entier) */
 const likedDetail = ref<PlaylistDetail | null>(null)
-const likedUris   = ref<string[]>([])
+const likedUris = ref<string[]>([])
 
 /* --------------------------- */
 /* Helpers                     */
