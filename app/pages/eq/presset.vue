@@ -30,7 +30,7 @@ type ApiPreset = {
 
 const fs = ref(48000)
 const curvePoints = ref(2000)
-const dbRange = ref(20)
+const dbRange = ref(36)
 
 const selectedLayout = ref<string>("") // ✅ string, plus de LayoutKey
 const selectedPresetName = ref<string>("")
@@ -79,7 +79,7 @@ async function postEqPreset() {
 
   try {
     if (typeof (http as any).post === "function") {
-      await (http as any).post("/eq/q", body)
+      await (http as any).post("/eq", body)
       toast.add({ title: "EQ sauvegardé", color: "success" })
       presetsOriginal.value = JSON.parse(JSON.stringify(presetsData.value))
     }
@@ -454,6 +454,8 @@ watch([eqCurve, dbRange], scheduleDraw)
         >
           <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto lg:ms-auto">
             <USelect v-model="selectedPresetName" :items="presetItems" class="min-w-[160px]" />
+            <USelect v-model="selectedLayout" :items="layoutItems" class="min-w-[160px]" />
+            <UInput v-model.number="fs" type="number" :min="8000" :max="192000" class="w-[130px]"/>
             <UButton color="neutral" variant="soft" :loading="pending" @click="fetchEq">Reload</UButton>
             <UButton color="neutral" variant="soft" @click="resetChannel">Reset canal</UButton>
             <!-- <UButton color="primary" variant="soft" icon="i-lucide-copy" @click="copyApi">Copier API</UButton> -->
@@ -560,7 +562,7 @@ watch([eqCurve, dbRange], scheduleDraw)
                   <UBadge variant="subtle">{{ b.q.toFixed(2) }}</UBadge>
                 </div>
                 <input
-                  type="range" min="0.10" max="100" step="0.01"
+                  type="range" min="-20" max="63" step="0.01"
                   class="w-full accent-current h-1.5 range-primary-0"
                   :value="b.q"
                   @input="b.q = Number(($event.target as HTMLInputElement).value)"

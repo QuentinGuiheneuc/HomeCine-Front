@@ -9,6 +9,7 @@ const _useDashboard = () => {
   const activeDeviceKey = ref<string | null>(null)
   const menue = ref(false)
   const saving = ref(false)
+  const DeviceAddSlideover = ref(false)
 
   defineShortcuts({
     'g-h': () => router.push('/'),
@@ -18,7 +19,8 @@ const _useDashboard = () => {
     'n': () => isNotificationsSlideoverOpen.value = !isNotificationsSlideoverOpen.value,
     's-d': () => isDevicSpotifyeSlideoverOpen.value = !isDevicSpotifyeSlideoverOpen.value,
     'd': () => isDeviceSlideoverOpen.value = !isDeviceSlideoverOpen.value,
-    'm': () => menue.value = !menue.value
+    'm': () => menue.value = !menue.value,
+    'ctrl_d': () => DeviceAddSlideover.value = !DeviceAddSlideover.value
   })
 
   watch(() => route.fullPath, () => {
@@ -33,13 +35,17 @@ const _useDashboard = () => {
   watch(() => route.fullPath, () => {
     menue.value = false
   })
+  watch(() => route.fullPath, () => {
+    DeviceAddSlideover.value = false
+  })
   return {
     isNotificationsSlideoverOpen,
     isDevicSpotifyeSlideoverOpen,
     isDeviceSlideoverOpen,
     menue,
     activeDeviceKey,
-    saving
+    saving,
+    DeviceAddSlideover
   }
 }
 

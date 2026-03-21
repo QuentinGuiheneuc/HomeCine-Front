@@ -180,7 +180,7 @@ function handleWsMessage(msg: any) {
     toast?.add?.({
       title: 'Erreur device',
       description: msg.error || 'Erreur inconnue',
-      color: 'red'
+      color: 'error'
     })
   }
 }
@@ -190,7 +190,7 @@ function sendCommand(targetKey: string, method: string, extra: Record<string, an
     toast?.add?.({
       title: 'WebSocket non connecté',
       description: 'Impossible d’envoyer la commande.',
-      color: 'red'
+      color: 'error'
     })
     return
   }
@@ -245,7 +245,7 @@ async function fetchDevices() {
   } catch (e: any) {
     console.error('[devices] fetch error', e)
     errorMsg.value = 'Impossible de charger la liste des devices.'
-    toast?.add?.({ title: 'Erreur chargement devices', color: 'red' })
+    toast?.add?.({ title: 'Erreur chargement devices', color: 'error' })
   } finally {
     loading.value = false
   }

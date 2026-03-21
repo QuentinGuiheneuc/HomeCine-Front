@@ -1,17 +1,36 @@
-<!-- /pages/snap.vue -->
 <script setup lang="ts">
 import config from '@/src/config'
+
 const { menue } = useDashboard()
+const toast = useToast()
+
 /** ========= Types ========= */
-type SnapVolume = { muted: boolean; percent: number }
-type HostInfo = { arch?: string; ip: string; mac: string; name: string; os?: string }
+type SnapVolume = {
+  muted: boolean
+  percent: number
+}
+
+type HostInfo = {
+  arch?: string
+  ip: string
+  mac: string
+  name: string
+  os?: string
+}
+
 type SnapClient = {
   id: string
   connected: boolean
+  name?: string
   host: HostInfo
-  config?: { volume?: SnapVolume, latency?: number, name?: string }
+  config?: {
+    volume?: SnapVolume
+    latency?: number
+    name?: string
+  }
   group_id?: string
 }
+
 type SnapGroup = {
   id: string
   name?: string
@@ -19,10 +38,16 @@ type SnapGroup = {
   stream_id?: string
   clients: SnapClient[]
 }
-type SnapStream = { id: string; uri?: { raw?: string } }
+
+type SnapStream = {
+  id: string
+  uri?: {
+    raw?: string
+  }
+}
 
 /** ========= Config ========= */
-const SNAP_GUI_WS = `${config.WS_URL}/Snap` // proxy Node GUI
+const SNAP_GUI_WS = `${config.WS_URL}/Snap`
 const DEBUG = false
 
 /** ========= State ========= */
@@ -33,26 +58,79 @@ const groups = ref<SnapGroup[]>([])
 const clients = ref<SnapClient[]>([])
 const streams = ref<SnapStream[]>([])
 
-const toast = useToast()
-const log = (...a:any[]) => { if (DEBUG) console.log('[snap]', ...a) }
-const ok  = (m:string)=> toast.add({ title:m, color:'green' })
-const err = (m:string)=> toast.add({ title:m, color:'red' })
-const info= (m:string)=> toast.add({ title:m, color:'neutral' })
+/** clients cochés par groupe */
+const selectedClientsByGroup = ref<Record<string, string[]>>({})
 
+const log = (...a: any[]) => {
+  if (DEBUG) console.log('[snap]', ...a)
+}
+
+const ok = (m: string) => toast.add({ title: m, color: 'success' })
+const err = (m: string) => toast.add({ title: m, color: 'error' })
+const info = (m: string) => toast.add({ title: m, color: 'neutral' })
+
+/** ========= Helpers ========= */
 function getFirstClient(g: SnapGroup): SnapClient | null {
   if (!g?.clients?.length) return null
   return g.clients[0]
 }
-function alive(b: boolean) { return b ? 'En ligne' : 'Hors ligne' }
 
-/** ========= JSON-RPC client (id + pending) ========= */
+function alive(b: boolean) {
+  return b ? 'En ligne' : 'Hors ligne'
+}
+
+function clamp(n: number, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, n))
+}
+
+function upsertClientVolume(clientId: string, volume: SnapVolume) {
+  const cid = clientId.toLowerCase()
+
+  const c = clients.value.find(x => x.id.toLowerCase() === cid)
+  if (c) {
+    c.config = {
+      ...c.config,
+      volume
+    }
+  }
+
+  for (const g of groups.value) {
+    const gc = g.clients?.find(x => x.id.toLowerCase() === cid)
+    if (gc) {
+      gc.config = {
+        ...gc.config,
+        volume
+      }
+    }
+  }
+}
+
+function syncGroupsFromClients() {
+  for (const g of groups.value) {
+    g.clients = clients.value.filter(c => c.group_id?.toLowerCase() === g.id.toLowerCase())
+  }
+}
+
+function ensureGroupSelection(groupId: string) {
+  if (!selectedClientsByGroup.value[groupId]) {
+    selectedClientsByGroup.value[groupId] = []
+  }
+}
+
+function getAvailableClientsForGroup(groupId: string) {
+  const gid = groupId.toLowerCase()
+  return clients.value.filter(c => c.connected && c.group_id?.toLowerCase() !== gid)
+}
+
+/** ========= JSON-RPC client ========= */
 let rpcId = 1
-const pending = new Map<number, (msg:any)=>void>()
+const pending = new Map<number, (msg: any) => void>()
 
-function send(payload:any) {
+function send(payload: any) {
   if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return
   ws.value.send(JSON.stringify(payload))
 }
+
 function sendRpc(method: string, params?: any) {
   const id = rpcId++
   return new Promise<any>((resolve) => {
@@ -64,109 +142,253 @@ function sendRpc(method: string, params?: any) {
 /** ========= WebSocket ========= */
 function connectSnap() {
   if (ws.value && ws.value.readyState === WebSocket.OPEN) return
+
   const sock = new WebSocket(SNAP_GUI_WS)
   ws.value = sock
 
   sock.addEventListener('open', () => {
     connected.value = true
     ok('Connecté au Snapserver')
-    send({ method:'Server.GetStatusLocal' })
+    send({ method: 'Server.GetStatusLocal' })
   })
+
   sock.addEventListener('close', () => {
     connected.value = false
     info('Déconnecté')
   })
+
   sock.addEventListener('error', () => {
     err('Erreur WebSocket')
   })
-  sock.addEventListener('message', (ev) => {
-    let msg:any
-    try { msg = JSON.parse(ev.data) } catch { return }
 
-    // Réponse à un RPC (id numérique) -> resolve la promesse
+  sock.addEventListener('message', (ev) => {
+    let msg: any
+    try {
+      msg = JSON.parse(ev.data)
+    } catch {
+      return
+    }
+
+    log('message', msg)
+
     if (typeof msg?.id === 'number' && pending.has(msg.id)) {
-      pending.get(msg.id)!(msg)
+      pending.get(msg.id)?.(msg)
       pending.delete(msg.id)
       return
     }
 
-    // Sync complet renvoyé par le proxy Node
     if (msg?.id === 'Server.GetStatusLocal') {
-      if (Array.isArray(msg.group))   groups.value  = msg.group
-      if (Array.isArray(msg.client))  clients.value = msg.client
+      if (Array.isArray(msg.group)) groups.value = msg.group
+      if (Array.isArray(msg.client)) clients.value = msg.client
       if (Array.isArray(msg.streams)) streams.value = msg.streams
-      log('sync', { groups: groups.value.length, clients: clients.value.length, streams: streams.value.length })
+
+      syncGroupsFromClients()
+
+      for (const g of groups.value) {
+        ensureGroupSelection(g.id)
+      }
+
       return
     }
 
-    // Notifs normalisées par ton serveur
     if (msg?.method === 'Client.OnVolumeChanged' && msg.params) {
-      const cid = String(msg.params.id).toLowerCase()
-      const vol = msg.params.volume as SnapVolume
-      const c = clients.value.find(c => c.id.toLowerCase() === cid)
-      if (c) c.config = { ...c.config, volume: vol }
-      for (const g of groups.value) {
-        const gc = g.clients?.find(x => x.id.toLowerCase() === cid)
-        if (gc) gc.config = { ...gc.config, volume: vol }
-      }
+      const clientId = String(msg.params.id || '')
+      const volume = msg.params.volume as SnapVolume
+      if (clientId && volume) upsertClientVolume(clientId, volume)
       return
     }
+
     if (msg?.method === 'Group.OnStreamChanged' && msg.params) {
-      const gid = String(msg.params.id).toLowerCase()
-      const st  = String(msg.params.stream_id || '')
+      const gid = String(msg.params.id || '').toLowerCase()
+      const streamId = String(msg.params.stream_id || '')
       const g = groups.value.find(x => x.id.toLowerCase() === gid)
-      if (g) g.stream_id = st
+      if (g) g.stream_id = streamId
       return
+    }
+
+    if (msg?.method === 'Client.OnConnect' && msg.params?.client) {
+      const incoming = msg.params.client as SnapClient
+      const idx = clients.value.findIndex(c => c.id.toLowerCase() === incoming.id.toLowerCase())
+
+      if (idx >= 0) clients.value[idx] = incoming
+      else clients.value.push(incoming)
+
+      syncGroupsFromClients()
+      return
+    }
+
+    if (msg?.method === 'Client.OnDisconnect' && msg.params?.id) {
+      const cid = String(msg.params.id).toLowerCase()
+      const c = clients.value.find(x => x.id.toLowerCase() === cid)
+      if (c) c.connected = false
+      syncGroupsFromClients()
     }
   })
 }
+
 function disconnectSnap() {
-  if (ws.value && ws.value.readyState === WebSocket.OPEN) ws.value.close(1000, 'manual')
+  if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+    ws.value.close(1000, 'manual')
+  }
   ws.value = null
   connected.value = false
 }
+
 function refresh() {
-  send({ method:'Server.GetStatusLocal' })
+  send({ method: 'Server.GetStatusLocal' })
 }
 
-/** ========= Commands (helpers RPC) ========= */
+/** ========= Commands ========= */
 async function rpcClientSetGroup(clientId: string, groupId: string) {
   return sendRpc('Client.SetGroup', { id: clientId, group: groupId })
 }
+
 async function rpcGroupSetName(groupId: string, name: string) {
   return sendRpc('Group.SetName', { id: groupId, name })
 }
+
 async function rpcGroupSetStream(groupId: string, streamId: string) {
   return sendRpc('Group.SetStream', { id: groupId, stream_id: streamId })
 }
 
 async function setClientVolume(clientId: string, percent: number) {
-  const r = await sendRpc('Client.SetVolume', { id: clientId, volume: { muted: false, percent } })
-  if (r?.error) err(r.error?.message || 'Client.SetVolume a échoué')
-}
-async function toggleMute(clientId: string, v: SnapVolume | undefined) {
-  const muted = !!v?.muted
-  const percent = Number(v?.percent ?? 0)
-  const r = await sendRpc('Client.SetVolume', { id: clientId, volume: { muted: !muted, percent } })
-  if (r?.error) err(r.error?.message || 'Mute a échoué')
-}
-async function setGroupStream(groupId: string, streamId: string) {
-  // On envoie tel quel (Snapserver peut l’accepter même si tous les clients sont off)
-  const r = await rpcGroupSetStream(groupId, streamId)
-  if (r?.error) err(r.error?.message || 'Group.SetStream a échoué')
-  else ok('Flux du groupe mis à jour')
+  const safe = clamp(percent)
+  const r = await sendRpc('Client.SetVolume', {
+    id: clientId,
+    volume: { muted: false, percent: safe }
+  })
+
+  if (r?.error) {
+    err(r.error?.message || 'Client.SetVolume a échoué')
+    return
+  }
+
+  upsertClientVolume(clientId, { muted: false, percent: safe })
 }
 
-/** ========= Create Group (multi-clients) ========= */
+async function toggleMute(clientId: string, v?: SnapVolume) {
+  const muted = !!v?.muted
+  const percent = Number(v?.percent ?? 0)
+
+  const r = await sendRpc('Client.SetVolume', {
+    id: clientId,
+    volume: { muted: !muted, percent }
+  })
+
+  if (r?.error) {
+    err(r.error?.message || 'Mute a échoué')
+    return
+  }
+
+  upsertClientVolume(clientId, { muted: !muted, percent })
+}
+async function removeClientFromGroup(groupId: string, clientId: string) {
+  const group = groups.value.find(g => g.id === groupId)
+
+  if (!group) {
+    err('Groupe introuvable')
+    return
+  }
+  const currentIds = (group.clients || []).map(c => c.id)
+  const nextIds = currentIds.filter(id => id !== clientId)
+
+  try {
+    if (currentIds.length <= 1) {
+      err('Impossible de retirer le dernier client du groupe')
+      return
+    }
+    // envoi au proxy
+    sendGroupClientsToProxy(groupId, nextIds)
+
+    // mise à jour optimiste locale
+    group.clients = group.clients.filter(c => c.id !== clientId)
+
+    ok('Client retiré du groupe')
+
+    setTimeout(() => {
+      refresh()
+    }, 300)
+  } catch (e: any) {
+    err(e?.message || 'Suppression du client du groupe impossible')
+  }
+}
+
+async function setGroupStream(groupId: string, streamId: string) {
+  const r = await rpcGroupSetStream(groupId, streamId)
+
+  if (r?.error) {
+    err(r.error?.message || 'Group.SetStream a échoué')
+    return
+  }
+
+  const g = groups.value.find(x => x.id === groupId)
+  if (g) g.stream_id = streamId
+
+  ok('Flux du groupe mis à jour')
+}
+
+async function addClientsToGroup(groupId: string) {
+  const selected = selectedClientsByGroup.value[groupId] || []
+  const group = groups.value.find(g => g.id === groupId)
+
+  if (!group) {
+    err('Groupe introuvable')
+    return
+  }
+
+  if (!selected.length) {
+    err('Aucun client sélectionné')
+    return
+  }
+
+  try {
+    // on garde les clients déjà présents
+    const currentIds = (group.clients || []).map(c => c.id)
+
+    // fusion sans doublons
+    const merged = Array.from(new Set([...currentIds, ...selected]))
+
+    // ✅ envoi vers le proxy au bon format
+    sendGroupClientsToProxy(groupId, merged)
+
+    ok('Demande envoyée au proxy')
+    selectedClientsByGroup.value[groupId] = []
+
+    // petit refresh après envoi
+    setTimeout(() => {
+      refresh()
+    }, 300)
+  } catch (e: any) {
+    err(e?.message || 'Ajout au groupe impossible')
+  }
+}
+
+function onWheelMaster(e: WheelEvent, clientId?: string, vol?: SnapVolume) {
+  if (!clientId) return
+  const step = e.shiftKey ? 5 : 3
+  const delta = e.deltaY > 0 ? -step : step
+  const current = Number(vol?.percent ?? 0)
+  const next = clamp(current + delta)
+
+  if (next !== current) setClientVolume(clientId, next)
+  e.preventDefault()
+}
+
+/** ========= Create Group ========= */
 const showCreate = ref(false)
 const creating = ref(false)
 const newGroupName = ref('')
 const newGroupStream = ref<string>('')
-const newGroupClientIds = ref<string[]>([]) // multi
+const newGroupClientIds = ref<string[]>([])
 
 const streamOptions = computed(() =>
-  streams.value.map(s => ({ label: s.id, value: s.id, description: s.uri?.raw || '' }))
+  streams.value.map(s => ({
+    label: s.id,
+    value: s.id,
+    description: s.uri?.raw || ''
+  }))
 )
+
 const connectedClients = computed(() =>
   clients.value.filter(c => c.connected)
 )
@@ -177,77 +399,95 @@ function openCreate() {
   newGroupClientIds.value = []
   showCreate.value = true
 }
+function sendGroupClientsToProxy(groupId: string, clientIds: string[]) {
+  if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
+    err('WebSocket non connecté')
+    return
+  }
 
-async function submitCreate () {
+  ws.value.send(JSON.stringify({
+    method: 'Group.SetClients',
+    params: {
+      id: groupId,
+      clients: clientIds
+    }
+  }))
+}
+
+async function submitCreate() {
   if (creating.value) return
-  if (!newGroupName.value.trim()) { err('Nom requis'); return }
-  if (!newGroupStream.value)      { err('Sélectionne un flux'); return }
 
-  // Au moins 1 client connecté nécessaire pour matérialiser un nouveau groupe sur Snapserver
+  if (!newGroupName.value.trim()) {
+    err('Nom requis')
+    return
+  }
+
+  if (!newGroupStream.value) {
+    err('Sélectionne un flux')
+    return
+  }
+
   if (!connectedClients.value.length) {
     err('Aucun client connecté : impossible de créer un groupe côté Snapserver.')
     return
   }
+
   if (!newGroupClientIds.value.length) {
     err('Sélectionne au moins un client connecté.')
     return
   }
 
   creating.value = true
-  const newId = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2))
+  const newId = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
 
   try {
-    // Optimiste local (apparition immédiate)
-    groups.value.unshift({ id: newId, name: newGroupName.value, stream_id: newGroupStream.value, clients: [] })
+    groups.value.unshift({
+      id: newId,
+      name: newGroupName.value,
+      stream_id: newGroupStream.value,
+      clients: []
+    })
 
-    // 1) Premier client -> crée le groupe côté Snap
-    const [first, ...rest] = newGroupClientIds.value
-    const r1 = await rpcClientSetGroup(first, newId)
-    if (r1?.error) throw new Error(r1.error?.message || 'Client.SetGroup (1er) a échoué')
-
-    // 2) Nom
     const r2 = await rpcGroupSetName(newId, newGroupName.value)
     if (r2?.error) throw new Error(r2.error?.message || 'Group.SetName a échoué')
 
-    // 3) Flux
     const r3 = await rpcGroupSetStream(newId, newGroupStream.value)
     if (r3?.error) throw new Error(r3.error?.message || 'Group.SetStream a échoué')
 
-    // 4) Autres clients
-    for (const cid of rest) {
-      const r = await rpcClientSetGroup(cid, newId)
-      if (r?.error) throw new Error(r.error?.message || `Client.SetGroup a échoué pour ${cid}`)
-    }
+    // ✅ envoi brut vers proxy
+    sendGroupClientsToProxy(newId, newGroupClientIds.value)
 
     ok('Groupe créé et configuré')
     showCreate.value = false
     refresh()
-  } catch (e:any) {
+  } catch (e: any) {
     err(`Création échouée: ${e?.message || e}`)
-    // rollback visuel
     groups.value = groups.value.filter(g => g.id !== newId)
   } finally {
     creating.value = false
   }
 }
 
-/** ========= Lifecycle ========= */
-onMounted(connectSnap)
-onUnmounted(disconnectSnap)
+/** ========= UI ========= */
+const hasAnyData = computed(() => groups.value.length > 0 || streams.value.length > 0)
 
-/** ========= UI helpers ========= */
-const hasAnyData = computed(() => groups.value.length || streams.value.length)
+/** ========= Lifecycle ========= */
+onMounted(() => {
+  connectSnap()
+})
+
+onUnmounted(() => {
+  disconnectSnap()
+})
 </script>
 
 <template>
-  <!-- Page autonome : header sticky + main scrollable -->
   <div class="flex flex-col min-h-0 flex-1">
-    <UDashboardNavbar class="sticky top-1 z-20 bg-background/80 backdrop-blur border-b border-default" style="height: 120px;">
+    <UDashboardNavbar
+      class="sticky top-1 z-20 bg-background/80 backdrop-blur border-b border-default"
+      style="height: 120px;"
+    >
       <template #leading>
-        <!-- <UButton
-            :icon="connected ? 'i-lucide-link-2' : 'i-lucide-link-2-off'"
-
-          /> -->
         <UPageCard
           title="SnapCast"
           :description="`État: ${connected ? 'connecté' : 'déconnecté'} • Groupes: ${groups.length} • Flux: ${streams.length}`"
@@ -264,9 +504,11 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
             >
               {{ connected ? 'Connecté' : 'Déconnecté' }}
             </UButton>
+
             <UButton color="neutral" icon="i-lucide-refresh-ccw" @click="refresh">
               Rafraîchir
             </UButton>
+
             <UButton color="primary" icon="i-lucide-plus" @click="openCreate">
               Nouveau groupe
             </UButton>
@@ -274,11 +516,9 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
         </UPageCard>
       </template>
     </UDashboardNavbar>
-    <!-- Header sticky -->
-    <!-- Main scrollable -->
+
     <main class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8">
       <div class="w-full lg:max-w-12xl py-6 sm:py-8 lg:py-12">
-        <!-- Empty -->
         <UCard v-if="!hasAnyData" class="border-dashed">
           <UEmpty
             icon="i-lucide-database"
@@ -287,37 +527,55 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
           >
             <template #actions>
               <div class="flex gap-2">
-                <UButton @click="connectSnap" icon="i-lucide-link-2">Se connecter</UButton>
-                <UButton color="neutral" icon="i-lucide-refresh-ccw" @click="refresh">Rafraîchir</UButton>
-                <UButton color="primary" icon="i-lucide-plus" @click="openCreate">Nouveau groupe</UButton>
+                <UButton @click="connectSnap" icon="i-lucide-link-2">
+                  Se connecter
+                </UButton>
+                <UButton color="neutral" icon="i-lucide-refresh-ccw" @click="refresh">
+                  Rafraîchir
+                </UButton>
+                <UButton color="primary" icon="i-lucide-plus" @click="openCreate">
+                  Nouveau groupe
+                </UButton>
               </div>
             </template>
           </UEmpty>
         </UCard>
 
-        <!-- Groupes -->
-        <div v-else class="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
           <UCard v-for="g in groups" :key="g.id" class="flex flex-col">
             <div class="flex items-start gap-3">
               <div class="rounded-lg bg-elevated/50 p-2">
                 <UIcon name="i-lucide-users" class="size-5" />
               </div>
+
               <div class="min-w-0">
                 <div class="font-medium truncate">{{ g.name || g.id }}</div>
                 <div class="text-xs text-dimmed">{{ g.clients?.length || 0 }} client(s)</div>
+
                 <div v-if="getFirstClient(g)" class="mt-1 text-xs flex items-center gap-2">
                   <UBadge :color="getFirstClient(g)?.connected ? 'primary' : 'error'" variant="subtle">
                     {{ alive(!!getFirstClient(g)?.connected) }}
                   </UBadge>
-                  <UBadge variant="subtle" color="primary">{{ g.stream_id || '—' }}</UBadge>
+                  <UBadge variant="subtle" color="primary">
+                    {{ g.stream_id || '—' }}
+                  </UBadge>
                 </div>
               </div>
 
-                <div class="ms-auto flex items-center gap-1">
-                <UButton size="xs" color="neutral" icon="i-lucide-rotate-ccw" variant="ghost" @click="refresh" />
+              <div class="ms-auto flex items-center gap-1">
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  icon="i-lucide-rotate-ccw"
+                  variant="ghost"
+                  @click="refresh"
+                />
                 <UTooltip :text="g.clients?.length ? 'Réassigne d’abord les clients' : 'Supprimer localement'">
                   <UButton
-                    size="xs" color="error" icon="i-lucide-trash-2" variant="ghost"
+                    size="xs"
+                    color="error"
+                    icon="i-lucide-trash-2"
+                    variant="ghost"
                     :disabled="!!g.clients?.length"
                     @click="groups = groups.filter(x => x.id !== g.id)"
                   />
@@ -325,9 +583,9 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
               </div>
             </div>
 
-            <!-- Flux sous forme de pills (div) -->
             <div class="mt-4">
               <div class="text-sm text-dimmed mb-1">Flux du groupe</div>
+
               <div class="flex flex-wrap gap-2">
                 <div
                   v-for="opt in streamOptions"
@@ -338,17 +596,18 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
                   :class="opt.value === g.stream_id
                     ? 'bg-primary text-inverted border-primary'
                     : 'bg-default hover:bg-elevated/60 border-default'"
-                  @click="() => { if (g.stream_id !== opt.value) { g.stream_id = opt.value; setGroupStream(g.id, opt.value) } }"
+                  @click="() => {
+                    if (g.stream_id !== opt.value) {
+                      g.stream_id = opt.value
+                      setGroupStream(g.id, opt.value)
+                    }
+                  }"
                 >
                   <div class="font-medium truncate">{{ opt.label }}</div>
-                  <div v-if="opt.description" class="text-xs opacity-80 truncate max-w-[28ch]">
-                    {{ opt.description }}
-                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- Volume par client -->
             <div v-if="g.clients?.length" class="mt-4 space-y-3">
               <div
                 v-for="c in g.clients"
@@ -357,13 +616,32 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
               >
                 <div class="flex items-center justify-between">
                   <div class="text-sm truncate">
-                    {{ c.host?.name || c.id }} <span class="text-dimmed">· {{ c.host?.ip }}</span>
+                    {{ c.name || c.id }}
+                    <span class="text-dimmed">· {{ c.host?.ip }}</span>
                   </div>
-                  <UBadge :color="c.connected ? 'primary' : 'error'" variant="subtle">{{ alive(c.connected) }}</UBadge>
+
+                  <div class="flex items-center gap-2">
+                    <UBadge :color="c.connected ? 'primary' : 'error'" variant="subtle">
+                      {{ alive(c.connected) }}
+                    </UBadge>
+
+                    <UTooltip text="Retirer du groupe">
+                      <UButton
+                        size="xs"
+                        color="error"
+                        variant="ghost"
+                        icon="i-lucide-user-minus"
+                        @click="removeClientFromGroup(g.id, c.id)"
+                      />
+                    </UTooltip>
+                  </div>
                 </div>
 
                 <div v-if="c.connected" class="flex items-center justify-between">
-                  <UBadge variant="subtle">{{ c.config?.volume?.percent ?? 0 }}%</UBadge>
+                  <UBadge variant="subtle">
+                    {{ c.config?.volume?.percent ?? 0 }}%
+                  </UBadge>
+
                   <UButton
                     size="xs"
                     :color="c.config?.volume?.muted ? 'error' : 'neutral'"
@@ -371,24 +649,79 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
                     @click="toggleMute(c.id, c.config?.volume)"
                   />
                 </div>
+
                 <input
-                  type="range" min="0" max="100" :value="c.config?.volume?.percent" step="1"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  :value="c.config?.volume?.percent ?? 0"
                   class="w-full accent-current h-1.5 range-primary-0"
                   @input="setClientVolume(c.id, ($event.target as HTMLInputElement).valueAsNumber)"
+                  @wheel.prevent="onWheelMaster($event, c.id, c.config?.volume)"
                 />
-                <!-- <USlider
-                  v-if="c.connected"
-                  class="range-primary-0"
-                  :min="0" :max="100" :step="1"
-                  :model-value="c.config?.volume?.percent ?? 0"
-                  @update:model-value="(v:number)=> setClientVolume(c.id, v)"
-                /> -->
+              </div>
+            </div>
+
+            <!-- AJOUTER DES CLIENTS AU GROUPE -->
+            <div class="mt-4 space-y-3">
+              <div class="rounded-md border border-default/60 p-3 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="text-sm font-medium">Ajouter au groupe</div>
+                  <div class="flex justify-end">
+                    <UButton
+                      size="xs"
+                      color="primary"
+                      :disabled="!(selectedClientsByGroup[g.id]?.length)"
+                      @click="addClientsToGroup(g.id)"
+                    >
+                      Ajouter au groupe
+                    </UButton>
+                  </div>
+                  <UBadge variant="subtle">
+                    {{ selectedClientsByGroup[g.id]?.length || 0 }} sélec
+                  </UBadge>
+                </div>
+
+                <div
+                  v-if="getAvailableClientsForGroup(g.id).length"
+                  class="space-y-2 max-h-40 overflow-y-auto"
+                >
+                  <div
+                    v-for="value in getAvailableClientsForGroup(g.id)"
+                    :key="value.id"
+                    class="flex items-center justify-between gap-2"
+                  >
+                    <div class="text-sm truncate">
+                      {{ value.host?.name || value.id }}
+                      <span class="text-dimmed">· {{ value.host?.ip }}</span>
+                    </div>
+
+                    <UCheckbox
+                      :model-value="selectedClientsByGroup[g.id]?.includes(value.id)"
+                      @update:model-value="(checked) => {
+                        ensureGroupSelection(g.id)
+                        if (checked) {
+                          if (!selectedClientsByGroup[g.id].includes(value.id)) {
+                            selectedClientsByGroup[g.id].push(value.id)
+                          }
+                        } else {
+                          selectedClientsByGroup[g.id] =
+                            selectedClientsByGroup[g.id].filter(id => id !== value.id)
+                        }
+                      }"
+                    />
+                  </div>
+                </div>
+
+                <div v-else class="text-xs text-dimmed">
+                  Aucun client connecté disponible à ajouter.
+                </div>
               </div>
             </div>
           </UCard>
         </div>
 
-        <!-- Alerte si aucun client connecté (cas de ton payload) -->
         <UAlert
           v-if="connectedClients.length === 0"
           class="mt-6"
@@ -400,13 +733,19 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
       </div>
     </main>
 
-    <!-- Formulaire “inline” (pas de modal overlay) -->
-    <UCard v-if="showCreate" :ui="{ body: 'space-y-4' }" class="max-w-lg mx-auto">
+    <UCard v-if="showCreate" :ui="{ body: 'space-y-4' }" class="max-w-lg mx-auto mt-6">
       <template #header>
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-plus" class="size-5" />
           <h3 class="font-semibold">Nouveau groupe</h3>
-          <UButton class="ms-auto" size="xs" color="neutral" variant="ghost" icon="i-lucide-x" @click="showCreate=false" />
+          <UButton
+            class="ms-auto"
+            size="xs"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-x"
+            @click="showCreate = false"
+          />
         </div>
       </template>
 
@@ -433,7 +772,10 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
             </div>
           </div>
         </div>
-        <div v-if="!streams.length" class="text-xs text-dimmed mt-1">Aucun flux disponible</div>
+
+        <div v-if="!streams.length" class="text-xs text-dimmed mt-1">
+          Aucun flux disponible
+        </div>
       </div>
 
       <div>
@@ -441,18 +783,27 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
           <div class="text-sm text-dimmed mb-1">Assigner des clients (connectés)</div>
           <UBadge variant="subtle">{{ newGroupClientIds.length }} sélectionné(s)</UBadge>
         </div>
+
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto">
           <label
             v-for="c in connectedClients"
             :key="`pick-${c.id}`"
             class="flex items-center gap-2 rounded-md border p-2 text-sm cursor-pointer"
-            :class="newGroupClientIds.includes(c.id) ? 'border-primary ring-1 ring-primary' : 'border-default hover:bg-elevated/50'"
+            :class="newGroupClientIds.includes(c.id)
+              ? 'border-primary ring-1 ring-primary'
+              : 'border-default hover:bg-elevated/50'"
           >
-            <input class="accent-primary" type="checkbox" :value="c.id" v-model="newGroupClientIds" />
+            <input
+              class="accent-primary"
+              type="checkbox"
+              :value="c.id"
+              v-model="newGroupClientIds"
+            />
             <span class="truncate">{{ c.host?.name || c.id }}</span>
             <span class="text-dimmed truncate">· {{ c.host?.ip }}</span>
           </label>
         </div>
+
         <div v-if="connectedClients.length === 0" class="text-xs text-dimmed mt-2">
           Aucun client en ligne — démarre un client pour pouvoir créer le groupe.
         </div>
@@ -460,7 +811,9 @@ const hasAnyData = computed(() => groups.value.length || streams.value.length)
 
       <template #footer>
         <div class="flex items-center justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="showCreate=false">Annuler</UButton>
+          <UButton color="neutral" variant="ghost" @click="showCreate = false">
+            Annuler
+          </UButton>
           <UButton
             color="primary"
             :loading="creating"

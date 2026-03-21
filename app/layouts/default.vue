@@ -3,6 +3,7 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 import { useAuth } from '@/composables/useAuth'
 import DeviceSlideover from '~/components/DeviceSlideover.vue'
 import DeviceSpotifySlideover from '~/components/DeviceSpotifySlideover.vue'
+import DeviceAddSlideover from '~/components/DeviceAddSlideover.vue'
 
 const { menue } = useDashboard()
 
@@ -12,12 +13,28 @@ const open = menue
 
 const links = [[
   { label: 'Maison', icon: 'i-lucide-house', to: '/', onSelect: () => { open.value = false } },
-  { label: 'EQ', icon: 'si:equalizer-fill', to: '/eq', onSelect: () => { open.value = false } },
-  { label: 'Lecteur', icon: 'simple-icons:gocd', to: '/lecteur', onSelect: () => { open.value = false } },
+  {
+    label: 'EQ', to: '/eq', icon: 'si:equalizer-fill', defaultOpen: false, type: 'trigger',
+    children: [
+      { label: 'General', to: '/eq', exact: true, onSelect: () => { open.value = false } },
+      { label: 'Config', to: '/eqconfig', onSelect: () => { open.value = false } },
+      { label: 'Presset', to: '/eq/presset', onSelect: () => { open.value = false } }
+    ]
+  },
+  { label: 'Lecteur', icon: 'simple-icons:gocd', to: '/lecteurs', onSelect: () => { open.value = false } },
 
   { label: 'Devices', icon: 'mdi:speaker', to: '/devices', onSelect: () => { open.value = false } },
   { label: 'Spotify', icon: 'mdi:spotify', to: '/spotify', onSelect: () => { open.value = false } },
-  { label: 'Snap', icon: 'mdi:cast-audio', to: '/snap', onSelect: () => { open.value = false } },
+  { label: 'Bluetooth', icon: 'i-lucide-bluetooth', to: '/bt', onSelect: () => { open.value = false } },
+  { label: 'Controle', icon: 'whh:controlpanelalt', to: '/control', onSelect: () => { open.value = false } },
+  {
+    label: 'Snap', to: '/snap', icon: 'mdi:cast-audio', defaultOpen: false, type: 'trigger',
+    children: [
+      { label: 'General', to: '/snap', exact: true, onSelect: () => { open.value = false } },
+      { label: 'Config', to: '/snapconfig', onSelect: () => { open.value = false } },
+      { label: 'Presset', to: '/eq/presset', onSelect: () => { open.value = false } }
+    ]
+  },
   {
     label: 'Settings', to: '/settings', icon: 'i-lucide-settings', defaultOpen: false, type: 'trigger',
     children: [
@@ -111,6 +128,7 @@ const groups = computed(() => [
 
     <NotificationsSlideover />
     <DeviceSlideover />
-    <DeviceSpotifySlideover/>
+    <DeviceSpotifySlideover />
+    <DeviceAddSlideover />
   </UDashboardGroup>
 </template>

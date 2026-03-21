@@ -167,6 +167,28 @@ function onWheelMaster(e: WheelEvent) {
   if (nv !== volume.value) setVolume(nv)
   e.preventDefault()
 }
+function iconForDeviceType(type: string) {
+  const t = (type || '').toUpperCase()
+
+  switch (t) {
+    case 'AVR': return 'material-symbols:audio-video-receiver-outline'
+    case 'TV': return 'material-symbols:tv-outline'
+    case 'STB': return 'material-symbols:set-top-box-outline'
+    case 'COMPUTER': return 'material-symbols:computer'
+    case 'SMARTPHONE': return 'material-symbols:smartphone'
+    case 'TABLET': return 'material-symbols:tablet-mac'
+    case 'SPEAKER': return 'material-symbols:speaker'
+    case 'GAMECONSOLE': return 'material-symbols:sports-esports'
+    case 'CASTAUDIO': return 'material-symbols:cast-audio'
+    case 'CASTVIDEO': return 'material-symbols:cast-connected'
+    case 'AUTOMOBILE': return 'material-symbols:directions-car'
+    case 'SMARTWATCH': return 'material-symbols:watch'
+    case 'CHROMEBOOK': return 'material-symbols:laptop-chromebook'
+    case 'CARTHING': return 'material-symbols:smart-display-outline'
+    case 'AUDIODONGLE': return 'material-symbols:usb'
+    default: return 'i-lucide-monitor-speaker'
+  }
+}
 </script>
 
 <template>
@@ -179,8 +201,13 @@ function onWheelMaster(e: WheelEvent) {
           <div class="min-w-0">
             <p class="truncate text-sm font-medium">{{ title }}</p>
             <p class="truncate text-xs text-dimmed">{{ artists || '—' }}</p>
-            <p v-if="device" class="truncate text-[11px] text-muted/70">
-              {{ device.type }} — {{ device.name }}
+            <p v-if="device" class="text-[11px] text-muted/70">
+              <span class="inline-flex items-center gap-1">
+                <UIcon :name="iconForDeviceType(device.type || '')" class="w-4 h-4" />
+                <span class="truncate">
+                  {{ device.name }} {{ device.is_private_session ? '🔒' : '' }}
+                </span>
+              </span>
             </p>
           </div>
           <UButton icon="i-lucide-heart" variant="ghost" color="neutral" square />
@@ -213,7 +240,7 @@ function onWheelMaster(e: WheelEvent) {
         <div class="md:col-span-3 xl:col-span-4 flex items-center justify-end gap-2">
           <UButton variant="ghost" color="neutral" icon="material-symbols:event-list-sharp" style="rotate: 180deg;" size="lg" square />
           <UButton variant="ghost" color="neutral" icon="i-lucide-list-music" size="lg" square />
-          <UButton variant="ghost" color="neutral" icon="i-lucide-monitor-speaker" size="lg" square @click="isDevicSpotifyeSlideoverOpen = true" />
+          <UButton variant="ghost" :color="device?.type ? 'primary' : 'neutral'" :icon="iconForDeviceType(device?.type || 'i-lucide-monitor-speaker')" size="lg" square @click="isDevicSpotifyeSlideoverOpen = true" />
           <div class="flex items-center gap-2 w-40 max-w-[12rem]" @wheel.prevent="onWheelMaster">
             <UButton
               variant="ghost" color="neutral"

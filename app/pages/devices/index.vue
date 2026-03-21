@@ -5,8 +5,9 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import http from '@/src/lib/https'
 import config from '@/src/config'
 import { useToast, useDashboard } from '#imports'
+import { useRoute, useRouter } from 'vue-router'
 
-const { isDeviceSlideoverOpen, activeDeviceKey } = useDashboard?.() ?? { isDeviceSlideoverOpen: ref(true), activeDeviceKey: ref<string | null>(null) }
+const { isDeviceSlideoverOpen, activeDeviceKey, DeviceAddSlideover } = useDashboard?.() ?? { isDeviceSlideoverOpen: ref(true), activeDeviceKey: ref<string | null>(null) }
 
 /* ---------- Types ---------- */
 
@@ -57,10 +58,10 @@ type StatusFilter = 'all' | 'online' | 'offline'
 /* ---------- State ---------- */
 
 const devices = ref<Device[]>([])
-const loading = ref(true)
+const loading = ref(false)
 const errorMsg = ref<string | null>(null)
 const toast = useToast?.()
-
+const router = useRouter()
 const q = ref('')
 const typeFilter = ref<TypeFilter>('all')
 const statusFilter = ref<StatusFilter>('all')
@@ -82,10 +83,11 @@ const wsStatus = ref<'disconnected' | 'connecting' | 'connected'>('disconnected'
 const wsErrorMsg = ref<string | null>(null)
 
 let ws: WebSocket | null = null
+let wsDevice: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
 const wsUrl = computed(() => `${config.WS_URL}/controlOfDevice`)
-
+// const wsUrlDevice = computed(() => `${config.WS_URL}/Device`)
 /* ---------- Clé réseau ALIGNÉE avec msg.from ---------- */
 function getKeyForDevice (d: Device): string {
   return (
@@ -99,7 +101,7 @@ function getKeyForDevice (d: Device): string {
 
 /* ---------- WebSocket ---------- */
 
-function connectWs () {
+function connectWs() {
   if (typeof window === 'undefined') return
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
 
@@ -125,7 +127,7 @@ function connectWs () {
     wsStatus.value = 'connected'
     wsErrorMsg.value = null
     // Demande les états audio à tous les devices
-    ws!.send(JSON.stringify({ method: 'Gui.RequestAllState' }))
+    ws!.send(JSON.stringify({ method: 'Get.Device' }))
   }
 
   ws.onclose = () => {
@@ -142,14 +144,101 @@ function connectWs () {
     let msg: any
     try {
       msg = JSON.parse(event.data)
+      handleWsMessage(msg)
     } catch {
       console.error('[WS] invalid JSON', event.data)
       return
     }
-    handleWsMessage(msg)
   }
 }
+// function connectWsDevice () {
+//   if (typeof window === 'undefined') return
+//   if (wsDevice && (wsDevice.readyState === WebSocket.OPEN || wsDevice.readyState === WebSocket.CONNECTING)) return
 
+//   if (reconnectTimer) {
+//     clearTimeout(reconnectTimer)
+//     reconnectTimer = null
+//   }
+
+//   wsStatus.value = 'connecting'
+//   wsErrorMsg.value = null
+
+//   try {
+//     wsDevice = new WebSocket(wsUrlDevice.value)
+//   } catch (err: any) {
+//     console.error('[WS] create error', err)
+//     wsStatus.value = 'disconnected'
+//     wsErrorMsg.value = 'Erreur création WebSocket'
+//     scheduleReconnect()
+//     return
+//   }
+
+//   wsDevice.onopen = () => {
+//     wsStatus.value = 'connected'
+//     wsErrorMsg.value = null
+//     // Demande les états audio à tous les devices
+//     wsDevice!.send(JSON.stringify({ method: 'Gui.RequestAllState' }))
+//   }
+
+//   wsDevice.onclose = () => {
+//     wsStatus.value = 'disconnected'
+//     scheduleReconnect()
+//   }
+
+//   wsDevice.onerror = (err: any) => {
+//     console.error('[WS] error', err)
+//     wsErrorMsg.value = 'Erreur WebSocket (voir console)'
+//   }
+
+//   wsDevice.onmessage = (event: MessageEvent) => {
+//     let msg: any
+//     try {
+//       msg = JSON.parse(event.data)
+//       const data = msg.msg || []
+
+//       devices.value = data.map((d) => {
+//         const online = d.isalive === 1
+//         const cfg = d.allconfig || {}
+//         const serverCfg = cfg.config?.Server || cfg.config?.server || {}
+//         const vbanCfg = cfg.config?.vban || {}
+
+//         const host =
+//           d.ip ||
+//           cfg.interfaces?.address ||
+//           cfg.ipres ||
+//           'n/a'
+
+//         const port = Number(d.port || serverCfg.Port || serverCfg.port || 3007)
+
+//         const hasVban = vbanCfg && Object.keys(vbanCfg).length > 0
+
+//         const vban = hasVban
+//           ? {
+//               host: vbanCfg.Host ?? vbanCfg.host,
+//               port: Number(vbanCfg.Port ?? vbanCfg.port ?? 0) || undefined,
+//               name: vbanCfg.Name ?? vbanCfg.name,
+//               channels: vbanCfg.Channels ?? vbanCfg.channels,
+//               rate: vbanCfg.Rate ?? vbanCfg.rate,
+//               format: vbanCfg.Format ?? vbanCfg.format
+//             }
+//           : undefined
+
+//         return {
+//           ...d,
+//           online,
+//           label: d.description || cfg.config?.con?.description || '',
+//           host,
+//           serverUrl: `http://${host}:${port}`,
+//           vban
+//         }
+//       })
+//     } catch {
+//       console.error('[WS] invalid JSON', event.data)
+//       return
+//     }
+//     handleWsMessage(msg)
+//   }
+// }
 function scheduleReconnect () {
   if (reconnectTimer) return
   reconnectTimer = setTimeout(() => {
@@ -173,60 +262,28 @@ function handleWsMessage (msg: any) {
     toast?.add?.({
       title: 'Erreur device',
       description: msg.error || 'Erreur inconnue',
-      color: 'red'
+      color: 'error'
     })
   }
-}
-
-function sendCommand (targetKey: string, method: string, extra: Record<string, any> = {}) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    toast?.add?.({
-      title: 'WebSocket non connecté',
-      description: 'Impossible d’envoyer la commande.',
-      color: 'red'
-    })
-    return
-  }
-  ws.send(JSON.stringify({ targetIp: targetKey, method, ...extra }))
-}
-
-/* ---------- HTTP: /objet ---------- */
-
-async function fetchDevices () {
-  try {
-    loading.value = true
-    errorMsg.value = null
-
-    const res = await http.get<RawDevice[]>('/objet')
-    const data = res.data || []
-
+  if (msg.method === 'RES.Device' && msg.msg) {
+    const data = msg.msg || []
     devices.value = data.map((d) => {
       const online = d.isalive === 1
       const cfg = d.allconfig || {}
       const serverCfg = cfg.config?.Server || cfg.config?.server || {}
       const vbanCfg = cfg.config?.vban || {}
-
-      const host =
-        d.ip ||
-        cfg.interfaces?.address ||
-        cfg.ipres ||
-        'n/a'
-
+      const host = d.ip || cfg.interfaces?.address || cfg.ipres || 'n/a'
       const port = Number(d.port || serverCfg.Port || serverCfg.port || 3007)
-
       const hasVban = vbanCfg && Object.keys(vbanCfg).length > 0
-
-      const vban = hasVban
-        ? {
-            host: vbanCfg.Host ?? vbanCfg.host,
-            port: Number(vbanCfg.Port ?? vbanCfg.port ?? 0) || undefined,
-            name: vbanCfg.Name ?? vbanCfg.name,
-            channels: vbanCfg.Channels ?? vbanCfg.channels,
-            rate: vbanCfg.Rate ?? vbanCfg.rate,
-            format: vbanCfg.Format ?? vbanCfg.format
-          }
+      const vban = hasVban ? {
+        host: vbanCfg.Host ?? vbanCfg.host,
+        port: Number(vbanCfg.Port ?? vbanCfg.port ?? 0) || undefined,
+        name: vbanCfg.Name ?? vbanCfg.name,
+        channels: vbanCfg.Channels ?? vbanCfg.channels,
+        rate: vbanCfg.Rate ?? vbanCfg.rate,
+        format: vbanCfg.Format ?? vbanCfg.format
+      }
         : undefined
-
       return {
         ...d,
         online,
@@ -236,15 +293,22 @@ async function fetchDevices () {
         vban
       }
     })
-  } catch (e: any) {
-    console.error('[devices] fetch error', e)
-    errorMsg.value = 'Impossible de charger la liste des devices.'
-    toast?.add?.({ title: 'Erreur chargement devices', color: 'red' })
-  } finally {
-    loading.value = false
   }
 }
 
+function sendCommand (targetKey: string, method: string, extra: Record<string, any> = {}) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    toast?.add?.({
+      title: 'WebSocket non connecté',
+      description: 'Impossible d’envoyer la commande.',
+      color: 'error'
+    })
+    return
+  }
+  ws.send(JSON.stringify({ targetIp: targetKey, method, ...extra }))
+}
+
+/* ---------- HTTP: /objet ---------- */
 /* ---------- Helpers ---------- */
 
 const filteredDevices = computed(() => {
@@ -334,14 +398,21 @@ const openServ = (ip: string) => {
 /* ---------- Lifecycle ---------- */
 
 onMounted(() => {
-  fetchDevices()
+  // fetchDevices()
   connectWs()
+  // connectWsDevice()
 })
-
 onBeforeUnmount(() => {
   if (reconnectTimer) clearTimeout(reconnectTimer)
   if (ws && ws.readyState === WebSocket.OPEN) ws.close()
 })
+onUnmounted(() => {
+  if (reconnectTimer) clearTimeout(reconnectTimer)
+  if (ws && ws.readyState === WebSocket.OPEN) ws.close()
+})
+let DeviceAddSlideoverToggle = () => {
+  DeviceAddSlideover.value = !DeviceAddSlideover.value
+}
 </script>
 
 <template>
@@ -380,17 +451,25 @@ onBeforeUnmount(() => {
               </span>
             </div>
 
-            <UButton
+            <!-- <UButton
               icon="i-lucide-refresh-ccw"
               color="neutral"
               :loading="loading"
               @click="fetchDevices"
             >
               Rafraîchir
+            </UButton> -->
+            <UButton
+              icon="i-lucide-plus"
+              color="primary"
+              :loading="loading"
+              @click="DeviceAddSlideoverToggle"
+            >
+              Ajouter
             </UButton>
           </div>
         </template>
-    </UDashboardNavbar>
+      </UDashboardNavbar>
     </div>
 
     <!-- ALERTES -->
@@ -413,7 +492,7 @@ onBeforeUnmount(() => {
             v-model="q"
             icon="i-lucide-search"
             placeholder="Rechercher par nom, IP, description…"
-            :disabled="loading || !devices.length"
+            :disabled="!devices.length"
           />
         </div>
 
@@ -474,7 +553,7 @@ onBeforeUnmount(() => {
     </UPageCard>
 
     <!-- LISTE DES DEVICES -->
-    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
       <UPageCard
         v-for="d in filteredDevices"
         :key="d.id"
@@ -486,9 +565,9 @@ onBeforeUnmount(() => {
           <div class="space-y-1">
             <div class="flex items-center gap-2">
               <UIcon name="i-lucide-monitor-speaker" style="height: 30px; width: 30px;" />
-              <span class="font-medium text-base">
+              <UButton class="font-medium text-base" @click="router.push(`/devices/${d.id}`)" size="xs" variant="ghost" color="neutral">
                 {{ d.name || 'Sans nom' }}
-              </span>
+              </UButton>
               <UBadge
                 :color="d.online ? 'primary' : 'neutral'"
                 variant="subtle"
@@ -496,9 +575,6 @@ onBeforeUnmount(() => {
               >
                 {{ d.online ? 'En ligne' : 'Hors ligne' }}
               </UBadge>
-              <UButton @click="openServ(getKeyForDevice(d))" size="xs" variant="ghost" color="neutral">
-                {{ d.name || 'Sans nom' }}
-              </UButton>
             </div>
             <div class="text-xs text-dimmed">
               Type: <span class="font-mono">{{ d.type || 'n/a' }}</span>

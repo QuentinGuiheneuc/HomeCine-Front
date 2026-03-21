@@ -1,0 +1,1560 @@
+<script setup lang="ts">
+import { ref, computed, onMounted,watch } from 'vue'
+import http from '@/src/lib/https'
+import { useToast } from '#imports'
+import { useRoute, useRouter } from 'vue-router'
+
+type UsbItem = {
+  byPath: string
+  control: string
+  card: number
+  alsaId: string
+  hw: string
+  plughw: string
+}
+
+type PcmItem = {
+  name: string
+  kind: string
+  desc?: string
+  card?: string
+  dev?: number
+}
+
+type Cfg = {
+  managed?: boolean
+  raw?: string
+  setDefaultPcm?: string
+  pcms?: any[]
+  [k: string]: any
+}
+
+type Device = {
+  id: number
+  name: string
+  ip: string
+  port: number | string
+  description: string
+  type: string
+  isalive: 0 | 1 | boolean
+  allconfig: any
+}
+type Snapclient = {
+  id: string
+  running: boolean
+  cfg: {
+    host: string
+    port: number
+    soundcard: string
+    player: string
+    latency: number
+    autoRestart: boolean
+    autoStart: boolean
+    restartDelayMs: number
+    clientName: string
+    instance: number
+    StartNow: boolean
+  }
+}
+const device = ref<Device | null>(null)
+const router = useRouter()
+const toast = useToast?.()
+const ok = (m: string) => toast?.add({ title: 'OK', description: m, icon: 'i-lucide-check', color: 'primary' })
+const ko = (m: string) => toast?.add({ title: 'Erreur', description: m, icon: 'i-lucide-x', color: 'error' })
+const info = (m: string) => toast?.add({ title: 'Info', description: m, icon: 'i-lucide-info', color: 'neutral' })
+
+type Tab = 'presets' | 'bus' | 'zones' | 'pcms' | 'files' | 'snapcats'
+const tab = ref<Tab>('presets')
+
+const loading = ref(false)
+
+// API data
+const cfg = ref<Cfg | null>(null)
+const usb = ref<UsbItem[]>([])
+const detectedPcms = ref<PcmItem[]>([])
+const previewText = ref<string>('')
+const asoundText = ref<string>('')
+const snapcli = ref<Snapclient[] | null>(null)
+const addsnapcli = ref<Snapclient | null>(null)
+const route = useRoute()
+const id = Number(route.params.id)
+// Editable = /etc/asound.conf autogénéré
+const isManaged = computed(() => cfg.value?.managed !== false)
+
+// Working global fields (UX simple)
+const setDefaultPcm = ref<string>('')
+
+// Migration (legacy): some configs may still contain ctlDefaultCard.
+// This UI no longer uses it, so we remove it once from the stored config.
+let cleanedCtlDefaultCard = false
+
+// ---------- Helpers ----------
+function deepClone<T>(x: T): T {
+  return JSON.parse(JSON.stringify(x))
+}
+
+const cfgPcms = computed(() => Array.isArray(cfg.value?.pcms) ? (cfg.value!.pcms as any[]) : [])
+const cfgPcmNames = computed(() => new Set(cfgPcms.value.map(p => p?.name).filter(Boolean)))
+
+// ---------- Fetch ----------
+async function fetchAll() {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  loading.value = true
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  try {
+    const [c, u, p, prev, asnd, snapcl] = await Promise.all([
+      http.get('/alsa/config', par),
+      http.get('/alsa/usb', par),
+      http.get('/alsa/pcm', par),
+      http.get('/alsa/preview', par),
+      http.get('/alsa/asound.conf', par),
+      http.get('/snap/instances', par)
+    ])
+
+    cfg.value = c.data ?? null
+
+    // Migration (legacy): remove ctlDefaultCard from the stored config (once)
+    if (!cleanedCtlDefaultCard && cfg.value && cfg.value.managed !== false && (cfg.value as any).ctlDefaultCard !== undefined) {
+      const cleaned = deepClone(cfg.value)
+      delete (cleaned as any).ctlDefaultCard
+      try {
+        await http.put('/alsa/config', cleaned, par)
+      } catch (e) {
+        // ignore (UI can still work without it)
+      }
+      cfg.value = cleaned
+      cleanedCtlDefaultCard = true
+    }
+    usb.value = Array.isArray(u.data) ? u.data : []
+    detectedPcms.value = Array.isArray(p.data) ? p.data : []
+
+    previewText.value = typeof prev.data === 'string' ? prev.data : String(prev.data ?? '')
+    asoundText.value = typeof asnd.data === 'string' ? asnd.data : String(asnd.data ?? '')
+
+    // init global fields
+    setDefaultPcm.value = cfg.value?.setDefaultPcm || ''
+    snapcli.value = Array.isArray(snapcl.data?.instances) ? snapcl.data.instances : null
+  } catch (e: any) {
+    ko(e?.message || 'Fetch failed')
+  } finally {
+    loading.value = false
+  }
+}
+async function fetchDevices() {
+  try {
+    const res = await http.get(`/objet/?id=${id}`)
+    device.value = res.data[0] ?? null
+    console.log(device.value)
+  } catch (error) {
+    console.error('Failed to fetch devices:', error)
+  }
+}
+async function fetchSnap() {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  try {
+    const res = http.get('/snap/instances', par)
+    snapcli.value = Array.isArray((await res).data?.instances) ? (await res).data.instances : null
+  } catch (error) {
+    console.error('Failed to fetch snapcat:', error)
+  }
+}
+// ---------- API actions ----------
+async function patchGlobal() {
+  if (!isManaged.value) return ko('Config non gérée (AUTOGENERATED absent). Édition désactivée.')
+  try {
+    await http.patch('/alsa/config', {
+      setDefaultPcm: setDefaultPcm.value
+    })
+    ok('Global sauvegardé')
+    await fetchAll()
+  } catch (e: any) {
+    ko(e?.message || 'PATCH failed')
+  }
+}
+
+async function upsertPcm(pcmDef: any) {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  if (!isManaged.value) return ko('Config non gérée. Édition désactivée.')
+  try {
+    // IMPORTANT: ton router fait JSON.parse(req.body?.pcm ?? req.body)
+    // => il faut envoyer une STRING dans "pcm"
+    await http.post('/alsa/pcms', { pcm: JSON.stringify(pcmDef) }, par)
+    ok(`PCM sauvegardé: ${pcmDef.name}`)
+    // schedule a refresh after a short delay
+    setTimeout(() => {
+      void fetchAll()
+    }, 1000)
+  } catch (e: any) {
+    ko(e?.message || 'POST /alsa/pcms failed')
+  }
+}
+
+async function deletePcm(name: string) {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  if (!isManaged.value) return ko('Config non gérée. Édition désactivée.')
+  try {
+    await http.delete(`/alsa/pcms/${encodeURIComponent(name)}`, par)
+    ok(`PCM supprimé: ${name}`)
+    await fetchAll()
+  } catch (e: any) {
+    ko(e?.message || 'DELETE failed')
+  }
+}
+
+async function applyAsound() {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  if (tab.value === 'snapcats') {
+    await SaveSnapClient()
+    return
+  }
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  try {
+    await http.post('/alsa/save', {}, par)
+    ok('Apply OK')
+    await fetchAll()
+  } catch (e: any) {
+    ko(e?.message || 'Apply failed')
+  }
+}
+
+async function rollbackAsound() {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  try {
+    await http.post('/alsa/rollback', par)
+    ok('Rollback OK')
+    await fetchAll()
+  } catch (e: any) {
+    ko(e?.message || 'Rollback failed')
+  }
+}
+
+// ---------- Options UI ----------
+const usbOptionsByPath = computed(() => usb.value.map(u => {
+  const short = u.byPath.includes('usb-') ? ('USB ' + u.byPath.split('usb-')[1]) : u.byPath
+  return { label: `${short} (${u.alsaId}) [card${u.card}]`, value: u.byPath }
+}))
+
+const PcmOptionsName = computed(() => detectedPcms.value.map((u) => {
+  return { label: `${u.name}`, value: u.name }
+}))
+
+const usefulDetected = computed(() =>
+  detectedPcms.value
+    .filter(p => p.kind === 'custom' && !String(p.name).includes(':'))
+    .slice(0, 60)
+)
+
+const usefulOptions = computed(() =>
+  usefulDetected.value.map(p => ({
+    label: p.desc ? `${p.name} — ${p.desc}` : p.name,
+    value: p.name
+  }))
+)
+
+const cfgPcmOptions = computed(() =>
+  cfgPcms.value
+    .filter(p => p?.name)
+    .map(p => ({ label: p.hint?.description ? `${p.name} — ${p.hint.description}` : p.name, value: p.name }))
+)
+
+const sourceOptions = computed(() => {
+  const opts: { label: string; value: string }[] = []
+
+  if (busName.value) opts.push({ label: `BUS: ${busName.value}`, value: busName.value })
+  for (const p of usefulOptions.value) opts.push({ label: `PCM: ${p.label}`, value: p.value })
+
+  // plughw direct
+  for (const u of usb.value) {
+    const short = u.byPath.includes('usb-') ? ('USB ' + u.byPath.split('usb-')[1]) : u.byPath
+    opts.push({ label: `Card: ${short} (${u.alsaId}) → plughw`, value: u.plughw })
+  }
+
+  // unique
+  const seen = new Set<string>()
+  return opts.filter(o => (seen.has(o.value) ? false : (seen.add(o.value), true)))
+})
+
+// =======================
+// BUS UX (multi)
+// =======================
+type BusCard = { key: string; usbByPath: string; channels: number }
+type BindRow = { out: number; cardKey: string; ch: number }
+
+const busName = ref('alsa_bus')
+const busCards = ref<BusCard[]>([])
+const busRows = ref<BindRow[]>([])
+
+const totalBusChannels = computed(() => busCards.value.reduce((a, c) => a + (c.channels || 0), 0))
+
+const busIssues = computed(() => {
+  const issues: string[] = []
+  if (!busName.value.trim()) issues.push('Nom BUS requis')
+  if (!busCards.value.length) issues.push('Ajoute au moins une carte')
+
+  // duplicates
+  const by = busCards.value.map(c => c.usbByPath)
+  if (new Set(by).size !== by.length) issues.push('Deux cartes identiques (A=B)')
+
+  const total = totalBusChannels.value
+  const outs = new Set(busRows.value.map(r => r.out))
+  for (let i = 0; i < total; i++) {
+    if (!outs.has(i)) { issues.push(`Mapping incomplet: out ${i} manquant`); break }
+  }
+
+  const chMap = new Map(busCards.value.map(c => [c.key, c.channels]))
+  for (const r of busRows.value) {
+    const max = chMap.get(r.cardKey)
+    if (max == null) continue
+    if (r.ch < 0 || r.ch >= max) { issues.push(`out${r.out}: ${r.cardKey} ch${r.ch} hors plage`); break }
+  }
+
+  return issues
+})
+
+function addBusCard() {
+  const idx = busCards.value.length
+  const key = String.fromCharCode(97 + idx) // a,b,c...
+  const pick = usb.value[idx]?.byPath || usb.value[0]?.byPath || ''
+  busCards.value.push({ key, usbByPath: pick, channels: 6 })
+}
+
+function removeBusCard(key: string) {
+  busCards.value = busCards.value.filter(c => c.key !== key)
+  busCards.value = busCards.value.map((c, i) => ({ ...c, key: String.fromCharCode(97 + i) }))
+  autoFillBus()
+}
+
+function autoFillBus() {
+  const rows: BindRow[] = []
+  let out = 0
+  for (const c of busCards.value) {
+    for (let ch = 0; ch < c.channels; ch++) {
+      rows.push({ out, cardKey: c.key, ch })
+      out++
+    }
+  }
+  busRows.value = rows
+  if (!setDefaultPcm.value) setDefaultPcm.value = busName.value
+  ok('BUS auto rempli')
+}
+
+function saveBusPcm() {
+  if (busIssues.value.length) return ko('Corrige les erreurs BUS avant de sauvegarder')
+  const slaves = busCards.value.map(c => {
+    const u = usb.value.find(x => x.byPath === c.usbByPath)
+    return { id: c.key, pcm: u?.plughw || '', channels: c.channels }
+  }).filter(s => s.pcm)
+
+  const pcmDef = {
+    name: busName.value,
+    type: 'multi',
+    slaves,
+    bindings: busRows.value.map(r => ({ out: r.out, slave: r.cardKey, ch: r.ch })),
+    hint: { show: true, description: `BUS ${totalBusChannels.value}ch` }
+  }
+
+  return upsertPcm(pcmDef)
+}
+
+// --- BUS mini-cards ---
+const busList = computed(() =>
+  cfgPcms.value
+    .filter(p => p?.type === 'multi' && p?.name)
+    .map(p => ({
+      name: String(p.name),
+      desc: p?.hint?.description ? String(p.hint.description) : '',
+      slaves: Array.isArray(p.slaves) ? p.slaves : []
+    }))
+)
+
+function busChannelsCount(bus: any) {
+  return (bus?.slaves || []).reduce((acc: number, s: any) => acc + (Number(s?.channels) || 0), 0)
+}
+
+function selectBusCard(name: string) {
+  const def = cfgPcms.value.find(p => p?.type === 'multi' && p?.name === name)
+  if (!def) return info(`BUS "${name}" introuvable`)
+  loadMultiIntoBus(def) // <-- ta fonction existante
+  tab.value = 'bus'
+}
+
+// card "+ Ajouter"
+function createNewBusCard() {
+  busName.value = 'alsa_bus'
+  busCards.value = []
+  busRows.value = []
+
+  if (usb.value.length) {
+    addBusCard()
+    if (usb.value[1]) addBusCard()
+    autoFillBus()
+  }
+
+  tab.value = 'bus'
+}
+
+// suppression depuis la card
+async function deleteBusCard(name: string) {
+  await deletePcm(name) // <-- ta fonction existante (doit passer ip/port si remote)
+  if (busName.value === name) {
+    createNewBusCard()
+  }
+}
+// =======================
+// ZONES UX (route list)
+// =======================
+type ZoneRow = { name: string; L: number; R: number }
+const zonesSource = ref<string>('') // bus/custom/plughw
+const zonesSourceChannels = ref<number>(8)
+const zones = ref<ZoneRow[]>([
+  { name: 'ZoneA', L: 0, R: 1 },
+  { name: 'ZoneB', L: 2, R: 3 }
+])
+
+const zonesIssues = computed(() => {
+  const issues: string[] = []
+  if (!zonesSource.value) issues.push('Choisis une source')
+  for (const z of zones.value) {
+    if (!z.name.trim()) issues.push('Nom zone vide')
+    if (z.L < 0 || z.L >= zonesSourceChannels.value) issues.push(`${z.name}: L hors plage`)
+    if (z.R < 0 || z.R >= zonesSourceChannels.value) issues.push(`${z.name}: R hors plage`)
+    if (z.L === z.R) issues.push(`${z.name}: L=R`)
+  }
+  return issues
+})
+
+function setZonesAuto(count: number) {
+  const out: ZoneRow[] = []
+  for (let i = 0; i < count; i++) {
+    const L = i * 2
+    const R = i * 2 + 1
+    if (R >= zonesSourceChannels.value) break
+    out.push({ name: `Zone${String.fromCharCode(65 + i)}`, L, R })
+  }
+  zones.value = out
+  if (!setDefaultPcm.value && out[0]) setDefaultPcm.value = `hc_${out[0].name}`
+  ok('Zones auto remplies')
+}
+
+function addZone() {
+  const i = zones.value.length
+  zones.value.push({ name: `Zone${String.fromCharCode(65 + i)}`, L: i * 2, R: i * 2 + 1 })
+}
+
+function removeZone(i: number) {
+  zones.value.splice(i, 1)
+}
+
+async function saveZones() {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  if (zonesIssues.value.length) return ko('Corrige les erreurs Zones avant de sauvegarder')
+  const tasks = zones.value.map(z => {
+    const pcmDef = {
+      name: `hc_${z.name}`,
+      type: 'route',
+      slave: { pcm: zonesSource.value, channels: zonesSourceChannels.value },
+      ttable: [
+        { in: z.L, out: 0, gain: 1.0 },
+        { in: z.R, out: 1, gain: 1.0 }
+      ],
+      hint: { show: true, description: `${z.name} (ch${z.L}/${z.R})` }
+    }
+    return http.post('/alsa/pcms', { pcm: JSON.stringify(pcmDef) }, par)
+  })
+
+  try {
+    await Promise.all(tasks)
+    ok(`Zones sauvegardées: ${zones.value.length} PCM(s)`)
+    await fetchAll()
+  } catch (e: any) {
+    ko(e?.message || 'Save zones failed')
+  }
+}
+
+// =======================
+// PCMs UX (builder route + click-to-edit)
+// =======================
+type RouteMode = 'stereo' | 'mono' | 'copy'
+const editingName = ref<string | null>(null)
+
+const pcmName = ref('hc_custom')
+const pcmDesc = ref('PCM personnalisé')
+const pcmSource = ref<string>('') // bus/custom/plughw
+const pcmSourceChannels = ref<number>(8)
+
+const routeMode = ref<RouteMode>('stereo')
+const routeL = ref<number>(0)
+const routeR = ref<number>(1)
+const routeMono = ref<number>(2)
+const routeCopyN = ref<number>(2)
+
+function inferRouteMode(def: any) {
+  const t = def?.ttable || []
+  if (t.length === 2 && t[0]?.out === 0 && t[1]?.out === 1) {
+    if (t[0]?.in === t[1]?.in) return { mode: 'mono' as const, mono: t[0].in }
+    return { mode: 'stereo' as const, L: t[0].in, R: t[1].in }
+  }
+  const seq = t.length >= 1 && t.every((x: any, i: number) => x.in === i && x.out === i)
+  if (seq) return { mode: 'copy' as const, n: t.length }
+  return { mode: 'stereo' as const, L: 0, R: 1 }
+}
+
+function loadRouteIntoBuilder(def: any) {
+  editingName.value = def.name
+  pcmName.value = def.name
+  pcmDesc.value = def.hint?.description || ''
+  pcmSource.value = def.slave?.pcm || ''
+  pcmSourceChannels.value = def.slave?.channels ?? 2
+
+  const info = inferRouteMode(def)
+  routeMode.value = info.mode
+  if (info.mode === 'stereo') { routeL.value = info.L; routeR.value = info.R }
+  if (info.mode === 'mono') { routeMono.value = info.mono }
+  if (info.mode === 'copy') { routeCopyN.value = info.n }
+
+  tab.value = 'pcms'
+}
+
+function loadMultiIntoBus(def: any) {
+  busName.value = def.name
+  const slaves = def.slaves || []
+  busCards.value = slaves.map((s: any, idx: number) => {
+    const u = usb.value.find(x => x.plughw === s.pcm)
+    return {
+      key: s.id || String.fromCharCode(97 + idx),
+      usbByPath: u?.byPath || (usb.value[idx]?.byPath || ''),
+      channels: s.channels ?? 2
+    }
+  })
+  const b = def.bindings || []
+  busRows.value = b.map((x: any) => ({ out: x.out, cardKey: x.slave, ch: (x.ch ?? x.channel) }))
+  tab.value = 'bus'
+}
+
+function resetBuilder() {
+  editingName.value = null
+  pcmName.value = 'hc_custom'
+  pcmDesc.value = 'PCM personnalisé'
+  pcmSource.value = zonesSource.value || busName.value || ''
+  pcmSourceChannels.value = zonesSourceChannels.value || totalBusChannels.value || 8
+  routeMode.value = 'stereo'
+  routeL.value = 0
+  routeR.value = 1
+  routeMono.value = 2
+  routeCopyN.value = 2
+}
+
+function saveRoutePcm() {
+  if (!isManaged.value) return ko('Config non gérée. Édition désactivée.')
+  const name = pcmName.value.trim()
+  if (!name) return ko('Nom PCM requis')
+  if (!/^[a-zA-Z0-9_.-]+$/.test(name)) return ko('Nom invalide (a-zA-Z0-9_.-)')
+  if (!pcmSource.value) return ko('Source requise')
+
+  let ttable: any[] = []
+  if (routeMode.value === 'stereo') {
+    ttable = [
+      { in: routeL.value, out: 0, gain: 1.0 },
+      { in: routeR.value, out: 1, gain: 1.0 }
+    ]
+  } else if (routeMode.value === 'mono') {
+    ttable = [
+      { in: routeMono.value, out: 0, gain: 1.0 },
+      { in: routeMono.value, out: 1, gain: 1.0 }
+    ]
+  } else {
+    const n = Math.max(1, Math.min(routeCopyN.value, pcmSourceChannels.value))
+    ttable = Array.from({ length: n }, (_, i) => ({ in: i, out: i, gain: 1.0 }))
+  }
+
+  const pcmDef = {
+    name,
+    type: 'route',
+    slave: { pcm: pcmSource.value, channels: pcmSourceChannels.value },
+    ttable,
+    hint: { show: true, description: pcmDesc.value || '' }
+  }
+
+  editingName.value = name
+  if (!setDefaultPcm.value) setDefaultPcm.value = name
+  return upsertPcm(pcmDef)
+}
+
+function openPcmForEdit(name: string) {
+  // si PCM existe dans cfg.pcms => modifiable
+  const def = cfgPcms.value.find(p => p?.name === name)
+  if (!def) {
+    info('PCM détecté (ALSA système). Non modifiable, mais utilisable comme source.')
+    tab.value = 'pcms'
+    pcmSource.value = name
+    return
+  }
+  if (def.type === 'route') return loadRouteIntoBuilder(def)
+  if (def.type === 'multi') return loadMultiIntoBus(def)
+  info(`PCM trouvé mais type non géré: ${def.type}`)
+}
+
+// ===== Mapping table add/remove =====
+
+function normalizeBusRows() {
+  const expected = totalBusChannels.value
+
+  // garde max expected lignes, réindex out 0..n-1
+  const base = (busRows.value || []).slice(0, expected).map((r, i) => ({
+    out: i,
+    cardKey: r.cardKey || busCards.value[0]?.key || 'a',
+    ch: Number.isFinite(r.ch) ? r.ch : 0
+  }))
+
+  // complète si manque des lignes
+  for (let i = base.length; i < expected; i++) {
+    base.push({
+      out: i,
+      cardKey: busCards.value[0]?.key || 'a',
+      ch: 0
+    })
+  }
+
+  busRows.value = base
+}
+
+function addBusRow(atIndex?: number) {
+  const expected = totalBusChannels.value
+  const rows = [...(busRows.value || [])]
+
+  // si vide, on init
+  if (rows.length === 0) {
+    busRows.value = [{ out: 0, cardKey: busCards.value[0]?.key || 'a', ch: 0 }]
+    return
+  }
+
+  // insertion
+  const idx = (typeof atIndex === 'number')
+    ? Math.max(0, Math.min(atIndex, rows.length))
+    : rows.length
+
+  rows.splice(idx, 0, {
+    out: 0, // sera réindexé
+    cardKey: busCards.value[0]?.key || 'a',
+    ch: 0
+  })
+
+  busRows.value = rows
+
+  // option UX: on garde la longueur cohérente avec totalBusChannels
+  // -> si on dépasse expected, on coupe la dernière
+  normalizeBusRows()
+}
+
+function removeBusRow(index: number) {
+  const rows = [...(busRows.value || [])]
+  if (index < 0 || index >= rows.length) return
+  rows.splice(index, 1)
+  busRows.value = rows
+  normalizeBusRows()
+}
+
+function nextCardKey(currentKey: string) {
+  const keys = busCards.value.map(c => c.key)
+  const idx = keys.indexOf(currentKey)
+  if (idx < 0) return keys[0] || 'a'
+  return keys[(idx + 1) % keys.length] || currentKey
+}
+
+function cardChannels(cardKey: string) {
+  return busCards.value.find(c => c.key === cardKey)?.channels ?? 0
+}
+
+function addFullBusRow() {
+  if (!busCards.value.length) {
+    ko('Ajoute au moins une carte dans le BUS')
+    return
+  }
+
+  const rows = busRows.value || []
+
+  // Out = dernier out + 1 (ou 0 si vide)
+  const out = rows.length ? (Math.max(...rows.map(r => r.out)) + 1) : 0
+
+  // base = dernière ligne si existe
+  const last = rows.length ? rows[rows.length - 1] : null
+
+  let cardKey = last?.cardKey || busCards.value[0].key
+  let ch = Number.isFinite(last?.ch) ? (last!.ch + 1) : 0
+
+  // si dépasse canaux de la carte -> carte suivante, canal 0
+  const maxCh = cardChannels(cardKey)
+  if (maxCh > 0 && ch >= maxCh) {
+    cardKey = nextCardKey(cardKey)
+    ch = 0
+  }
+
+  busRows.value = [...rows, { out, cardKey, ch }]
+}
+function suppBusRow(idx: number) {
+  const rows = [...(busRows.value || [])]
+  if (idx < 0 || idx >= rows.length) return
+
+  rows.splice(idx, 1)
+
+  // réindexe Out pour rester propre (0..n-1)
+  rows.forEach((r, i) => { r.out = i })
+
+  busRows.value = rows
+}
+function toggleAutostart(d: Snapclient) {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  http.post(`/snap/${d.cfg.instance}/autostart/toggle`, {}, par)
+    .then(() => {
+      ok(`Autostart ${d.cfg.autoRestart ? 'activé' : 'désactivé'} pour ${d.cfg.clientName}`)
+      fetchSnap()
+    })
+    .catch((e: any) => {
+      ko(e?.message || 'Toggle autostart failed')
+    })
+}
+function toggleAutoRestart(d: Snapclient) {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  http.post(`/snap/${d.cfg.instance}/autorestart/toggle`, {}, par)
+    .then(() => {
+      ok(`AutoRestart ${d.cfg.restartDelayMs > 0 ? 'activé' : 'désactivé'} pour ${d.cfg.clientName}`)
+      fetchSnap()
+    })
+    .catch((e: any) => {
+      ko(e?.message || 'Toggle autorestart failed')
+    })
+}
+function AtaddSnapClient() {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+
+  addsnapcli.value = {
+    cfg: {
+      host: '192.168.1.40',
+      port: 1780,
+      soundcard: 'hw:CARD=Headphones,DEV=0',
+      player: 'alsa',
+      latency: 0,
+      autoRestart: false,
+      restartDelayMs: 2000,
+      clientName: '',
+      StartNow: true,
+      autoStart: false,
+      instances: [] as number[]
+    }
+  }
+}
+
+async function addSnapClient() {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+
+  if (!addsnapcli.value?.cfg?.instances?.length) {
+    return ko('Aucune instance sélectionnée')
+  }
+
+  const par = {
+    params: {
+      ip: device.value.ip,
+      port: device.value.port
+    }
+  }
+
+  try {
+    const selected = [...addsnapcli.value.cfg.instances].sort((a, b) => a - b)
+
+    for (const instance of selected) {
+      const payload = {
+        cfg: {
+          ...addsnapcli.value.cfg,
+          instance
+        }
+      }
+
+      // on retire le tableau avant envoi si ton backend n’attend que "instance"
+      delete payload.cfg.instances
+
+      await http.post('/snap/add', payload.cfg, par)
+    }
+
+    ok(`Snapclient ajouté (${selected.join(', ')})`)
+    await fetchSnap()
+    addsnapcli.value = null
+  } catch (e: any) {
+    ko(e?.message || 'Add snapclient failed')
+  }
+}
+async function SaveSnapClient() {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  const par = {
+    params: {
+      ip: device.value.ip,
+      port: device.value.port
+    }
+  }
+
+  try {
+    await http.post('/snap/save', {}, par)
+
+    ok(`Snapclients sauvegardés`)
+    await fetchSnap()
+    addsnapcli.value = null
+  } catch (e: any) {
+    ko(e?.message || 'Add snapclient failed')
+  }
+}
+async function StartSnapClient(d: Snapclient) {
+  if (!device.value?.ip || !device.value?.port) {
+    return ko('Device non chargé (ip/port manquant)')
+  }
+  const par = { params: { ip: device.value?.ip, port: device.value?.port } }
+  if (d.running === false) {
+    http.get(`/snap/instances/start/${d.cfg.instance}`, par)
+      .then(() => {
+        ok(`Snapclient ${d.cfg.clientName} démarré`)
+        fetchSnap()
+      })
+      .catch((e: any) => {
+        ko(e?.message || 'Start snapclient failed')
+      })
+  } else {
+    http.get(`/snap/instances/stop/${d.cfg.instance}`, par)
+      .then(() => {
+        ok(`Snapclient ${d.cfg.clientName} stoppé`)
+        fetchSnap()
+      })
+      .catch((e: any) => {
+        ko(e?.message || 'Stop snapclient failed')
+      })
+  }
+}
+function recheCk(id: number) {
+  const exists =
+    Array.isArray(snapcli.value) &&
+    snapcli.value.some((d: Snapclient) => Number(d?.cfg?.instance) === id)
+
+  return Boolean(exists)
+}
+
+function ckOnchange(id: number) {
+  if (!addsnapcli.value) return
+
+  if (recheCk(id)) {
+    ko('Instance déjà utilisée')
+    return
+  }
+
+  const list = addsnapcli.value.cfg.instances || []
+  const idx = list.indexOf(id)
+
+  if (idx >= 0) {
+    list.splice(idx, 1)
+  } else {
+    list.push(id)
+    list.sort((a, b) => a - b)
+  }
+
+  addsnapcli.value.cfg.instances = [...list]
+}
+// ---------- Mount ----------
+onMounted(async () => {
+  await fetchDevices()
+  await fetchAll()
+
+  // init BUS cards if empty
+  if (!busCards.value.length && usb.value.length) {
+    addBusCard()
+    if (usb.value[1]) addBusCard()
+    autoFillBus()
+  }
+
+  // init sources
+  if (!zonesSource.value && usefulOptions.value[0]) zonesSource.value = usefulOptions.value[0].value
+  if (!pcmSource.value) pcmSource.value = zonesSource.value || busName.value
+})
+</script>
+
+<template>
+  <div class="flex flex-col gap-6 pb-10 px-3 sm:px-4 lg:px-6"  style="margin-top: 5px !important;">
+    <!-- HEADER -->
+    <UPageCard variant="subtle" :ui="{ container: 'p-4 gap-y-2' }">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-speaker" class="w-5 h-5" />
+          <div class="font-medium">{{ device?.name }}</div>
+          <UBadge v-if="loading" variant="subtle" color="neutral" class="text-[10px]">Chargement…</UBadge>
+          <UBadge v-if="!isManaged" variant="subtle" color="warning" class="text-[10px]">
+            Non géré (pas AUTOGENERATED)
+          </UBadge>
+        </div>
+        <div class="flex gap-2">
+          <UButton size="xs" variant="ghost" icon="i-lucide-arrow-left" @click="router.push('/devices')">Retoure</UButton>
+          <UButton size="xs" variant="ghost" icon="i-lucide-refresh-ccw" @click="fetchAll">Rafraîchir</UButton>
+          <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-rotate-ccw" @click="rollbackAsound">Rollback</UButton>
+          <UButton size="xs" color="primary" icon="i-lucide-check" @click="applyAsound">Apply</UButton>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2 mt-2">
+        <UButton size="xs" :color="tab==='presets'?'primary':'neutral'" variant="ghost" @click="tab='presets'">Presets</UButton>
+        <UButton size="xs" :color="tab==='bus'?'primary':'neutral'" variant="ghost" @click="tab='bus'">BUS</UButton>
+        <UButton size="xs" :color="tab==='zones'?'primary':'neutral'" variant="ghost" @click="tab='zones'">Zones</UButton>
+        <UButton size="xs" :color="tab==='pcms'?'primary':'neutral'" variant="ghost" @click="tab='pcms'">PCMs</UButton>
+        <UButton size="xs" :color="tab==='files'?'primary':'neutral'" variant="ghost" @click="tab='files'">Fichiers</UButton>
+        <UButton size="xs" :color="tab==='snapcats'?'primary':'neutral'" variant="ghost" @click="tab='snapcats'">Snapcats</UButton>
+      </div>
+    </UPageCard>
+
+    <!-- GLOBAL (setDefaultPcm) -->
+    <!-- <UPageCard variant="subtle" :ui="{ container: 'p-4 gap-y-4' }">
+      <div v-if="!isManaged" class="text-xs text-dimmed">
+        /etc/asound.conf n’est pas marqué AUTOGENERATED → l’UI bloque l’édition pour éviter de casser ta conf.
+      </div>
+    </UPageCard> -->
+
+    <!-- PRESETS -->
+    <div v-if="tab==='presets'" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-2' }">
+        <div class="font-medium">Démarrage rapide</div>
+        <div class="text-xs text-dimmed">Auto-remplir puis sauvegarder (sans tables visibles).</div>
+
+        <div class="mt-3 space-y-2">
+          <UButton size="sm" variant="ghost" icon="i-lucide-wand-2" @click="() => { tab='bus'; autoFillBus(); }">
+            Auto BUS (A puis B)
+          </UButton>
+          <UButton size="sm" variant="ghost" icon="i-lucide-save" :disabled="!isManaged" @click="saveBusPcm">
+            Sauver BUS
+          </UButton>
+
+          <UButton size="sm" variant="ghost" icon="i-lucide-layout-grid" @click="() => { tab='zones'; setZonesAuto(2); }">
+            Auto 2 zones
+          </UButton>
+          <UButton size="sm" variant="ghost" icon="i-lucide-grid-2x2" @click="() => { tab='zones'; setZonesAuto(4); }">
+            Auto 4 zones
+          </UButton>
+          <UButton size="sm" variant="ghost" icon="i-lucide-save" :disabled="!isManaged" @click="saveZones">
+            Sauver zones
+          </UButton>
+        </div>
+      </UPageCard>
+
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-2' }">
+        <div class="font-medium">PCMs utiles détectés</div>
+        <div class="text-xs text-dimmed">
+          Clique : ✏️ = modifiable (dans /alsa/config), sinon utilisable comme source.
+        </div>
+
+        <div class="flex flex-wrap gap-1 mt-2">
+          <UButton
+            v-for="p in usefulDetected.slice(0, 24)"
+            :key="p.name"
+            size="2xs"
+            variant="ghost"
+            class="font-mono"
+            @click="openPcmForEdit(p.name)"
+          >
+            <span class="truncate">{{ p.name }}</span>
+            <span v-if="cfgPcmNames.has(p.name)" class="ms-2 text-xs">✏️</span>
+          </UButton>
+        </div>
+      </UPageCard>
+
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-2' }">
+        <div class="font-medium">PCMs dans la config</div>
+        <div class="text-xs text-dimmed">{{ cfgPcms.length }} PCM(s)</div>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <UBadge
+            v-for="p in cfgPcms.slice(0, 12)"
+            :key="p.name"
+            variant="subtle"
+            color="neutral"
+            class="text-[10px] font-mono"
+          >
+            {{ p.name }}
+          </UBadge>
+          <UBadge v-if="cfgPcms.length > 12" variant="subtle" color="neutral" class="text-[10px]">
+            +{{ cfgPcms.length - 12 }}
+          </UBadge>
+        </div>
+      </UPageCard>
+    </div>
+
+    <!-- BUS -->
+    <div v-if="tab==='bus'" class="space-y-4">
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <!-- Card "Ajouter" -->
+        <UPageCard
+          variant="subtle"
+          :ui="{ container: 'p-4 gap-y-2' }"
+          class="cursor-pointer border border-dashed border-default/60 hover:bg-default/20"
+          @click="createNewBusCard"
+        >
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-plus" class="w-5 h-5" />
+            <div class="font-medium">Ajouter un BUS</div>
+          </div>
+          <div class="text-xs text-dimmed">
+            Créer un nouveau PCM <span class="font-mono">type=multi</span>
+          </div>
+        </UPageCard>
+        <!-- Cards BUS existants -->
+        <UPageCard
+          v-for="b in busList"
+          :key="b.name"
+          variant="subtle"
+          :ui="{ container: 'p-4 gap-y-2' }"
+          class="cursor-pointer hover:bg-default/20"
+          :class="b.name === busName ? 'ring-2 ring-primary' : ''"
+          @click="selectBusCard(b.name)"
+        >
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="font-mono text-sm truncate">{{ b.name }}</div>
+              <div v-if="b.desc" class="text-xs text-dimmed truncate">{{ b.desc }}</div>
+              <div v-else class="text-xs text-dimmed truncate">BUS multi-cartes</div>
+            </div>
+
+            <UBadge variant="subtle" color="neutral" class="text-[10px] whitespace-nowrap">
+              {{ busChannelsCount(b) }}ch
+            </UBadge>
+          </div>
+
+          <div class="flex items-center justify-between pt-2">
+            <UBadge
+              variant="subtle"
+              :color="b.name === busName ? 'primary' : 'neutral'"
+              class="text-[10px]"
+            >
+              {{ b.name === busName ? 'Sélectionné' : 'Cliquer pour ouvrir' }}
+            </UBadge>
+
+            <UButton
+              size="2xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-trash-2"
+              :disabled="!isManaged"
+              @click.stop="deleteBusCard(b.name)"
+            >
+              Suppr
+            </UButton>
+          </div>
+        </UPageCard>
+      </div>
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-4' }">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">BUS multi-cartes</div>
+          <div class="flex gap-2">
+            <UButton size="xs" variant="ghost" icon="i-lucide-plus" @click="addBusCard">Ajouter carte</UButton>
+            <UButton size="xs" color="primary" icon="i-lucide-wand-2" @click="autoFillBus">Auto remplir</UButton>
+            <UButton size="xs" variant="ghost" icon="i-lucide-save" :disabled="!isManaged" @click="saveBusPcm">
+              Sauver BUS
+            </UButton>
+          </div>
+        </div>
+        <div class="grid gap-4 md:grid-cols-3">
+          <div class="md:col-span-2 space-y-1">
+            <div class="text-xs text-dimmed">Nom BUS (pcm)</div>
+            <UInput v-model="busName" placeholder="alsa_bus" />
+          </div>
+          <div class="space-y-1">
+            <div class="text-xs text-dimmed">Total canaux</div>
+            <div class="font-mono text-sm">{{ totalBusChannels }}</div>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <div v-for="c in busCards" :key="c.key" class="flex flex-wrap gap-2 items-end border border-default rounded-lg p-3">
+            <div class="text-xs font-mono w-10">({{ c.key }})</div>
+
+            <div class="min-w-[260px] flex-1 space-y-1">
+              <div class="text-xs text-dimmed">Carte</div>
+              <USelect v-model="c.usbByPath" :items="usbOptionsByPath" />
+            </div>
+
+            <div class="w-32 space-y-1">
+              <div class="text-xs text-dimmed">Canaux</div>
+              <USelect v-model="c.channels" :items="[{label:'2',value:2},{label:'6',value:6},{label:'8',value:8}]" />
+            </div>
+
+            <div class="flex gap-1">
+              <UButton size="2xs" variant="ghost" color="neutral" icon="i-lucide-trash-2" @click="removeBusCard(c.key)"/>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="busIssues.length" class="p-3 border border-warning/40 rounded-lg bg-warning/5">
+          <div class="text-sm font-medium mb-1">⚠️ Problèmes</div>
+          <ul class="text-xs text-dimmed list-disc ms-4">
+            <li v-for="(m,i) in busIssues.slice(0,6)" :key="i">{{ m }}</li>
+          </ul>
+        </div>
+      </UPageCard>
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-3' }">
+        <div class="font-medium">Mapping (Out → carte/canal)</div>
+        <div class="max-h-[420px] overflow-auto border border-default rounded-lg">
+          <div class="flex items-center justify-between">
+            <div class="flex gap-2">
+              <UButton size="xs" variant="ghost" icon="i-lucide-plus" @click="addFullBusRow()">
+                Ajouter ligne complète
+              </UButton>
+            </div>
+          </div>
+          <table class="w-full text-xs">
+            <thead class="sticky top-0 bg-background/80 backdrop-blur border-b border-default">
+              <tr>
+                <th class="text-left p-2 w-16">Out</th>
+                <th class="text-left p-2 w-20">Carte</th>
+                <th class="text-left p-2 w-20">Canal</th>
+                <th class="text-left p-2 w-16">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, idx) in busRows" :key="r.out" class="border-b border-default/50">
+                <td class="p-2 font-mono">{{ r.out }}</td>
+                <td class="p-2">
+                  <USelect v-model="r.cardKey" :items="busCards.map(c => ({ label: c.key, value: c.key }))" size="xs" />
+                </td>
+                <td class="p-2">
+                  <USelect
+                    v-model="r.ch"
+                    :items="(() => {
+                      const c = busCards.find(x=>x.key===r.cardKey)
+                      const n = c?.channels ?? 0
+                      return Array.from({length:n},(_,i)=>({label:String(i), value:i}))
+                    })()"
+                    size="xs"
+                  />
+                </td>
+                <td class="p-2">
+                  <div class="flex gap-1">
+                    <UButton
+                      size="2xs"
+                      variant="ghost"
+                      color="neutral"
+                      icon="i-lucide-trash-2"
+                      @click="suppBusRow(idx)"
+                      title="Supprimer cette ligne"
+                    />
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="text-xs text-dimmed">(Auto remplir suffit presque toujours.)</div>
+      </UPageCard>
+    </div>
+
+    <!-- ZONES -->
+    <div v-if="tab==='zones'" class="space-y-4">
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-4' }">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">Zones (stéréo)</div>
+          <div class="flex gap-2">
+            <UButton size="xs" variant="ghost" icon="i-lucide-plus" @click="addZone">Ajouter</UButton>
+            <UButton size="xs" variant="ghost" icon="i-lucide-wand-2" @click="setZonesAuto(2)">Auto 2</UButton>
+            <UButton size="xs" variant="ghost" icon="i-lucide-wand-2" @click="setZonesAuto(4)">Auto 4</UButton>
+            <UButton size="xs" variant="ghost" icon="i-lucide-save" :disabled="!isManaged" @click="saveZones">
+              Sauver
+            </UButton>
+          </div>
+        </div>
+
+        <div class="grid gap-2 md:grid-cols-3">
+          <div class="md:col-span-2 space-y-2">
+            <div class="text-xs text-dimmed">Source</div>
+            <USelect v-model="zonesSource" :items="sourceOptions" placeholder="BUS / PCM / carte" />
+          </div>
+          <div class="space-y-1">
+            <div class="text-xs text-dimmed">Canaux source</div>
+            <USelect v-model="zonesSourceChannels" :items="[
+              {label:'2', value:2},{label:'6', value:6},{label:'8', value:8},{label:'10', value:10},{label:'12', value:12},{label:'16', value:16},{label:'24', value:24}
+            ]" />
+          </div>
+        </div>
+
+        <div v-if="zonesIssues.length" class="p-3 border border-warning/40 rounded-lg bg-warning/5">
+          <div class="text-sm font-medium mb-1">⚠️ Problèmes</div>
+          <ul class="text-xs text-dimmed list-disc ms-4">
+            <li v-for="(m,i) in zonesIssues.slice(0,6)" :key="i">{{ m }}</li>
+          </ul>
+        </div>
+
+        <div class="space-y-2">
+          <div v-for="(z,i) in zones" :key="i" class="flex flex-wrap gap-2 items-end border border-default rounded-lg p-3">
+            <div class="min-w-[160px] flex-1 space-y-1">
+              <div class="text-xs text-dimmed">Nom</div>
+              <UInput v-model="z.name" />
+            </div>
+            <div class="w-32 space-y-1">
+              <div class="text-xs text-dimmed">L</div>
+              <USelect v-model="z.L" :items="Array.from({length: zonesSourceChannels},(_,k)=>({label:String(k), value:k}))" />
+            </div>
+            <div class="w-32 space-y-1">
+              <div class="text-xs text-dimmed">R</div>
+              <USelect v-model="z.R" :items="Array.from({length: zonesSourceChannels},(_,k)=>({label:String(k), value:k}))" />
+            </div>
+            <UButton size="2xs" variant="ghost" color="neutral" icon="i-lucide-trash-2" @click="removeZone(i)" />
+          </div>
+        </div>
+      </UPageCard>
+    </div>
+
+    <!-- PCMS -->
+    <div v-if="tab==='pcms'" class="space-y-4">
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-2' }">
+        <div class="font-medium">PCMs utiles détectés</div>
+        <div class="text-xs text-dimmed">
+          Clique : ✏️ = modifiable (dans cfg), sinon utilisable comme source.
+        </div>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <UButton
+            v-for="p in usefulDetected.slice(0, 30)"
+            :key="p.name"
+            size="2xs"
+            variant="ghost"
+            class="font-mono"
+            @click="openPcmForEdit(p.name)"
+          >
+            <span class="truncate">{{ p.name }}</span>
+            <span v-if="cfgPcmNames.has(p.name)" class="ms-2 text-xs">✏️</span>
+          </UButton>
+        </div>
+      </UPageCard>
+
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-4' }">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">Créer / modifier PCM (route)</div>
+          <div class="flex gap-2">
+            <UBadge v-if="editingName" variant="subtle" color="neutral" class="text-[10px] font-mono">
+              édition: {{ editingName }}
+            </UBadge>
+            <UButton size="xs" variant="ghost" icon="i-lucide-rotate-ccw" @click="resetBuilder">Reset</UButton>
+            <UButton
+              v-if="editingName"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-trash-2"
+              :disabled="!isManaged"
+              @click="() => deletePcm(editingName!)"
+            >
+              Suppr
+            </UButton>
+          </div>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-3">
+          <div class="space-y-1">
+            <div class="text-xs text-dimmed">Nom</div>
+            <UInput v-model="pcmName" placeholder="hc_custom" />
+          </div>
+          <div class="md:col-span-2 space-y-1">
+            <div class="text-xs text-dimmed">Description</div>
+            <UInput v-model="pcmDesc" placeholder="ex: Mono centre -> L/R" />
+          </div>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-3">
+          <div class="md:col-span-2 space-y-1">
+            <div class="text-xs text-dimmed">Source</div>
+            <USelect v-model="pcmSource" :items="sourceOptions" placeholder="BUS / PCM / carte" />
+          </div>
+          <div class="space-y-1">
+            <div class="text-xs text-dimmed">Canaux source</div>
+            <USelect v-model="pcmSourceChannels" :items="[
+              {label:'2', value:2},{label:'6', value:6},{label:'8', value:8},{label:'12', value:12},{label:'16', value:16}
+            ]" />
+          </div>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-4">
+          <div class="space-y-1">
+            <div class="text-xs text-dimmed">Mode</div>
+            <USelect v-model="routeMode" :items="[
+              {label:'Stéréo (L/R)', value:'stereo'},
+              {label:'Mono (1 canal)', value:'mono'},
+              {label:'Copie N canaux', value:'copy'}
+            ]" />
+          </div>
+
+          <template v-if="routeMode==='stereo'">
+            <div class="space-y-1">
+              <div class="text-xs text-dimmed">L</div>
+              <USelect v-model="routeL" :items="Array.from({length: pcmSourceChannels},(_,i)=>({label:String(i), value:i}))" />
+            </div>
+            <div class="space-y-1">
+              <div class="text-xs text-dimmed">R</div>
+              <USelect v-model="routeR" :items="Array.from({length: pcmSourceChannels},(_,i)=>({label:String(i), value:i}))" />
+            </div>
+            <div class="space-y-1">
+              <div class="text-xs text-dimmed">Sortie</div>
+              <div class="text-xs text-dimmed">2ch</div>
+            </div>
+          </template>
+
+          <template v-else-if="routeMode==='mono'">
+            <div class="space-y-1">
+              <div class="text-xs text-dimmed">Canal mono</div>
+              <USelect v-model="routeMono" :items="Array.from({length: pcmSourceChannels},(_,i)=>({label:String(i), value:i}))" />
+            </div>
+            <div class="space-y-1">
+              <div class="text-xs text-dimmed">Sortie</div>
+              <div class="text-xs text-dimmed">Mono → L/R</div>
+            </div>
+            <div class="space-y-1">
+              <div class="text-xs text-dimmed">2ch</div>
+              <div class="text-xs text-dimmed">—</div>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="space-y-1">
+              <div class="text-xs text-dimmed">N sortie</div>
+              <USelect v-model="routeCopyN" :items="Array.from({length: pcmSourceChannels},(_,i)=>({label:String(i+1), value:i+1}))" />
+            </div>
+            <div class="md:col-span-2 text-xs text-dimmed">
+              Copie 0→0, 1→1, ...
+            </div>
+          </template>
+        </div>
+
+        <div class="flex justify-end">
+          <UButton size="sm" color="primary" icon="i-lucide-save" :disabled="!isManaged" @click="saveRoutePcm">
+            Sauver PCM
+          </UButton>
+        </div>
+      </UPageCard>
+
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-3' }">
+        <div class="font-medium">PCMs (cfg) — click pour éditer</div>
+        <div class="space-y-2">
+          <div
+            v-for="p in cfgPcms"
+            :key="p.name"
+            class="flex items-start justify-between gap-2 border border-default rounded-lg p-3"
+          >
+            <div class="space-y-1">
+              <div class="font-mono text-sm">{{ p.name }}</div>
+              <div class="text-xs text-dimmed">{{ p.hint?.description || p.type }}</div>
+            </div>
+            <div class="flex gap-2">
+              <UButton size="2xs" variant="ghost" icon="i-lucide-pencil" @click="openPcmForEdit(p.name)">
+                Éditer
+              </UButton>
+              <UButton size="2xs" variant="ghost" color="neutral" icon="i-lucide-trash-2" :disabled="!isManaged" @click="deletePcm(p.name)">
+                Suppr
+              </UButton>
+            </div>
+          </div>
+        </div>
+      </UPageCard>
+    </div>
+
+    <!-- FILES -->
+    <div v-if="tab==='files'" class="space-y-4">
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-3' }">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">Preview (généré)</div>
+          <UButton size="xs" variant="ghost" icon="i-lucide-refresh-ccw" @click="fetchAll">Reload</UButton>
+        </div>
+        <UTextarea :model-value="previewText" :rows="14" class="font-mono text-xs" readonly />
+      </UPageCard>
+
+      <UPageCard variant="subtle" :ui="{ container:'p-4 gap-y-3' }">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">/etc/asound.conf (réel)</div>
+          <UButton size="xs" variant="ghost" icon="i-lucide-refresh-ccw" @click="fetchAll">Reload</UButton>
+        </div>
+        <UTextarea :model-value="asoundText" :rows="14" class="font-mono text-xs" readonly />
+      </UPageCard>
+    </div>
+
+    <div v-if="tab==='snapcats'" class="space-y-4">
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <UPageCard
+          variant="subtle"
+          :ui="{ container: 'p-4 gap-y-2' }"
+          class="cursor-pointer border border-dashed border-default/60 hover:bg-default/20"
+          @click="AtaddSnapClient()"
+        >
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-plus" class="w-5 h-5" />
+            <div class="font-medium">Ajouter un Snapclient</div>
+          </div>
+          <div class="text-xs text-dimmed">
+            Créer un nouveau PCM <span class="font-mono">type=multi</span>
+          </div>
+        </UPageCard>
+        <!-- Cards BUS existants -->
+        <UPageCard
+          v-for="b in snapcli"
+          :key="b.cfg.clientName"
+          variant="subtle"
+          :ui="{ container: 'p-4 gap-y-2' }"
+          class="cursor-pointer hover:bg-default/20"
+        >
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="font-mono text-sm truncate">{{ b.cfg.clientName }}</div>
+            </div>
+            <UBadge
+              :color="b.running ? 'primary' : 'neutral'"
+              variant="subtle"
+              class="text-[10px]"
+            >
+              {{ b.running ? 'Démarre' : 'Stoper' }}
+            </UBadge>
+          </div>
+          <div class="text-xs text-dimmed">
+            Ip: {{ b.cfg.host || '—' }} Port: {{ b.cfg.port || 'default' }}
+          </div>
+          <div class="text-xs text-dimmed">
+            soundcard: {{ b.cfg.soundcard || '—' }}
+          </div>
+          <div class="flex items-center justify-between pt-2">
+            <UButton
+              size="2xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-trash-2"
+              @click.stop="deleteBusCard(b.name)"
+            > Suppr </UButton>
+            <div class="text-xs text-dimmed">
+              Auto start
+              <USwitch
+                v-model="b.cfg.autoStart"
+                @click="toggleAutostart(b)"
+              />
+            </div>
+            <div class="text-xs text-dimmed">
+              Auto restart
+              <USwitch
+                v-model="b.cfg.autoRestart"
+                @click="toggleAutoRestart(b)"
+              />
+            </div>
+            <div class="text-xs text-dimmed">
+              Start and Stop
+              <USwitch
+                v-model="b.running"
+                @click="StartSnapClient(b)"
+              />
+            </div>
+          </div>
+        </UPageCard>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-1 lg:grid-cols-1 xl:grid-cols-1">
+        <UPageCard v-if="addsnapcli" variant="subtle" :ui="{ container:'p-4 gap-y-4' }">
+          <div class="flex items-center justify-between">
+            <div class="font-medium">Ajouter</div>
+            <div class="flex gap-2">
+              <UButton size="xs" variant="ghost" icon="i-lucide-plus" @click="addSnapClient">Ajouter carte</UButton>
+              <UButton size="xs" color="primary" icon="i-lucide-wand-2" @click="()=>{addsnapcli = null}">Annuler</UButton>
+            </div>
+          </div>
+          <div class="grid gap-4 md:grid-cols-12">
+            <div class="md:col-span-2 space-y-1">
+              <div class="text-xs text-dimmed">Nom de l'intance</div>
+              <UInput v-model="addsnapcli.cfg.clientName" placeholder="Home Cine" />
+            </div>
+            <div class="md:col-span-2 space-y-1">
+              <div class="text-xs text-dimmed">Ip serveur</div>
+              <UInput v-model="addsnapcli.cfg.host" placeholder="Host" />
+            </div>
+            <div class="md:col-span-3 space-y-1">
+              <div class="text-xs text-dimmed">Port</div>
+              <UInput v-model="addsnapcli.cfg.port" placeholder="1780" />
+            </div>
+            <div class="md:col-span-3 space-y-1">
+              <div class="text-xs text-dimmed">Restart Delay Ms</div>
+              <UInput v-model="addsnapcli.cfg.restartDelayMs" placeholder="2000" />
+            </div>
+            <div class="flex flex-wrap gap-2 space-y-1 md:col-span-12">
+              <div class="text-xs text-dimmed">Instances</div>
+
+              <div v-for="c in 48" :key="c">
+                <UCheckbox
+                  :model-value="addsnapcli?.cfg?.instances?.includes(c)"
+                  :label="String(c)"
+                  :disabled="recheCk(c)"
+                  @update:model-value="() => ckOnchange(c)"
+                />
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center just ify-between pt-2">
+            <div class="text-xs text-dimmed">
+              Auto start
+              <USwitch v-model="addsnapcli.cfg.autoRestart" />
+            </div>
+            <div class="text-xs text-dimmed">
+              Auto restart
+              <USwitch v-model="addsnapcli.cfg.autoStart" />
+            </div>
+            <div class="text-xs text-dimmed">
+              StartNow
+              <USwitch v-model="addsnapcli.cfg.StartNow" />
+            </div>
+          </div>
+          <div class="space-y-2">
+            <div class="flex flex-wrap gap-2 items-end border border-default rounded-lg p-3">
+              <div class="text-xs font-mono w-10"></div>
+
+              <div class="min-w-[260px] flex-1 space-y-1">
+                <div class="text-xs text-dimmed">Carte</div>
+                <USelect v-model="addsnapcli.cfg.soundcard" :items="PcmOptionsName" />
+              </div>
+
+              <div class="w-32 space-y-1">
+                <div class="text-xs text-dimmed">Canaux</div>
+                <USelect v-model="addsnapcli.cfg.player" :items="[{label:'alsa',value:'alsa'}]" />
+              </div>
+
+              <div class="flex gap-1">
+                <UButton size="2xs" variant="ghost" color="neutral" icon="i-lucide-trash-2"/>
+              </div>
+            </div>
+          </div>
+
+         <!--  <div v-if="busIssues.length" class="p-3 border border-warning/40 rounded-lg bg-warning/5">
+            <div class="text-sm font-medium mb-1">⚠️ Problèmes</div>
+            <ul class="text-xs text-dimmed list-disc ms-4">
+              <li v-for="(m,i) in busIssues.slice(0,6)" :key="i">{{ m }}</li>
+            </ul>
+          </div> -->
+          
+        </UPageCard>
+      </div>
+    </div>
+  </div>
+</template>
