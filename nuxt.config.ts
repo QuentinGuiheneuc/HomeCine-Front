@@ -12,6 +12,12 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css', '~/assets/css/sliders-many-colors.css'],
 
+  runtimeConfig: {
+    public: {
+      wsBase: process.env.WS_BASE ?? 'ws://192.168.1.40:8099'
+    }
+  },
+
   routeRules: {
     '/api/**': {
       cors: true

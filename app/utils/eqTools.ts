@@ -1,4 +1,3 @@
-// ~/utils/eqTools.ts
 export type EqType = "peaking" | "lowshelf" | "highshelf" | "highpass" | "lowpass"
 
 export type ApiCell = {
@@ -13,7 +12,7 @@ export type ApiCell = {
 
 export type UiBand = {
   id: string
-  cell: number // 1..6
+  cell: number
   enabled: boolean
   type: EqType
   freq: number
@@ -21,20 +20,14 @@ export type UiBand = {
   gainDb: number
 }
 
-let __uid = 0
-export function uid(prefix = "b") {
-  __uid += 1
-  return `${prefix}_${__uid}`
-}
-
 export function apiTypeToUi(t: number): EqType {
-  // ton mapping: 0=PEAK, 3=LPF, 4=HPF, 5=LOW_SHELF, 6=HIGH_SHELF
   if (t === 3) return "lowpass"
   if (t === 4) return "highpass"
   if (t === 5) return "lowshelf"
   if (t === 6) return "highshelf"
   return "peaking"
 }
+
 export function uiTypeToApi(t: EqType): number {
   if (t === "lowpass") return 3
   if (t === "highpass") return 4
@@ -46,18 +39,15 @@ export function uiTypeToApi(t: EqType): number {
 export function apiCellsToBands(cells: ApiCell[]): UiBand[] {
   return [...cells]
     .sort((a, b) => Number(a["@cell"]) - Number(b["@cell"]))
-    .map((c) => {
-      const type = apiTypeToUi(Number(c["@EQtype"]))
-      return {
-        id: uid("band"),
-        cell: Number(c["@cell"]),
-        enabled: c["@EQon"] === "1" && Number(c["@freq"]) > 0,
-        type,
-        freq: Number(c["@freq"]) || 1000,
-        q: Number(c["@Q"]) || 0.707,
-        gainDb: Number(c["@dblevel"]) || 0
-      }
-    })
+    .map((c) => ({
+      id: crypto.randomUUID(),
+      cell: Number(c["@cell"]),
+      enabled: c["@EQon"] === "1" && Number(c["@freq"]) > 0,
+      type: apiTypeToUi(Number(c["@EQtype"])),
+      freq: Number(c["@freq"]) || 1000,
+      q: Number(c["@Q"]) || 0.707,
+      gainDb: Number(c["@dblevel"]) || 0
+    }))
 }
 
 export function bandsToApiCells(bands: UiBand[], channel?: string): ApiCell[] {
@@ -74,7 +64,6 @@ export function bandsToApiCells(bands: UiBand[], channel?: string): ApiCell[] {
     }))
 }
 
-// ---------- Courbe (WebAudio) ----------
 export type CurvePoint = { f: number; db: number }
 
 function logspace(n: number, fMin: number, fMax: number) {
@@ -99,24 +88,17 @@ export async function computeEqCurveWebAudio(
 
   const sr = Math.max(8000, Math.min(192000, Math.round(fs || 48000)))
   const maxF = Math.min(fMax, sr / 2 - 1)
-
   const freqs = logspace(points, fMin, Math.max(fMin + 1, maxF))
 
-  // OfflineAudioContext pour forcer le sampleRate = fs
   const octx = new OfflineAudioContext(1, 1, sr)
-
-  // accum magnitude
-  const acc = new Float32Array(points)
-  acc.fill(1)
-
+  const acc = new Float32Array(points).fill(1)
   const mag = new Float32Array(points)
   const phase = new Float32Array(points)
 
   const active = bands.filter(b => b.enabled && b.freq > 0)
 
-  // si aucune bande active -> 0 dB plat
   if (!active.length) {
-    return Array.from(freqs).map((f) => ({ f, db: 0 }))
+    return Array.from(freqs).map(f => ({ f, db: 0 }))
   }
 
   for (const b of active) {
@@ -125,7 +107,6 @@ export async function computeEqCurveWebAudio(
     node.frequency.value = Math.max(20, Math.min(20000, b.freq))
     node.Q.value = Math.max(0.1, Math.min(63, b.q))
 
-    // gain uniquement peaking & shelves
     if (b.type === "peaking" || b.type === "lowshelf" || b.type === "highshelf") {
       node.gain.value = Math.max(-36, Math.min(18, b.gainDb))
     } else {
@@ -139,8 +120,7 @@ export async function computeEqCurveWebAudio(
   const out: CurvePoint[] = []
   for (let i = 0; i < points; i++) {
     const m = Math.max(1e-9, acc[i])
-    const db = 20 * Math.log10(m)
-    out.push({ f: freqs[i], db })
+    out.push({ f: freqs[i], db: 20 * Math.log10(m) })
   }
   return out
 }

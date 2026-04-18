@@ -90,10 +90,9 @@
 import { useAuth } from '@/composables/useAuth'
 
 onMounted(() => {
-  setToken()
   document.title = 'Login - HomeCine'
 })
-const { login, isAuthenticated, setToken } = useAuth()
+const { login, isAuthenticated } = useAuth()
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 

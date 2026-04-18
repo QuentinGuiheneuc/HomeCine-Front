@@ -5,15 +5,9 @@ import { CookieName, getCookie, deleteCookie } from '@/utils/cookies'
 
 let redirecting = false
 
-function isOnLoginPage() {
-  return typeof window !== 'undefined' && window.location.pathname === '/login'
-}
-
 function redirectToLoginOnce() {
-  if (typeof window === 'undefined') return
-  if (redirecting) return
-  if (isOnLoginPage()) return
-
+  if (typeof window === 'undefined' || redirecting) return
+  if (window.location.pathname === '/login') return
   redirecting = true
   window.location.assign('/login')
 }
@@ -24,31 +18,26 @@ const http = axios.create({
   headers: { 'Content-Type': 'application/json' }
 })
 
-http.interceptors.request.use((cfg: InternalAxiosRequestConfig & { skipAuthRedirect?: boolean }) => {
-  // ✅ option: ne pas rediriger sur certaines requêtes (login/logout, etc.)
-  ;(cfg as any).skipAuthRedirect = (cfg as any).skipAuthRedirect ?? false
-
+http.interceptors.request.use((cfg: InternalAxiosRequestConfig) => {
   if (typeof document !== 'undefined') {
     const token = getCookie(CookieName.TOKEN)
     if (token) {
       if (!cfg.headers) cfg.headers = new AxiosHeaders()
-      ;(cfg.headers as AxiosHeaders).set('Authorization', `Bearer ${token}`)
+      cfg.headers.set('Authorization', `Bearer ${token}`)
     }
   }
   return cfg
 })
 
 http.interceptors.response.use(
-  (r) => r,
+  r => r,
   (error: AxiosError) => {
     const status = error.response?.status
     const url = error.config?.url ?? ''
     const skip = (error.config as any)?.skipAuthRedirect
-
-    // ⚠️ évite la boucle sur la page/login et sur l'appel /login lui-même
     const isAuthEndpoint = url.includes('/login') || url.includes('/logout')
 
-    if (!skip && !isAuthEndpoint && (status === 401 || status === 403 || status === 402)) {
+    if (!skip && !isAuthEndpoint && (status === 401 || status === 402 || status === 403)) {
       if (typeof document !== 'undefined') deleteCookie(CookieName.TOKEN)
       redirectToLoginOnce()
     }

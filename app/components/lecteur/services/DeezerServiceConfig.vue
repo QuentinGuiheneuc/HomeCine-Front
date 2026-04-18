@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { typeStream } from '~/types/lecteur'
+import { typeStreamOptions } from '~/utils/lecteurOptions'
 import LocalStreamConfig from '../transports/LocalStreamConfig.vue'
 import StreamOutFifoConfig from '../transports/StreamOutFifoConfig.vue'
 import VbanConfig from '../transports/VbanConfig.vue'
@@ -30,9 +30,9 @@ function ensureSubConfigs() {
 
 watch(() => localCfg.value?.typeStream, ensureSubConfigs, { immediate: true })
 
-const bitrateItems = computed(() => typeStream.deezer?.bitrateItems || [])
-const deviceTypeItems = computed(() => typeStream.deezer?.Device_typeItems || [])
-const framesPerBufferItems = computed(() => typeStream.deezer?.frames_per_bufferItems || [])
+const bitrateItems = computed(() => typeStreamOptions.deezer?.bitrateItems || [])
+const deviceTypeItems = computed(() => typeStreamOptions.deezer?.Device_typeItems || [])
+const framesPerBufferItems = computed(() => typeStreamOptions.deezer?.frames_per_bufferItems || [])
 </script>
 
 <template>

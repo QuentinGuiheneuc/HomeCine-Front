@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { typeStream } from '~/types/lecteur'
+import { typeStreamOptions } from '~/utils/lecteurOptions'
 
 import LocalStreamConfig from '../transports/LocalStreamConfig.vue'
 import StreamOutFifoConfig from '../transports/StreamOutFifoConfig.vue'
@@ -66,9 +66,9 @@ function ensureSubConfigs() {
 
 watch(() => localCfg.value?.typeStream, ensureSubConfigs, { immediate: true })
 
-const bitrateItems = computed(() => typeStream.spotify?.bitrateItems || [])
-const deviceTypeItems = computed(() => typeStream.spotify?.Device_typeItems || [])
-const framesPerBufferItems = computed(() => typeStream.spotify?.frames_per_bufferItems || [])
+const bitrateItems = computed(() => typeStreamOptions.spotify?.bitrateItems || [])
+const deviceTypeItems = computed(() => typeStreamOptions.spotify?.Device_typeItems || [])
+const framesPerBufferItems = computed(() => typeStreamOptions.spotify?.frames_per_bufferItems || [])
 </script>
 
 <template>

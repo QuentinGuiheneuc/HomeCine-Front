@@ -9,7 +9,7 @@ export type EqPreset = {
 
 export async function getEqPresets(): Promise<EqPreset[]> {
   const res = await http.get('/eq')
-  return res.data
+  return res.data || []
 }
 
 export async function getEqPreset(id: number): Promise<EqPreset> {
