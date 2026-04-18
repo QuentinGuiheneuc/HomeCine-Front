@@ -1,0 +1,60 @@
+export type LayoutDef = {
+  channels: number
+  order: string[]
+  indices: number[]
+}
+
+export const AUDIO_LAYOUTS: Record<string, LayoutDef> = {
+  mono: { channels: 1, order: ['FC'], indices: [0] },
+  stereo: { channels: 2, order: ['FL', 'FR'], indices: [0, 1] },
+  '2.1': { channels: 3, order: ['FL', 'FR', 'LFE'], indices: [0, 1, 2] },
+  '3.0': { channels: 3, order: ['FL', 'FR', 'FC'], indices: [0, 1, 2] },
+  '3.0(back)': { channels: 3, order: ['FL', 'FR', 'BC'], indices: [0, 1, 2] },
+  '4.0': { channels: 4, order: ['FL', 'FR', 'FC', 'BC'], indices: [0, 1, 2, 3] },
+  quad: { channels: 4, order: ['FL', 'FR', 'BL', 'BR'], indices: [0, 1, 2, 3] },
+  'quad(side)': { channels: 4, order: ['FL', 'FR', 'SL', 'SR'], indices: [0, 1, 2, 3] },
+  '3.1': { channels: 4, order: ['FL', 'FR', 'FC', 'LFE'], indices: [0, 1, 2, 3] },
+  '5.0': { channels: 5, order: ['FL', 'FR', 'FC', 'BL', 'BR'], indices: [0, 1, 2, 3, 4] },
+  '5.0(side)': { channels: 5, order: ['FL', 'FR', 'FC', 'SL', 'SR'], indices: [0, 1, 2, 3, 4] },
+  '4.1': { channels: 5, order: ['FL', 'FR', 'FC', 'LFE', 'BC'], indices: [0, 1, 2, 3, 4] },
+  '5.1': { channels: 6, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR'], indices: [0, 1, 2, 3, 4, 5] },
+  '5.1(side)': { channels: 6, order: ['FL', 'FR', 'FC', 'LFE', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5] },
+  '6.0': { channels: 6, order: ['FL', 'FR', 'FC', 'BC', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5] },
+  '6.0(front)': { channels: 6, order: ['FL', 'FR', 'FLC', 'FRC', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5] },
+  '3.1.2': { channels: 6, order: ['FL', 'FR', 'FC', 'LFE', 'TFL', 'TFR'], indices: [0, 1, 2, 3, 4, 5] },
+  hexagonal: { channels: 6, order: ['FL', 'FR', 'FC', 'BL', 'BR', 'BC'], indices: [0, 1, 2, 3, 4, 5] },
+  '6.1(side)': { channels: 7, order: ['FL', 'FR', 'FC', 'LFE', 'BC', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5, 6] },
+  '6.1(back)': { channels: 7, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'BC'], indices: [0, 1, 2, 3, 4, 5, 6] },
+  '6.1(front)': { channels: 7, order: ['FL', 'FR', 'LFE', 'FLC', 'FRC', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5, 6] },
+  '7.0': { channels: 7, order: ['FL', 'FR', 'FC', 'BL', 'BR', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5, 6] },
+  '7.0(front)': { channels: 7, order: ['FL', 'FR', 'FC', 'FLC', 'FRC', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5, 6] },
+  '7.1': { channels: 8, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5, 6, 7] },
+  '7.2': { channels: 8, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5, 6, 7] },
+  '7.1(wide)': { channels: 8, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'FLC', 'FRC'], indices: [0, 1, 2, 3, 4, 5, 6, 7] },
+  '7.1(wide-side)': { channels: 8, order: ['FL', 'FR', 'FC', 'LFE', 'FLC', 'FRC', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5, 6, 7] },
+  '5.1.2': { channels: 8, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'TFL', 'TFR'], indices: [0, 1, 2, 3, 4, 5, 6, 7] },
+  octagonal: { channels: 8, order: ['FL', 'FR', 'FC', 'BL', 'BR', 'BC', 'SL', 'SR'], indices: [0, 1, 2, 3, 4, 5, 6, 7] },
+  cube: { channels: 8, order: ['FL', 'FR', 'BL', 'BR', 'TFL', 'TFR', 'TBL', 'TBR'], indices: [0, 1, 2, 3, 4, 5, 6, 7] },
+  '5.1.4': { channels: 10, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'TFL', 'TFR', 'TBL', 'TBR'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+  '7.1.2': { channels: 10, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'SL', 'SR', 'TFL', 'TFR'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+  '7.1.4': { channels: 12, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'SL', 'SR', 'TFL', 'TFR', 'TBL', 'TBR'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+  '7.2.3': { channels: 12, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'SL', 'SR', 'TFL', 'TFR', 'TBC', 'LFE2'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+  '9.1.4': { channels: 14, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'FLC', 'FRC', 'SL', 'SR', 'TFL', 'TFR', 'TBL', 'TBR'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] },
+  '9.1.6': { channels: 16, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'FLC', 'FRC', 'SL', 'SR', 'TFL', 'TFR', 'TBL', 'TBR', 'TSL', 'TSR'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
+  hexadecagonal: { channels: 16, order: ['FL', 'FR', 'FC', 'BL', 'BR', 'BC', 'SL', 'SR', 'WL', 'WR', 'TBL', 'TBR', 'TBC', 'TFC', 'TFL', 'TFR'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
+  binaural: { channels: 2, order: ['BIL', 'BIR'], indices: [0, 1] },
+  downmix: { channels: 2, order: ['DL', 'DR'], indices: [0, 1] },
+  '22.2': { channels: 24, order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'FLC', 'FRC', 'BC', 'SL', 'SR', 'TC', 'TFL', 'TFC', 'TFR', 'TBL', 'TBC', 'TBR', 'LFE2', 'TSL', 'TSR', 'BFC', 'BFL', 'BFR'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] },
+  ambisonics_AmbiX_FOA_ACN_SN3D: { channels: 4, order: ['ACN0(W)', 'ACN1(Y)', 'ACN2(Z)', 'ACN3(X)'], indices: [0, 1, 2, 3] },
+  ambisonics_AmbiX_SOA_ACN_SN3D: { channels: 9, order: ['ACN0', 'ACN1', 'ACN2', 'ACN3', 'ACN4', 'ACN5', 'ACN6', 'ACN7', 'ACN8'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8] },
+  ambisonics_AmbiX_TOA_ACN_SN3D: { channels: 16, order: ['ACN0', 'ACN1', 'ACN2', 'ACN3', 'ACN4', 'ACN5', 'ACN6', 'ACN7', 'ACN8', 'ACN9', 'ACN10', 'ACN11', 'ACN12', 'ACN13', 'ACN14', 'ACN15'], indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
+  ambisonics_FuMa_FOA: { channels: 4, order: ['W', 'X', 'Y', 'Z'], indices: [0, 1, 2, 3] }
+}
+
+export const LAYOUT_ITEMS = Object.keys(AUDIO_LAYOUTS).map(k => ({ label: k, value: k }))
+
+export const ALL_CHANNEL_NAMES: string[] = [
+  ...new Set(Object.values(AUDIO_LAYOUTS).flatMap(l => l.order))
+].sort()
+
+export const CHANNEL_ITEMS = ALL_CHANNEL_NAMES.map(ch => ({ label: ch, value: ch }))
