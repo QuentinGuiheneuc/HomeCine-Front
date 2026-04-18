@@ -41,6 +41,18 @@ const form = ref({
 
 const inputLayout = computed(() => AUDIO_LAYOUTS[form.value.inputConfig] ?? null)
 
+const CHUNK_SIZE = 12
+
+const channelChunks = computed(() => {
+  const order = inputLayout.value?.order ?? []
+  if (order.length <= CHUNK_SIZE) return [{ start: 0, channels: order }]
+  const chunks = []
+  for (let i = 0; i < order.length; i += CHUNK_SIZE) {
+    chunks.push({ start: i, channels: order.slice(i, i + CHUNK_SIZE) })
+  }
+  return chunks
+})
+
 watch(() => form.value.inputConfig, (key) => {
   const layout = AUDIO_LAYOUTS[key]
   if (layout) form.value.outputOrder = [...layout.order]
@@ -266,27 +278,36 @@ onMounted(fetchPresets)
     </UCard>
 
     <!-- Tableau Input / Output (hors UCard pour éviter l'overflow:hidden du card) -->
-    <div v-if="showForm && inputLayout" class="space-y-1">
-      <div class="text-sm font-medium px-1">Mapping des canaux</div>
-      <p class="text-xs text-dimmed px-1">
-        La ligne <strong>Input</strong> reflète le layout sélectionné (lecture seule).
-        La ligne <strong>Output</strong> définit le nom affecté à chaque position — modifiable.
-      </p>
+    <div v-if="showForm && inputLayout" class="space-y-3">
+      <div>
+        <div class="text-sm font-medium px-1">Mapping des canaux</div>
+        <p class="text-xs text-dimmed px-1 mt-0.5">
+          La ligne <strong>Input</strong> reflète le layout sélectionné (lecture seule).
+          La ligne <strong>Output</strong> définit le nom affecté à chaque position — modifiable.
+          <span v-if="channelChunks.length > 1" class="text-primary">
+            · Tableau découpé en {{ channelChunks.length }} blocs de {{ CHUNK_SIZE }} canaux max.
+          </span>
+        </p>
+      </div>
 
-      <div class="overflow-x-auto rounded-lg border border-default mt-2">
-        <table class="text-sm border-collapse" style="min-width: max-content;">
+      <div
+        v-for="chunk in channelChunks"
+        :key="chunk.start"
+        class="overflow-x-auto rounded-lg border border-default"
+      >
+        <table class="w-full text-sm border-collapse" style="min-width: max-content;">
           <thead>
             <tr class="bg-muted/40">
               <th class="px-3 py-2 text-left font-medium text-dimmed border-b border-r border-default w-24 sticky left-0 bg-muted/60 z-10">
                 Rôle
               </th>
               <th
-                v-for="(_, i) in inputLayout.order"
-                :key="i"
+                v-for="(_, j) in chunk.channels"
+                :key="j"
                 class="px-3 py-2 text-center font-mono text-xs text-dimmed border-b border-default"
                 style="min-width: 80px;"
               >
-                Ch {{ i }}
+                Ch {{ chunk.start + j }}
               </th>
             </tr>
           </thead>
@@ -300,8 +321,8 @@ onMounted(fetchPresets)
                 </div>
               </td>
               <td
-                v-for="(ch, i) in inputLayout.order"
-                :key="i"
+                v-for="(ch, j) in chunk.channels"
+                :key="j"
                 class="px-3 py-2 text-center"
               >
                 <UBadge variant="subtle" color="neutral" class="font-mono text-xs">{{ ch }}</UBadge>
@@ -317,12 +338,12 @@ onMounted(fetchPresets)
                 </div>
               </td>
               <td
-                v-for="(_, i) in inputLayout.order"
-                :key="i"
+                v-for="(_, j) in chunk.channels"
+                :key="j"
                 class="px-1.5 py-1.5 text-center"
               >
                 <USelect
-                  v-model="form.outputOrder[i]"
+                  v-model="form.outputOrder[chunk.start + j]"
                   :items="CHANNEL_ITEMS"
                   size="xs"
                   class="font-mono"
