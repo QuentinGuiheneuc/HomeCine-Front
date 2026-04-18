@@ -1,11 +1,9 @@
-/* /device */
+﻿/* /device */
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import http from '@/src/lib/https'
-import config from '@/src/config'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useToast, useDashboard } from '#imports'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 
 const { isDeviceSlideoverOpen, activeDeviceKey, DeviceAddSlideover } = useDashboard?.() ?? { isDeviceSlideoverOpen: ref(true), activeDeviceKey: ref<string | null>(null) }
 
@@ -79,15 +77,15 @@ const inChannelPercent = ref<Record<string, Record<string, number>>>({})
 
 /* ---------- WebSocket /controlOfDevice ---------- */
 
-const wsStatus = ref<'disconnected' | 'connecting' | 'connected'>('disconnected')
-const wsErrorMsg = ref<string | null>(null)
+const { status: wsStatus, error: wsErrorMsg, send: wsSend, on: wsOn } = useDeviceControlWs()
 
-let ws: WebSocket | null = null
-let wsDevice: WebSocket | null = null
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+// Envoie Get.Device dès la connexion établie
+watch(wsStatus, (s) => {
+  if (s === 'connected') wsSend('Get.Device')
+})
 
-const wsUrl = computed(() => `${config.WS_URL}/controlOfDevice`)
-// const wsUrlDevice = computed(() => `${config.WS_URL}/Device`)
+const offWs = wsOn(handleWsMessage)
+
 /* ---------- Clé réseau ALIGNÉE avec msg.from ---------- */
 function getKeyForDevice (d: Device): string {
   return (
@@ -99,161 +97,7 @@ function getKeyForDevice (d: Device): string {
   )
 }
 
-/* ---------- WebSocket ---------- */
-
-function connectWs() {
-  if (typeof window === 'undefined') return
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
-
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-
-  wsStatus.value = 'connecting'
-  wsErrorMsg.value = null
-
-  try {
-    ws = new WebSocket(wsUrl.value)
-  } catch (err: any) {
-    console.error('[WS] create error', err)
-    wsStatus.value = 'disconnected'
-    wsErrorMsg.value = 'Erreur création WebSocket'
-    scheduleReconnect()
-    return
-  }
-
-  ws.onopen = () => {
-    wsStatus.value = 'connected'
-    wsErrorMsg.value = null
-    // Demande les états audio à tous les devices
-    ws!.send(JSON.stringify({ method: 'Get.Device' }))
-  }
-
-  ws.onclose = () => {
-    wsStatus.value = 'disconnected'
-    scheduleReconnect()
-  }
-
-  ws.onerror = (err: any) => {
-    console.error('[WS] error', err)
-    wsErrorMsg.value = 'Erreur WebSocket (voir console)'
-  }
-
-  ws.onmessage = (event: MessageEvent) => {
-    let msg: any
-    try {
-      msg = JSON.parse(event.data)
-      console.log('[WS] message received', msg)
-      handleWsMessage(msg)
-    } catch {
-      console.error('[WS] invalid JSON', event.data)
-      return
-    }
-  }
-}
-// function connectWsDevice () {
-//   if (typeof window === 'undefined') return
-//   if (wsDevice && (wsDevice.readyState === WebSocket.OPEN || wsDevice.readyState === WebSocket.CONNECTING)) return
-
-//   if (reconnectTimer) {
-//     clearTimeout(reconnectTimer)
-//     reconnectTimer = null
-//   }
-
-//   wsStatus.value = 'connecting'
-//   wsErrorMsg.value = null
-
-//   try {
-//     wsDevice = new WebSocket(wsUrlDevice.value)
-//   } catch (err: any) {
-//     console.error('[WS] create error', err)
-//     wsStatus.value = 'disconnected'
-//     wsErrorMsg.value = 'Erreur création WebSocket'
-//     scheduleReconnect()
-//     return
-//   }
-
-//   wsDevice.onopen = () => {
-//     wsStatus.value = 'connected'
-//     wsErrorMsg.value = null
-//     // Demande les états audio à tous les devices
-//     wsDevice!.send(JSON.stringify({ method: 'Gui.RequestAllState' }))
-//   }
-
-//   wsDevice.onclose = () => {
-//     wsStatus.value = 'disconnected'
-//     scheduleReconnect()
-//   }
-
-//   wsDevice.onerror = (err: any) => {
-//     console.error('[WS] error', err)
-//     wsErrorMsg.value = 'Erreur WebSocket (voir console)'
-//   }
-
-//   wsDevice.onmessage = (event: MessageEvent) => {
-//     let msg: any
-//     try {
-//       msg = JSON.parse(event.data)
-//       const data = msg.msg || []
-
-//       devices.value = data.map((d) => {
-//         const online = d.isalive === 1
-//         const cfg = d.allconfig || {}
-//         const serverCfg = cfg.config?.Server || cfg.config?.server || {}
-//         const vbanCfg = cfg.config?.vban || {}
-
-//         const host =
-//           d.ip ||
-//           cfg.interfaces?.address ||
-//           cfg.ipres ||
-//           'n/a'
-
-//         const port = Number(d.port || serverCfg.Port || serverCfg.port || 3007)
-
-//         const hasVban = vbanCfg && Object.keys(vbanCfg).length > 0
-
-//         const vban = hasVban
-//           ? {
-//               host: vbanCfg.Host ?? vbanCfg.host,
-//               port: Number(vbanCfg.Port ?? vbanCfg.port ?? 0) || undefined,
-//               name: vbanCfg.Name ?? vbanCfg.name,
-//               channels: vbanCfg.Channels ?? vbanCfg.channels,
-//               rate: vbanCfg.Rate ?? vbanCfg.rate,
-//               format: vbanCfg.Format ?? vbanCfg.format
-//             }
-//           : undefined
-
-//         return {
-//           ...d,
-//           online,
-//           label: d.description || cfg.config?.con?.description || '',
-//           host,
-//           serverUrl: `http://${host}:${port}`,
-//           vban
-//         }
-//       })
-//     } catch {
-//       console.error('[WS] invalid JSON', event.data)
-//       return
-//     }
-//     handleWsMessage(msg)
-//   }
-// }
-function scheduleReconnect () {
-  if (reconnectTimer) return
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null
-    connectWs()
-  }, 2000)
-}
-function scheduleDvice() {
-  if (timeDevices) return
-  timeDevices = setInterval(() => {
-    timeDevices = null
-    ws!.send(JSON.stringify({ method: 'Get.Device' }))
-  }, 5000)
-}
+/* ---------- Message handler ---------- */
 function handleWsMessage (msg: any) {
   if (msg.method === 'State.audio' && msg.from && msg.data) {
     const key = String(msg.from)
@@ -264,10 +108,8 @@ function handleWsMessage (msg: any) {
     return
   }
   if (msg.method === 'RES.Connection') {
-    // Traite la liste des devices reçue
     console.log('[WS] RES.Connection received', msg)
   }
-
   if (msg.method === 'Error') {
     console.warn('[WS] Device error:', msg)
     toast?.add?.({
@@ -306,27 +148,35 @@ function handleWsMessage (msg: any) {
     })
   }
 }
+
 function sendCommandGetDevices() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
+  const sent = wsSend('Get.Connection')
+  if (!sent) {
     toast?.add?.({
       title: 'WebSocket non connecté',
-      description: 'Impossible d’envoyer la commande.',
+      description: "Impossible d'envoyer la commande.",
       color: 'error'
     })
-    return
   }
-  ws.send(JSON.stringify({ method: 'Get.Connection' }))
 }
+
 function sendCommand (targetKey: string, method: string, extra: Record<string, any> = {}) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
+  const sent = wsSend(method, { targetIp: targetKey, ...extra })
+  if (!sent) {
     toast?.add?.({
       title: 'WebSocket non connecté',
-      description: 'Impossible d’envoyer la commande.',
+      description: "Impossible d'envoyer la commande.",
       color: 'error'
     })
-    return
   }
-  ws.send(JSON.stringify({ targetIp: targetKey, method, ...extra }))
+}
+
+function scheduleDvice() {
+  if (timeDevices) return
+  timeDevices = setInterval(() => {
+    timeDevices = null
+    wsSend('Get.Device')
+  }, 5000)
 }
 
 /* ---------- HTTP: /objet ---------- */
@@ -417,23 +267,15 @@ const openServ = (ip: string) => {
 }
 
 /* ---------- Lifecycle ---------- */
-let timeDevices: ReturnType<typeof setTimeout> | null = null
+let timeDevices: ReturnType<typeof setInterval> | null = null
 
 onMounted(() => {
-  // fetchDevices()
-  connectWs()
   scheduleDvice()
-  // connectWsDevice()
 })
-onBeforeUnmount(() => {
-  if (reconnectTimer) clearTimeout(reconnectTimer)
-  if (timeDevices) clearTimeout(timeDevices)
-  if (ws && ws.readyState === WebSocket.OPEN) ws.close()
-})
+
 onUnmounted(() => {
-  if (reconnectTimer) clearTimeout(reconnectTimer)
-  if (timeDevices) clearTimeout(timeDevices)
-  if (ws && ws.readyState === WebSocket.OPEN) ws.close()
+  if (timeDevices) clearInterval(timeDevices)
+  offWs()
 })
 let DeviceAddSlideoverToggle = () => {
   DeviceAddSlideover.value = !DeviceAddSlideover.value

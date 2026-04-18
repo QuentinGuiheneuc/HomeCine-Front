@@ -80,5 +80,5 @@ export function useSnapWs() {
     return () => _notifHandlers.delete(handler)
   }
 
-  return { status, error, connect, disconnect, rpc, onNotif }
+  return { status, error, connect, disconnect, send, rpc, onNotif }
 }

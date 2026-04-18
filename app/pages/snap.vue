@@ -1,6 +1,4 @@
-<script setup lang="ts">
-import config from '@/src/config'
-
+﻿<script setup lang="ts">
 const { menue } = useDashboard()
 const toast = useToast()
 
@@ -48,12 +46,13 @@ type SnapStream = {
 }
 
 /** ========= Config ========= */
-const SNAP_GUI_WS = `${config.WS_URL}/Snap`
 const DEBUG = false
 
+/** ========= WebSocket (useSnapWs) ========= */
+const { status, connect, disconnect, send, rpc, onNotif } = useSnapWs()
+const connected = computed(() => status.value === 'connected')
+
 /** ========= State ========= */
-const ws = ref<WebSocket | null>(null)
-const connected = ref(false)
 
 const groups = ref<SnapGroup[]>([])
 const clients = ref<SnapClient[]>([])
@@ -69,6 +68,62 @@ const log = (...a: any[]) => {
 const ok = (m: string) => toast.add({ title: m, color: 'success' })
 const err = (m: string) => toast.add({ title: m, color: 'error' })
 const info = (m: string) => toast.add({ title: m, color: 'neutral' })
+
+/** ========= Notifications serveur ========= */
+const offNotif = onNotif((msg) => {
+  log('message', msg)
+
+  // Réponse à Server.GetStatusLocal (id string, pas numérique)
+  if (msg?.id === 'Server.GetStatusLocal') {
+    if (Array.isArray(msg.group)) groups.value = msg.group
+    if (Array.isArray(msg.client)) clients.value = msg.client
+    if (Array.isArray(msg.streams)) streams.value = msg.streams
+    syncGroupsFromClients()
+    for (const g of groups.value) ensureGroupSelection(g.id)
+    return
+  }
+
+  if (msg?.method === 'Client.OnVolumeChanged' && msg.params) {
+    const clientId = String(msg.params.id || '')
+    const volume = msg.params.volume as SnapVolume
+    if (clientId && volume) upsertClientVolume(clientId, volume)
+    return
+  }
+
+  if (msg?.method === 'Group.OnStreamChanged' && msg.params) {
+    const gid = String(msg.params.id || '').toLowerCase()
+    const streamId = String(msg.params.stream_id || '')
+    const g = groups.value.find(x => x.id.toLowerCase() === gid)
+    if (g) g.stream_id = streamId
+    return
+  }
+
+  if (msg?.method === 'Client.OnConnect' && msg.params?.client) {
+    const incoming = msg.params.client as SnapClient
+    const idx = clients.value.findIndex(c => c.id.toLowerCase() === incoming.id.toLowerCase())
+    if (idx >= 0) clients.value[idx] = incoming
+    else clients.value.push(incoming)
+    syncGroupsFromClients()
+    return
+  }
+
+  if (msg?.method === 'Client.OnDisconnect' && msg.params?.id) {
+    const cid = String(msg.params.id).toLowerCase()
+    const c = clients.value.find(x => x.id.toLowerCase() === cid)
+    if (c) c.connected = false
+    syncGroupsFromClients()
+  }
+})
+
+// Statut de connexion → toast + refresh initial
+watch(status, (s) => {
+  if (s === 'connected') {
+    ok('Connecté au Snapserver')
+    send({ method: 'Server.GetStatusLocal' })
+  } else if (s === 'disconnected') {
+    info('Déconnecté')
+  }
+})
 
 /** ========= Helpers ========= */
 function getFirstClient(g: SnapGroup): SnapClient | null {
@@ -123,165 +178,42 @@ function getAvailableClientsForGroup(groupId: string) {
   return clients.value.filter(c => c.connected && c.group_id?.toLowerCase() !== gid)
 }
 
-/** ========= JSON-RPC client ========= */
-let rpcId = 1
-const pending = new Map<number, (msg: any) => void>()
-
-function send(payload: any) {
-  if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return
-  ws.value.send(JSON.stringify(payload))
-}
-
-function sendRpc(method: string, params?: any) {
-  const id = rpcId++
-  return new Promise<any>((resolve) => {
-    pending.set(id, resolve)
-    send({ jsonrpc: '2.0', id, method, params })
-  })
-}
-
-/** ========= WebSocket ========= */
-function connectSnap() {
-  if (ws.value && ws.value.readyState === WebSocket.OPEN) return
-
-  const sock = new WebSocket(SNAP_GUI_WS)
-  ws.value = sock
-
-  sock.addEventListener('open', () => {
-    connected.value = true
-    ok('Connecté au Snapserver')
-    send({ method: 'Server.GetStatusLocal' })
-  })
-
-  sock.addEventListener('close', () => {
-    connected.value = false
-    info('Déconnecté')
-  })
-
-  sock.addEventListener('error', () => {
-    err('Erreur WebSocket')
-  })
-
-  sock.addEventListener('message', (ev) => {
-    let msg: any
-    try {
-      msg = JSON.parse(ev.data)
-    } catch {
-      return
-    }
-
-    log('message', msg)
-
-    if (typeof msg?.id === 'number' && pending.has(msg.id)) {
-      pending.get(msg.id)?.(msg)
-      pending.delete(msg.id)
-      return
-    }
-
-    if (msg?.id === 'Server.GetStatusLocal') {
-      if (Array.isArray(msg.group)) groups.value = msg.group
-      if (Array.isArray(msg.client)) clients.value = msg.client
-      if (Array.isArray(msg.streams)) streams.value = msg.streams
-
-      syncGroupsFromClients()
-
-      for (const g of groups.value) {
-        ensureGroupSelection(g.id)
-      }
-
-      return
-    }
-
-    if (msg?.method === 'Client.OnVolumeChanged' && msg.params) {
-      const clientId = String(msg.params.id || '')
-      const volume = msg.params.volume as SnapVolume
-      if (clientId && volume) upsertClientVolume(clientId, volume)
-      return
-    }
-
-    if (msg?.method === 'Group.OnStreamChanged' && msg.params) {
-      const gid = String(msg.params.id || '').toLowerCase()
-      const streamId = String(msg.params.stream_id || '')
-      const g = groups.value.find(x => x.id.toLowerCase() === gid)
-      if (g) g.stream_id = streamId
-      return
-    }
-
-    if (msg?.method === 'Client.OnConnect' && msg.params?.client) {
-      const incoming = msg.params.client as SnapClient
-      const idx = clients.value.findIndex(c => c.id.toLowerCase() === incoming.id.toLowerCase())
-
-      if (idx >= 0) clients.value[idx] = incoming
-      else clients.value.push(incoming)
-
-      syncGroupsFromClients()
-      return
-    }
-
-    if (msg?.method === 'Client.OnDisconnect' && msg.params?.id) {
-      const cid = String(msg.params.id).toLowerCase()
-      const c = clients.value.find(x => x.id.toLowerCase() === cid)
-      if (c) c.connected = false
-      syncGroupsFromClients()
-    }
-  })
-}
-
-function disconnectSnap() {
-  if (ws.value && ws.value.readyState === WebSocket.OPEN) {
-    ws.value.close(1000, 'manual')
-  }
-  ws.value = null
-  connected.value = false
-}
-
 function refresh() {
   send({ method: 'Server.GetStatusLocal' })
 }
 
 /** ========= Commands ========= */
-async function rpcClientSetGroup(clientId: string, groupId: string) {
-  return sendRpc('Client.SetGroup', { id: clientId, group: groupId })
+function rpcClientSetGroup(clientId: string, groupId: string) {
+  return rpc('Client.SetGroup', { id: clientId, group: groupId })
 }
 
-async function rpcGroupSetName(groupId: string, name: string) {
-  return sendRpc('Group.SetName', { id: groupId, name })
+function rpcGroupSetName(groupId: string, name: string) {
+  return rpc('Group.SetName', { id: groupId, name })
 }
 
-async function rpcGroupSetStream(groupId: string, streamId: string) {
-  return sendRpc('Group.SetStream', { id: groupId, stream_id: streamId })
+function rpcGroupSetStream(groupId: string, streamId: string) {
+  return rpc('Group.SetStream', { id: groupId, stream_id: streamId })
 }
 
 async function setClientVolume(clientId: string, percent: number) {
   const safe = clamp(percent)
-  const r = await sendRpc('Client.SetVolume', {
-    id: clientId,
-    volume: { muted: false, percent: safe }
-  })
-
-  if (r?.error) {
-    err(r.error?.message || 'Client.SetVolume a échoué')
-    return
+  try {
+    await rpc('Client.SetVolume', { id: clientId, volume: { muted: false, percent: safe } })
+    upsertClientVolume(clientId, { muted: false, percent: safe })
+  } catch (e: any) {
+    err(e?.message || 'Client.SetVolume a échoué')
   }
-
-  upsertClientVolume(clientId, { muted: false, percent: safe })
 }
 
 async function toggleMute(clientId: string, v?: SnapVolume) {
   const muted = !!v?.muted
   const percent = Number(v?.percent ?? 0)
-
-  const r = await sendRpc('Client.SetVolume', {
-    id: clientId,
-    volume: { muted: !muted, percent }
-  })
-
-  if (r?.error) {
-    err(r.error?.message || 'Mute a échoué')
-    return
+  try {
+    await rpc('Client.SetVolume', { id: clientId, volume: { muted: !muted, percent } })
+    upsertClientVolume(clientId, { muted: !muted, percent })
+  } catch (e: any) {
+    err(e?.message || 'Mute a échoué')
   }
-
-  upsertClientVolume(clientId, { muted: !muted, percent })
 }
 async function removeClientFromGroup(groupId: string, clientId: string) {
   const group = groups.value.find(g => g.id === groupId)
@@ -315,17 +247,14 @@ async function removeClientFromGroup(groupId: string, clientId: string) {
 }
 
 async function setGroupStream(groupId: string, streamId: string) {
-  const r = await rpcGroupSetStream(groupId, streamId)
-
-  if (r?.error) {
-    err(r.error?.message || 'Group.SetStream a échoué')
-    return
+  try {
+    await rpcGroupSetStream(groupId, streamId)
+    const g = groups.value.find(x => x.id === groupId)
+    if (g) g.stream_id = streamId
+    ok('Flux du groupe mis à jour')
+  } catch (e: any) {
+    err(e?.message || 'Group.SetStream a échoué')
   }
-
-  const g = groups.value.find(x => x.id === groupId)
-  if (g) g.stream_id = streamId
-
-  ok('Flux du groupe mis à jour')
 }
 
 function askGroupName(currentName = '') {
@@ -408,18 +337,11 @@ function openCreate() {
   showCreate.value = true
 }
 function sendGroupClientsToProxy(groupId: string, clientIds: string[]) {
-  if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
-    err('WebSocket non connecté')
-    return
-  }
-
-  ws.value.send(JSON.stringify({
+  const sent = send({
     method: 'Group.SetClients',
-    params: {
-      id: groupId,
-      clients: clientIds
-    }
-  }))
+    params: { id: groupId, clients: clientIds }
+  })
+  if (!sent) err('WebSocket non connecté')
 }
 
 async function submitCreate() {
@@ -456,13 +378,8 @@ async function submitCreate() {
       clients: []
     })
 
-    const r2 = await rpcGroupSetName(newId, newGroupName.value)
-    if (r2?.error) throw new Error(r2.error?.message || 'Group.SetName a échoué')
-
-    const r3 = await rpcGroupSetStream(newId, newGroupStream.value)
-    if (r3?.error) throw new Error(r3.error?.message || 'Group.SetStream a échoué')
-
-    // ✅ envoi brut vers proxy
+    await rpcGroupSetName(newId, newGroupName.value)
+    await rpcGroupSetStream(newId, newGroupStream.value)
     sendGroupClientsToProxy(newId, newGroupClientIds.value)
 
     ok('Groupe créé et configuré')
@@ -480,12 +397,11 @@ async function submitCreate() {
 const hasAnyData = computed(() => groups.value.length > 0 || streams.value.length > 0)
 
 /** ========= Lifecycle ========= */
-onMounted(() => {
-  connectSnap()
-})
+onMounted(connect)
 
 onUnmounted(() => {
-  disconnectSnap()
+  offNotif()
+  disconnect()
 })
 </script>
 
@@ -508,7 +424,7 @@ onUnmounted(() => {
             <UButton
               :color="connected ? 'primary' : 'error'"
               :icon="connected ? 'i-lucide-link-2' : 'i-lucide-link-2-off'"
-              @click="connected ? disconnectSnap() : connectSnap()"
+              @click="connected ? disconnect() : connect()"
             >
               {{ connected ? 'Connecté' : 'Déconnecté' }}
             </UButton>
@@ -531,11 +447,11 @@ onUnmounted(() => {
           <UEmpty
             icon="i-lucide-database"
             title="Aucune donnée"
-            description="Aucun groupe/flux reçu. Connecte-toi puis rafraîchis l’état."
+            description="Aucun groupe/flux reçu. Connecte-toi puis rafraîchis l'état."
           >
             <template #actions>
               <div class="flex gap-2">
-                <UButton @click="connectSnap" icon="i-lucide-link-2">
+                <UButton @click="connect" icon="i-lucide-link-2">
                   Se connecter
                 </UButton>
                 <UButton color="neutral" icon="i-lucide-refresh-ccw" @click="refresh">
@@ -578,7 +494,7 @@ onUnmounted(() => {
                   variant="ghost"
                   @click="rpcGroupSetName(g.id, askGroupName(g.name))"
                 />
-                <UTooltip :text="g.clients?.length ? 'Réassigne d’abord les clients' : 'Supprimer localement'">
+                <UTooltip :text="g.clients?.length ? `Réassigne d'abord les clients` : 'Supprimer localement'">
                   <UButton
                     size="xs"
                     color="error"
@@ -735,7 +651,7 @@ onUnmounted(() => {
           class="mt-6"
           color="amber"
           title="Aucun client connecté"
-          description="La création d’un groupe nécessite au moins un client en ligne. Allume un client puis réessaie."
+          description="La création d'un groupe nécessite au moins un client en ligne. Allume un client puis réessaie."
           variant="subtle"
         />
       </div>
