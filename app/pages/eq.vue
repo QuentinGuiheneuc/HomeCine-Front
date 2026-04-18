@@ -29,7 +29,7 @@ type ApiPreset = {
 }
 
 const fs = ref(48000)
-const curvePoints = ref(2000)
+const curvePoints = ref(1000)
 const dbRange = ref(20)
 
 const selectedLayout = ref<string>("") // ✅ string, plus de LayoutKey

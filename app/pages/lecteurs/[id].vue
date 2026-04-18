@@ -2,8 +2,9 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '#imports'
-import { typeStream } from '../../types/lecteur'
+import { typeStream, typeItems} from '../../types/lecteur'
 import http from '@/src/lib/https'
+import LecteurServiceConfig from '../../components/lecteur/LecteurConfigForm.vue'
 
 const toast = useToast?.()
 const route = useRoute()
@@ -18,12 +19,6 @@ const errorMsg = ref<string | null>(null)
 const lecteur = ref<any>(null)
 
 /* -------- Items pour USelect (Nuxt UI) -------- */
-const typeItems = [
-  { label: 'Spotify', value: 'spotify' },
-  { label: 'Deezer', value: 'deezer' },
-  { label: 'Local', value: 'local' },
-  { label: 'Radio', value: 'radio' }
-]
 const frames_per_bufferItems = [
   { label: '256', value: 256 },
   { label: '512', value: 512 },
@@ -60,34 +55,48 @@ const channelItems = [
 
 /* --------- Config editable (clone) --------- */
 const cfg = ref<any>({
-  name: '',
-  backend: 'pipe',
-  bitrate: '320',
+  'name': '',
+  'backend': 'pipe',
+  'bitrate': '320',
   'enable-volume-normalisation': false,
   'initial-volume': '100',
   'device-type': 'avr',
   'path-audio': '/tmp/',
-  typeStream: 'localStream',
-  frames_per_buffer: 1024,
-  localStream: {
-    output_device_index: 0,
-    'path-audio': ''
-  },
-  StreamOutFifo: {
-    'path-audio': '',
-    channels: 8,
-    rate: 48000,
-    config: '7.1'
+  'typeStream': 'localStream',
+  'frames_per_buffer': 1024,
+  'localInput': {
+    localStream: {
+      'output_device_index': 0,
+      'path-audio': ''
+    },
+    input: {
+      pcm_device: 'hw:CARD=ICUSBAUDIO7D,DEV=0',
+      rate: 48000,
+      channels: 2,
+      periodsize: 256
+    },
+    output: {
+      layout: '7.1',
+      rate: 48000,
+      master_gain_db: -5.0,
+      remap: [0, 1, 2, 3, 4, 5, 6, 7]
+    },
+    StreamOutFifo: {
+      'path-audio': '',
+      'channels': 8,
+      rate: 48000,
+      config: '7.1'
+    }
   }
 })
 
 function ensureSubConfigs() {
-  if (!cfg.value.localStream) {
-    cfg.value.localStream = { output_device_index: 0, 'path-audio': '' }
-  }
-  if (!cfg.value.StreamOutFifo) {
-    cfg.value.StreamOutFifo = { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
-  }
+  // if (!cfg.value.localStream) {
+  //   cfg.value.localStream = { output_device_index: 0, 'path-audio': '' }
+  // }
+  // if (!cfg.value.StreamOutFifo) {
+  //   cfg.value.StreamOutFifo = { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
+  //}
   // assure un typeStream valide
   if (!cfg.value.typeStream) cfg.value.typeStream = 'localStream'
 }
@@ -288,119 +297,11 @@ onMounted(fetchOne)
       </UPageCard>
 
       <!-- Configuration lecteur -->
-      <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
-        <h3 class="font-semibold">Configuration lecteur</h3>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="text-sm text-dimmed">Backend</label>
-            <UInput v-model="cfg.backend" placeholder="pipe" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Bitrate</label>
-            <USelect
-              v-model="cfg.bitrate"
-              :items="typeStream[lecteur.type].bitrateItems"
-              class="min-w-[220px]"
-            />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Initial volume</label>
-            <UInput v-model="cfg['initial-volume']" placeholder="100" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Device type</label>
-            <USelect
-              v-model="cfg['device-type']"
-              :items="typeStream[lecteur.type].Device_typeItems"
-              class="min-w-[220px]"
-            />
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="text-sm text-dimmed">Path audio (base)</label>
-            <UInput v-model="cfg['path-audio']" placeholder="/tmp/" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Frames / buffer</label>
-            <USelect
-              v-model="cfg.frames_per_buffer"
-              :items="typeStream[lecteur.type].frames_per_bufferItems"
-              class="min-w-[220px]"
-            />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Normalisation volume</label>
-            <UToggle v-model="cfg['enable-volume-normalisation']" />
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="text-sm text-dimmed">Type Stream</label>
-            <USelect
-              v-model="cfg.typeStream"
-              :items="streamTypeItems"
-              class="min-w-[220px]"
-            />
-          </div>
-        </div>
-
-        <!-- localStream -->
-        <div v-if="canShowLocalStream" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="md:col-span-2">
-            <h4 class="font-semibold text-sm">localStream</h4>
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Output device index</label>
-            <UInput v-model.number="cfg.localStream.output_device_index" type="number" />
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="text-sm text-dimmed">Path fifo</label>
-            <UInput v-model="cfg.localStream['path-audio']" placeholder="/tmp/spotify/multiroom_Snap.fifo" />
-          </div>
-        </div>
-
-        <!-- StreamOutFifo -->
-        <div v-if="canShowFifo" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="md:col-span-2">
-            <h4 class="font-semibold text-sm">StreamOutFifo</h4>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="text-sm text-dimmed">Path fifo</label>
-            <UInput v-model="cfg.StreamOutFifo['path-audio']" placeholder="/tmp/spotify/Cuisine_Snap.fifo" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Channels</label>
-            <UInput v-model.number="cfg.StreamOutFifo.channels" type="number" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Rate</label>
-            <USelect
-              v-model="cfg.StreamOutFifo.rate"
-              :items="rateItems"
-              class="min-w-[220px]"
-            />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Config</label>
-            <USelect
-              v-model="cfg.StreamOutFifo.config"
-              :items="audioConfigItems"
-              class="min-w-[160px]"
-            />
-          </div>
-        </div>
-      </UPageCard>
+      <LecteurServiceConfig
+        :cfg="cfg"
+        :lecteur-type="lecteur.type"
+        @update:cfg="cfg = $event"
+      />
 
       <!-- EQ -->
       <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">

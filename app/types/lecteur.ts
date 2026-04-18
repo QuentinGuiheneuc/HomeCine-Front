@@ -1,4 +1,4 @@
-export type LecteurType = 'spotify' | 'deezer' | 'radio' | 'local' | string
+export type LecteurType = 'spotify' | 'deezer' | 'radio' | 'local' | 'localInput' | string
 
 export type ConfEq = {
   rate: number
@@ -15,6 +15,13 @@ export type Lecteur = {
   config: any
   conf_eq: ConfEq | null
 }
+export const typeItems = [
+  { label: 'Spotify', value: 'spotify' },
+  { label: 'Deezer', value: 'deezer' },
+  { label: 'Local', value: 'local' },
+  { label: 'Radio', value: 'radio' },
+  { label: 'Local Input', value: 'localInput' }
+]
 
 export type LecteurState = {
   id: number
@@ -82,6 +89,18 @@ export const typeStream = ref< any >({
       { label: 'automobile', value: 'automobile' },
       { label: 'smartwatch', value: 'chromebook' },
       { label: 'carthing', value: 'carthing' }
+    ],
+    frames_per_bufferItems: [
+      { label: '256', value: 256 },
+      { label: '512', value: 512 },
+      { label: '1024', value: 1024 },
+      { label: '2048', value: 2048 }
+    ]
+  },
+  localInput: {
+    Device_typeItems: [
+      { label: 'alsa', value: 'alsa' },
+      { label: 'pulse', value: 'pulse' }
     ],
     frames_per_bufferItems: [
       { label: '256', value: 256 },

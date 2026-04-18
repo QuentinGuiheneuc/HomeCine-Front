@@ -12,15 +12,19 @@ export type CookieSetOptions = Partial<{
 }>
 
 export function setCookie(name: string, value: string, options: CookieSetOptions = {}): void {
-  const parts: string[] = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`]
-  if (options.expires instanceof Date) parts.push(`Expires=${options.expires.toUTCString()}`)
-  else if (typeof options.expires === 'string') parts.push(`Expires=${options.expires}`)
-  if (typeof options['max-age'] === 'number') parts.push(`Max-Age=${options['max-age']}`)
-  if (options.path) parts.push(`Path=${options.path}`)
-  if (options.domain) parts.push(`Domain=${options.domain}`)
-  if (options.secure) parts.push('Secure')
-  if (options.samesite) parts.push(`SameSite=${options.samesite}`)
-  document.cookie = parts.join(' ')
+  try {
+    const parts: string[] = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`]
+    if (options.expires instanceof Date) parts.push(`Expires=${options.expires.toUTCString()}`)
+    else if (typeof options.expires === 'string') parts.push(`Expires=${options.expires}`)
+    if (typeof options['max-age'] === 'number') parts.push(`Max-Age=${options['max-age']}`)
+    if (options.path) parts.push(`Path=${options.path}`)
+    if (options.domain) parts.push(`Domain=${options.domain}`)
+    if (options.secure) parts.push('Secure')
+    if (options.samesite) parts.push(`SameSite=${options.samesite}`)
+    document.cookie = parts.join(' ')
+  } catch (error) {
+    console.error('Error setting cookie:', error)
+  }
 }
 
 export function getCookie(name: string): string | null {

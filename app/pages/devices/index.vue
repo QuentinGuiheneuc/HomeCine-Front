@@ -144,6 +144,7 @@ function connectWs() {
     let msg: any
     try {
       msg = JSON.parse(event.data)
+      console.log('[WS] message received', msg)
       handleWsMessage(msg)
     } catch {
       console.error('[WS] invalid JSON', event.data)
@@ -246,7 +247,13 @@ function scheduleReconnect () {
     connectWs()
   }, 2000)
 }
-
+function scheduleDvice() {
+  if (timeDevices) return
+  timeDevices = setInterval(() => {
+    timeDevices = null
+    ws!.send(JSON.stringify({ method: 'Get.Device' }))
+  }, 5000)
+}
 function handleWsMessage (msg: any) {
   if (msg.method === 'State.audio' && msg.from && msg.data) {
     const key = String(msg.from)
@@ -255,6 +262,10 @@ function handleWsMessage (msg: any) {
       [key]: msg.data as StateAudio
     }
     return
+  }
+  if (msg.method === 'RES.Connection') {
+    // Traite la liste des devices reçue
+    console.log('[WS] RES.Connection received', msg)
   }
 
   if (msg.method === 'Error') {
@@ -295,7 +306,17 @@ function handleWsMessage (msg: any) {
     })
   }
 }
-
+function sendCommandGetDevices() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    toast?.add?.({
+      title: 'WebSocket non connecté',
+      description: 'Impossible d’envoyer la commande.',
+      color: 'error'
+    })
+    return
+  }
+  ws.send(JSON.stringify({ method: 'Get.Connection' }))
+}
 function sendCommand (targetKey: string, method: string, extra: Record<string, any> = {}) {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     toast?.add?.({
@@ -396,18 +417,22 @@ const openServ = (ip: string) => {
 }
 
 /* ---------- Lifecycle ---------- */
+let timeDevices: ReturnType<typeof setTimeout> | null = null
 
 onMounted(() => {
   // fetchDevices()
   connectWs()
+  scheduleDvice()
   // connectWsDevice()
 })
 onBeforeUnmount(() => {
   if (reconnectTimer) clearTimeout(reconnectTimer)
+  if (timeDevices) clearTimeout(timeDevices)
   if (ws && ws.readyState === WebSocket.OPEN) ws.close()
 })
 onUnmounted(() => {
   if (reconnectTimer) clearTimeout(reconnectTimer)
+  if (timeDevices) clearTimeout(timeDevices)
   if (ws && ws.readyState === WebSocket.OPEN) ws.close()
 })
 let DeviceAddSlideoverToggle = () => {
@@ -451,14 +476,12 @@ let DeviceAddSlideoverToggle = () => {
               </span>
             </div>
 
-            <!-- <UButton
-              icon="i-lucide-refresh-ccw"
+            <UButton
               color="neutral"
-              :loading="loading"
-              @click="fetchDevices"
+              @click="sendCommandGetDevices"
             >
-              Rafraîchir
-            </UButton> -->
+              sand
+            </UButton>
             <UButton
               icon="i-lucide-plus"
               color="primary"
@@ -565,7 +588,7 @@ let DeviceAddSlideoverToggle = () => {
           <div class="space-y-1">
             <div class="flex items-center gap-2">
               <UIcon name="i-lucide-monitor-speaker" style="height: 30px; width: 30px;" />
-              <UButton class="font-medium text-base" @click="router.push(`/devices/${d.id}`)" size="xs" variant="ghost" color="neutral">
+              <UButton :disabled="!d.online" class="font-medium text-base" @click="router.push(`/devices/${d.id}`)" size="xs" variant="ghost" color="neutral">
                 {{ d.name || 'Sans nom' }}
               </UButton>
               <UBadge

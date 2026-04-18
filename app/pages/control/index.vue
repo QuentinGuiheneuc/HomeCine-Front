@@ -68,7 +68,7 @@ function prettyJson(v) {
   }
 }
 
-function toSelectItems(arr = []) {
+function toSelectItems(arr = []) {s
   return arr.map(v => ({ label: String(v), value: String(v) }))
 }
 
@@ -734,7 +734,7 @@ onMounted(async () => {
                 <div class="text-xs text-dimmed">{{ mod.type }}</div>
               </div>
               <UBadge color="primary" variant="subtle">
-                {{ mod.keyActions?.length || 0 }} actions
+                {{ mod.keyActions.length || 0 }} actions
               </UBadge>
             </div>
 

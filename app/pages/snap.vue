@@ -24,6 +24,7 @@ type SnapClient = {
   name?: string
   host: HostInfo
   config?: {
+    instance?: number
     volume?: SnapVolume
     latency?: number
     name?: string
@@ -327,6 +328,13 @@ async function setGroupStream(groupId: string, streamId: string) {
   ok('Flux du groupe mis à jour')
 }
 
+function askGroupName(currentName = '') {
+  if (typeof window === 'undefined') {
+    return currentName
+  }
+  return window.prompt('Nouveau nom de groupe', currentName) || currentName || ''
+}
+
 async function addClientsToGroup(groupId: string) {
   const selected = selectedClientsByGroup.value[groupId] || []
   const group = groups.value.find(g => g.id === groupId)
@@ -566,9 +574,9 @@ onUnmounted(() => {
                 <UButton
                   size="xs"
                   color="neutral"
-                  icon="i-lucide-rotate-ccw"
+                  icon="i-lucide-edit-2"
                   variant="ghost"
-                  @click="refresh"
+                  @click="rpcGroupSetName(g.id, askGroupName(g.name))"
                 />
                 <UTooltip :text="g.clients?.length ? 'Réassigne d’abord les clients' : 'Supprimer localement'">
                   <UButton
@@ -616,8 +624,8 @@ onUnmounted(() => {
               >
                 <div class="flex items-center justify-between">
                   <div class="text-sm truncate">
-                    {{ c.name || c.id }}
-                    <span class="text-dimmed">· {{ c.host?.ip }}</span>
+                    {{ c.name || c.host?.name || c.id }}
+                    <span class="text-dimmed">· {{ c.host?.ip }}#{{ c.config?.name || c.config?.instance }}</span>
                   </div>
 
                   <div class="flex items-center gap-2">
@@ -694,7 +702,7 @@ onUnmounted(() => {
                   >
                     <div class="text-sm truncate">
                       {{ value.host?.name || value.id }}
-                      <span class="text-dimmed">· {{ value.host?.ip }}</span>
+                      <span class="text-dimmed">· {{ value.host?.ip }}#{{ value.config?.name || value.config?.instance }}</span>
                     </div>
 
                     <UCheckbox

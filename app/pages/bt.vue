@@ -23,6 +23,7 @@ type BtDevice = {
   trusted?: boolean
   rssi?: number
   uuids?: string[]
+  battery?: number
   [key: string]: any
 }
 
@@ -507,6 +508,9 @@ onMounted(async () => {
 
               <div class="text-xs text-dimmed">
                 RSSI: <span class="font-mono">{{ d.rssi ?? 'n/a' }}</span>
+              </div>
+              <div class="text-xs text-dimmed">
+                Battery: <span class="font-mono">{{ d.battery !== undefined ? `${d.battery}%` : 'n/a' }}</span>
               </div>
             </div>
 
