@@ -257,76 +257,6 @@ onMounted(fetchPresets)
         </div>
       </div>
 
-      <!-- Tableau Input / Output -->
-      <div v-if="inputLayout" class="space-y-1">
-        <div class="text-sm font-medium">Mapping des canaux</div>
-        <p class="text-xs text-dimmed">
-          La ligne <strong>Input</strong> reflète le layout sélectionné (lecture seule).
-          La ligne <strong>Output</strong> définit le nom affecté à chaque position — modifiable.
-        </p>
-
-        <div class="overflow-x-auto rounded-lg border border-default mt-2">
-          <table class="text-sm border-collapse" style="min-width: max-content;">
-            <thead>
-              <tr class="bg-muted/40">
-                <th class="px-3 py-2 text-left font-medium text-dimmed border-b border-r border-default w-24 sticky left-0 bg-muted/60 z-10">
-                  Rôle
-                </th>
-                <th
-                  v-for="(_, i) in inputLayout.order"
-                  :key="i"
-                  class="px-3 py-2 text-center font-mono text-xs text-dimmed border-b border-default"
-                  style="min-width: 80px;"
-                >
-                  Ch {{ i }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <!-- Input (read-only) -->
-              <tr class="border-b border-default bg-muted/10">
-                <td class="px-3 py-2 border-r border-default sticky left-0 bg-muted/30 z-10">
-                  <div class="flex items-center gap-1.5 whitespace-nowrap">
-                    <UIcon name="i-lucide-arrow-right-to-line" class="size-3.5 text-dimmed shrink-0" />
-                    <span class="text-xs font-medium text-dimmed">Input</span>
-                  </div>
-                </td>
-                <td
-                  v-for="(ch, i) in inputLayout.order"
-                  :key="i"
-                  class="px-3 py-2 text-center"
-                >
-                  <UBadge variant="subtle" color="neutral" class="font-mono text-xs">{{ ch }}</UBadge>
-                </td>
-              </tr>
-
-              <!-- Output (éditable) -->
-              <tr>
-                <td class="px-3 py-2 border-r border-default sticky left-0 bg-background z-10">
-                  <div class="flex items-center gap-1.5 whitespace-nowrap">
-                    <UIcon name="i-lucide-arrow-right-from-line" class="size-3.5 text-primary shrink-0" />
-                    <span class="text-xs font-medium text-primary">Output</span>
-                  </div>
-                </td>
-                <td
-                  v-for="(_, i) in inputLayout.order"
-                  :key="i"
-                  class="px-1.5 py-1.5 text-center"
-                >
-                  <USelect
-                    v-model="form.outputOrder[i]"
-                    :items="CHANNEL_ITEMS"
-                    size="xs"
-                    class="font-mono"
-                    style="min-width: 72px;"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       <template #footer>
         <div class="flex items-center justify-end gap-2">
           <UButton color="neutral" variant="ghost" @click="showForm = false">Annuler</UButton>
@@ -334,6 +264,76 @@ onMounted(fetchPresets)
         </div>
       </template>
     </UCard>
+
+    <!-- Tableau Input / Output (hors UCard pour éviter l'overflow:hidden du card) -->
+    <div v-if="showForm && inputLayout" class="space-y-1">
+      <div class="text-sm font-medium px-1">Mapping des canaux</div>
+      <p class="text-xs text-dimmed px-1">
+        La ligne <strong>Input</strong> reflète le layout sélectionné (lecture seule).
+        La ligne <strong>Output</strong> définit le nom affecté à chaque position — modifiable.
+      </p>
+
+      <div class="overflow-x-auto rounded-lg border border-default mt-2">
+        <table class="text-sm border-collapse" style="min-width: max-content;">
+          <thead>
+            <tr class="bg-muted/40">
+              <th class="px-3 py-2 text-left font-medium text-dimmed border-b border-r border-default w-24 sticky left-0 bg-muted/60 z-10">
+                Rôle
+              </th>
+              <th
+                v-for="(_, i) in inputLayout.order"
+                :key="i"
+                class="px-3 py-2 text-center font-mono text-xs text-dimmed border-b border-default"
+                style="min-width: 80px;"
+              >
+                Ch {{ i }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Input (read-only) -->
+            <tr class="border-b border-default bg-muted/10">
+              <td class="px-3 py-2 border-r border-default sticky left-0 bg-muted/30 z-10">
+                <div class="flex items-center gap-1.5 whitespace-nowrap">
+                  <UIcon name="i-lucide-arrow-right-to-line" class="size-3.5 text-dimmed shrink-0" />
+                  <span class="text-xs font-medium text-dimmed">Input</span>
+                </div>
+              </td>
+              <td
+                v-for="(ch, i) in inputLayout.order"
+                :key="i"
+                class="px-3 py-2 text-center"
+              >
+                <UBadge variant="subtle" color="neutral" class="font-mono text-xs">{{ ch }}</UBadge>
+              </td>
+            </tr>
+
+            <!-- Output (éditable) -->
+            <tr>
+              <td class="px-3 py-2 border-r border-default sticky left-0 bg-background z-10">
+                <div class="flex items-center gap-1.5 whitespace-nowrap">
+                  <UIcon name="i-lucide-arrow-right-from-line" class="size-3.5 text-primary shrink-0" />
+                  <span class="text-xs font-medium text-primary">Output</span>
+                </div>
+              </td>
+              <td
+                v-for="(_, i) in inputLayout.order"
+                :key="i"
+                class="px-1.5 py-1.5 text-center"
+              >
+                <USelect
+                  v-model="form.outputOrder[i]"
+                  :items="CHANNEL_ITEMS"
+                  size="xs"
+                  class="font-mono"
+                  style="min-width: 72px;"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- Liste des presets -->
     <div class="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
