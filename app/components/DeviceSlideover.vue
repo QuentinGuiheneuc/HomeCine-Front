@@ -1,8 +1,7 @@
-<!-- DeviceSlideover.vue -->
+﻿<!-- DeviceSlideover.vue -->
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import http from '@/src/lib/https'
-import config from '@/src/config'
 import { useToast, useDebounceFn, useDashboard } from '#imports'
 
 /* ---------- Dashboard / Slideover ---------- */
@@ -87,13 +86,14 @@ function getDeviceRow (key: string): HTMLElement | null {
 }
 
 /* ---------- WebSocket /controlOfDevice ---------- */
-const wsStatus = ref<'disconnected' | 'connecting' | 'connected'>('disconnected')
-const wsErrorMsg = ref<string | null>(null)
+const { status: wsStatus, send: wsSend, on: wsOn } = useDeviceControlWs()
 
-let ws: WebSocket | null = null
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+// Envoie Gui.RequestAllState dès la connexion établie
+watch(wsStatus, (s) => {
+  if (s === 'connected') wsSend('Gui.RequestAllState')
+})
 
-const wsUrl = computed(() => `${config.WS_URL}/controlOfDevice`)
+const offWs = wsOn(handleWsMessage)
 
 /* ---------- Utils ---------- */
 function getKeyForDevice(d: Device): string {
@@ -106,65 +106,7 @@ function getKeyForDevice(d: Device): string {
   )
 }
 
-/* ---------- WebSocket ---------- */
-function connectWs() {
-  if (typeof window === 'undefined') return
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
-
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-
-  wsStatus.value = 'connecting'
-  wsErrorMsg.value = null
-
-  try {
-    ws = new WebSocket(wsUrl.value)
-  } catch (err: any) {
-    console.error('[WS] create error', err)
-    wsStatus.value = 'disconnected'
-    wsErrorMsg.value = 'Erreur création WebSocket'
-    scheduleReconnect()
-    return
-  }
-
-  ws.onopen = () => {
-    wsStatus.value = 'connected'
-    wsErrorMsg.value = null
-    ws!.send(JSON.stringify({ method: 'Gui.RequestAllState' }))
-  }
-
-  ws.onclose = () => {
-    wsStatus.value = 'disconnected'
-    scheduleReconnect()
-  }
-
-  ws.onerror = (err: any) => {
-    console.error('[WS] error', err)
-    wsErrorMsg.value = 'Erreur WebSocket (voir console)'
-  }
-
-  ws.onmessage = (event: MessageEvent) => {
-    let msg: any
-    try {
-      msg = JSON.parse(event.data)
-    } catch {
-      console.error('[WS] invalid JSON', event.data)
-      return
-    }
-    handleWsMessage(msg)
-  }
-}
-
-function scheduleReconnect() {
-  if (reconnectTimer) return
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null
-    connectWs()
-  }, 2000)
-}
-
+/* ---------- Message handler ---------- */
 function handleWsMessage(msg: any) {
   if (msg.method === 'State.audio' && msg.from && msg.data) {
     const key = String(msg.from)
@@ -174,7 +116,6 @@ function handleWsMessage(msg: any) {
     }
     return
   }
-
   if (msg.method === 'Error') {
     console.warn('[WS] Device error:', msg)
     toast?.add?.({
@@ -186,15 +127,14 @@ function handleWsMessage(msg: any) {
 }
 
 function sendCommand(targetKey: string, method: string, extra: Record<string, any> = {}) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
+  const sent = wsSend(method, { targetIp: targetKey, ...extra })
+  if (!sent) {
     toast?.add?.({
       title: 'WebSocket non connecté',
-      description: 'Impossible d’envoyer la commande.',
+      description: "Impossible d'envoyer la commande.",
       color: 'error'
     })
-    return
   }
-  ws.send(JSON.stringify({ targetIp: targetKey, method, ...extra }))
 }
 
 /* ---------- HTTP: /objet ---------- */
@@ -355,19 +295,19 @@ function scrollAndHighlight(key: string) {
 /* ---------- Lifecycle ---------- */
 onMounted(() => {
   fetchDevices()
-  connectWs()
+  // useDeviceControlWs gère la connexion WS automatiquement
 })
 
-onBeforeUnmount(() => {
-  if (reconnectTimer) clearTimeout(reconnectTimer)
-  if (ws && ws.readyState === WebSocket.OPEN) ws.close()
+onUnmounted(() => {
+  offWs()
 })
 
-/* Quand le slideover s’ouvre, on synchronise la liste et on scrolle vers la clé active */
+/* Quand le slideover s'ouvre, on synchronise la liste et on scrolle vers la clé active */
 watch(isDeviceSlideoverOpen, async (open) => {
   if (!open) return
   await fetchDevices()
-  if (!ws || ws.readyState !== WebSocket.OPEN) connectWs()
+  // Demander un refresh d'état si déjà connecté
+  if (wsStatus.value === 'connected') wsSend('Gui.RequestAllState')
 
   const key = activeDeviceKey.value ? String(activeDeviceKey.value) : ''
   if (key) q.value = key
