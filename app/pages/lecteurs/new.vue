@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { createLecteur } from '@/src/api/lecteur'
-import { typeStreamOptions } from '@/utils/lecteurOptions'
 import { typeItems } from '@/types/lecteur'
+import { LAYOUT_ITEMS, CHANNEL_ITEMS } from '@/utils/audioLayouts'
+import SpotifyServiceConfig from '@/components/lecteur/services/SpotifyServiceConfig.vue'
+import DeezerServiceConfig from '@/components/lecteur/services/DeezerServiceConfig.vue'
+import LocalInputServiceConfig from '@/components/lecteur/services/LocalInputServiceConfig.vue'
+import LocalServiceConfig from '@/components/lecteur/services/LocalServiceConfig.vue'
+import RadioServiceConfig from '@/components/lecteur/services/RadioServiceConfig.vue'
 
 const toast = useToast()
 const router = useRouter()
@@ -11,54 +16,57 @@ const router = useRouter()
 const saving = ref(false)
 const errorMsg = ref<string | null>(null)
 
-const streamTypeItems = [
-  { label: 'LocalStream', value: 'localStream' },
-  { label: 'StreamOutFifo', value: 'StreamOutFifo' }
-]
-
-const audioConfigItems = [
-  { label: '2.0', value: '2.0' },
-  { label: '4.2', value: '4.2' },
-  { label: '5.1', value: '5.1' },
-  { label: '7.1', value: '7.1' }
-]
-
-const channelItems = [
-  { label: 'FL', value: 'FL' }, { label: 'FR', value: 'FR' },
-  { label: 'FC', value: 'FC' }, { label: 'LFE', value: 'LFE' },
-  { label: 'BL', value: 'BL' }, { label: 'BR', value: 'BR' },
-  { label: 'SL', value: 'SL' }, { label: 'SR', value: 'SR' }
-]
-
-const lecteur = ref({ name: '', type: 'spotify' })
-
-const cfg = ref<any>({
-  name: '',
-  backend: 'pipe',
-  bitrate: '320',
-  'enable-volume-normalisation': false,
-  'initial-volume': '100',
-  'device-type': 'avr',
-  'path-audio': '/tmp/',
-  typeStream: 'localStream',
-  frames_per_buffer: 1024,
+// ── Config par défaut selon le type ─────────────────────────────────────────
+const TRANSPORT_DEFAULTS = () => ({
   localStream: { output_device_index: 0, 'path-audio': '' },
-  StreamOutFifo: { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
+  StreamOutFifo: { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' },
+  vban: { dest_ip: '', dest_port: 6980, stream_name: '' }
 })
 
-function ensureSubConfigs() {
-  if (!cfg.value.localStream) cfg.value.localStream = { output_device_index: 0, 'path-audio': '' }
-  if (!cfg.value.StreamOutFifo) cfg.value.StreamOutFifo = { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
-  if (!cfg.value.typeStream) cfg.value.typeStream = 'localStream'
+function defaultCfg(type: string): any {
+  const t = TRANSPORT_DEFAULTS()
+
+  if (type === 'spotify' || type === 'deezer') {
+    return {
+      name: '', backend: 'pipe', bitrate: '320',
+      'enable-volume-normalisation': false, 'initial-volume': '100',
+      'device-type': 'avr', 'path-audio': '/tmp/',
+      typeStream: 'StreamOutFifo', frames_per_buffer: 1024,
+      ...t
+    }
+  }
+
+  if (type === 'localInput') {
+    return {
+      name: '', typeStream: 'localStream', frames_per_buffer: 1024,
+      input: { pcm_device: '', rate: 48000, channels: 2, periodsize: 256 },
+      output: { layout: '7.1', rate: 48000, master_gain_db: -5, remap: [0, 1, 2, 3, 4, 5, 6, 7] },
+      source_path: '', loop: false, input_device: '', sample_rate: 48000,
+      ...t
+    }
+  }
+
+  if (type === 'radio') {
+    return { url: '', typeStream: 'StreamOutFifo', ...t }
+  }
+
+  if (type === 'local') {
+    return { source_path: '', loop: false, typeStream: 'StreamOutFifo', ...t }
+  }
+
+  return { typeStream: 'StreamOutFifo', ...t }
 }
 
-watch(() => cfg.value.typeStream, ensureSubConfigs)
-ensureSubConfigs()
+// ── État principal ───────────────────────────────────────────────────────────
+const lecteur = ref({ name: '', type: 'spotify' })
+const cfg = ref<any>(defaultCfg('spotify'))
 
-const canShowLocalStream = computed(() => cfg.value?.typeStream === 'localStream')
-const canShowFifo = computed(() => cfg.value?.typeStream === 'StreamOutFifo')
+watch(() => lecteur.value.type, (newType) => {
+  cfg.value = defaultCfg(newType)
+})
 
-const confEqEnabled = ref(true)
+// ── EQ ──────────────────────────────────────────────────────────────────────
+const confEqEnabled = ref(false)
 const confEq = ref({
   rate: 48000,
   config: '7.1',
@@ -67,21 +75,18 @@ const confEq = ref({
 })
 const newChannel = ref<string>('FL')
 
-function removeChannel(i: number) {
-  confEq.value.order.splice(i, 1)
-}
-
+function removeChannel(i: number) { confEq.value.order.splice(i, 1) }
 function addChannel() {
   const ch = newChannel.value
   if (!ch || confEq.value.order.includes(ch)) return
   confEq.value.order.push(ch)
 }
 
+// ── Création ─────────────────────────────────────────────────────────────────
 async function onCreate() {
   try {
     errorMsg.value = null
     saving.value = true
-
     if (!cfg.value.name) cfg.value.name = lecteur.value.name
 
     const res = await createLecteur({
@@ -107,134 +112,56 @@ async function onCreate() {
     <UAlert v-if="errorMsg" color="error" :title="errorMsg" />
 
     <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
+      <!-- Header -->
       <div class="flex items-center justify-between gap-3">
         <div class="min-w-0">
           <div class="text-sm text-dimmed">Nouveau lecteur</div>
           <div class="text-lg font-semibold truncate">{{ lecteur.name || '—' }}</div>
         </div>
-
         <div class="flex flex-wrap gap-2 justify-end">
           <UButton color="neutral" variant="ghost" @click="router.push('/lecteurs')">Retour</UButton>
           <UButton color="primary" :loading="saving" @click="onCreate">Créer</UButton>
         </div>
       </div>
 
+      <!-- Informations générales -->
       <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
         <h3 class="font-semibold">Informations</h3>
-
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="text-sm text-dimmed">Nom</label>
-            <UInput v-model="lecteur.name" placeholder="Cuisine" />
+            <UInput v-model="lecteur.name" placeholder="Cuisine" class="mt-1" />
           </div>
-
           <div>
             <label class="text-sm text-dimmed">Type</label>
-            <USelect v-model="lecteur.type" :items="typeItems" class="min-w-[180px]" />
+            <USelect v-model="lecteur.type" :items="typeItems" class="mt-1 min-w-[180px]" />
           </div>
         </div>
       </UPageCard>
 
-      <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
-        <h3 class="font-semibold">Configuration lecteur</h3>
+      <!-- Configuration dynamique selon le type -->
+      <SpotifyServiceConfig
+        v-if="lecteur.type === 'spotify'"
+        v-model:cfg="cfg"
+      />
+      <DeezerServiceConfig
+        v-else-if="lecteur.type === 'deezer'"
+        v-model:cfg="cfg"
+      />
+      <LocalInputServiceConfig
+        v-else-if="lecteur.type === 'localInput'"
+        v-model:cfg="cfg"
+      />
+      <LocalServiceConfig
+        v-else-if="lecteur.type === 'local'"
+        v-model:cfg="cfg"
+      />
+      <RadioServiceConfig
+        v-else-if="lecteur.type === 'radio'"
+        v-model:cfg="cfg"
+      />
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="text-sm text-dimmed">Backend</label>
-            <UInput v-model="cfg.backend" placeholder="pipe" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Bitrate</label>
-            <USelect
-              v-model="cfg.bitrate"
-              :items="typeStreamOptions[lecteur.type]?.bitrateItems ?? []"
-              class="min-w-[220px]"
-            />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Initial volume</label>
-            <UInput v-model="cfg['initial-volume']" placeholder="100" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Device type</label>
-            <USelect
-              v-model="cfg['device-type']"
-              :items="typeStreamOptions[lecteur.type]?.Device_typeItems ?? []"
-              class="min-w-[220px]"
-            />
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="text-sm text-dimmed">Path audio (base)</label>
-            <UInput v-model="cfg['path-audio']" placeholder="/tmp/" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Frames / buffer</label>
-            <USelect
-              v-model="cfg.frames_per_buffer"
-              :items="typeStreamOptions[lecteur.type]?.frames_per_bufferItems ?? []"
-              class="min-w-[220px]"
-            />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Normalisation volume</label>
-            <UToggle v-model="cfg['enable-volume-normalisation']" />
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="text-sm text-dimmed">Type Stream</label>
-            <USelect v-model="cfg.typeStream" :items="streamTypeItems" class="min-w-[220px]" />
-          </div>
-        </div>
-
-        <div v-if="canShowLocalStream" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="md:col-span-2">
-            <h4 class="font-semibold text-sm">localStream</h4>
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Output device index</label>
-            <UInput v-model.number="cfg.localStream.output_device_index" type="number" />
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="text-sm text-dimmed">Path fifo</label>
-            <UInput v-model="cfg.localStream['path-audio']" placeholder="/tmp/spotify/multiroom_Snap.fifo" />
-          </div>
-        </div>
-
-        <div v-if="canShowFifo" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="md:col-span-2">
-            <h4 class="font-semibold text-sm">StreamOutFifo</h4>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="text-sm text-dimmed">Path fifo</label>
-            <UInput v-model="cfg.StreamOutFifo['path-audio']" placeholder="/tmp/spotify/Cuisine_Snap.fifo" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Channels</label>
-            <UInput v-model.number="cfg.StreamOutFifo.channels" type="number" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Rate</label>
-            <UInput v-model.number="cfg.StreamOutFifo.rate" type="number" />
-          </div>
-
-          <div>
-            <label class="text-sm text-dimmed">Config</label>
-            <USelect v-model="cfg.StreamOutFifo.config" :items="audioConfigItems" class="min-w-[160px]" />
-          </div>
-        </div>
-      </UPageCard>
-
+      <!-- EQ -->
       <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
         <div class="flex items-center justify-between">
           <h3 class="font-semibold">Égalisation (EQ)</h3>
@@ -244,19 +171,16 @@ async function onCreate() {
         <div v-if="confEqEnabled" class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="text-sm text-dimmed">Sample rate</label>
-            <UInput v-model.number="confEq.rate" type="number" placeholder="48000" />
+            <UInput v-model.number="confEq.rate" type="number" placeholder="48000" class="mt-1" />
           </div>
-
           <div>
             <label class="text-sm text-dimmed">Configuration</label>
-            <USelect v-model="confEq.config" :items="audioConfigItems" class="min-w-[160px]" />
+            <USelect v-model="confEq.config" :items="LAYOUT_ITEMS" class="mt-1 min-w-[160px]" />
           </div>
-
           <div class="md:col-span-2">
             <label class="text-sm text-dimmed">Fichier EQ</label>
-            <UInput v-model="confEq.path_eq" placeholder="Cuisine_spotify_EQ.json" />
+            <UInput v-model="confEq.path_eq" placeholder="Cuisine_spotify_EQ.json" class="mt-1" />
           </div>
-
           <div class="md:col-span-2">
             <label class="text-sm text-dimmed mb-1 block">Ordre des canaux</label>
             <div class="flex flex-wrap gap-2">
@@ -270,16 +194,15 @@ async function onCreate() {
                 {{ ch }} ✕
               </UBadge>
             </div>
-
             <div class="flex gap-2 mt-2">
-              <USelect v-model="newChannel" :items="channelItems" class="min-w-[120px]" />
+              <USelect v-model="newChannel" :items="CHANNEL_ITEMS" class="min-w-[120px]" />
               <UButton size="xs" @click="addChannel">Ajouter</UButton>
             </div>
           </div>
         </div>
 
         <div v-else class="text-sm text-dimmed">
-          EQ désactivé (conf_eq sera envoyé à <span class="font-mono">null</span>)
+          EQ désactivé (<span class="font-mono">conf_eq: null</span>)
         </div>
       </UPageCard>
     </UPageCard>
