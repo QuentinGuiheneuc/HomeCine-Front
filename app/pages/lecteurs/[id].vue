@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from '#imports'
-import { typeStream, typeItems} from '../../types/lecteur'
-import http from '@/src/lib/https'
-import LecteurServiceConfig from '../../components/lecteur/LecteurConfigForm.vue'
+import {
+  getLecteur,
+  updateLecteur,
+  startLecteur,
+  stopLecteur,
+  type Lecteur
+} from '@/src/api/lecteur'
+import { typeStreamOptions } from '@/utils/lecteurOptions'
+import { typeItems } from '@/types/lecteur'
 
-const toast = useToast?.()
+const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 
@@ -16,15 +21,7 @@ const loading = ref(true)
 const saving = ref(false)
 const errorMsg = ref<string | null>(null)
 
-const lecteur = ref<any>(null)
-
-/* -------- Items pour USelect (Nuxt UI) -------- */
-const frames_per_bufferItems = [
-  { label: '256', value: 256 },
-  { label: '512', value: 512 },
-  { label: '1024', value: 1024 },
-  { label: '2048', value: 2048 }
-]
+const lecteur = ref<Lecteur | null>(null)
 
 const rateItems = [
   { label: '22050 Hz', value: 22050 },
@@ -34,6 +31,7 @@ const rateItems = [
   { label: '48000 Hz', value: 48000 },
   { label: '96000 Hz', value: 96000 }
 ]
+
 const streamTypeItems = [
   { label: 'LocalStream', value: 'localStream' },
   { label: 'StreamOutFifo', value: 'StreamOutFifo' }
@@ -53,55 +51,26 @@ const channelItems = [
   { label: 'SL', value: 'SL' }, { label: 'SR', value: 'SR' }
 ]
 
-/* --------- Config editable (clone) --------- */
 const cfg = ref<any>({
-  'name': '',
-  'backend': 'pipe',
-  'bitrate': '320',
+  name: '',
+  backend: 'pipe',
+  bitrate: '320',
   'enable-volume-normalisation': false,
   'initial-volume': '100',
   'device-type': 'avr',
   'path-audio': '/tmp/',
-  'typeStream': 'localStream',
-  'frames_per_buffer': 1024,
-  'localInput': {
-    localStream: {
-      'output_device_index': 0,
-      'path-audio': ''
-    },
-    input: {
-      pcm_device: 'hw:CARD=ICUSBAUDIO7D,DEV=0',
-      rate: 48000,
-      channels: 2,
-      periodsize: 256
-    },
-    output: {
-      layout: '7.1',
-      rate: 48000,
-      master_gain_db: -5.0,
-      remap: [0, 1, 2, 3, 4, 5, 6, 7]
-    },
-    StreamOutFifo: {
-      'path-audio': '',
-      'channels': 8,
-      rate: 48000,
-      config: '7.1'
-    }
-  }
+  typeStream: 'localStream',
+  frames_per_buffer: 1024,
+  localStream: { output_device_index: 0, 'path-audio': '' },
+  StreamOutFifo: { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
 })
 
 function ensureSubConfigs() {
-  // if (!cfg.value.localStream) {
-  //   cfg.value.localStream = { output_device_index: 0, 'path-audio': '' }
-  // }
-  // if (!cfg.value.StreamOutFifo) {
-  //   cfg.value.StreamOutFifo = { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
-  //}
-  // assure un typeStream valide
+  if (!cfg.value.localStream) cfg.value.localStream = { output_device_index: 0, 'path-audio': '' }
+  if (!cfg.value.StreamOutFifo) cfg.value.StreamOutFifo = { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
   if (!cfg.value.typeStream) cfg.value.typeStream = 'localStream'
 }
 
-/* --------- EQ --------- */
 const confEqEnabled = ref(false)
 const confEq = ref({
   rate: 48000,
@@ -114,28 +83,21 @@ const newChannel = ref<string>('FL')
 const canShowLocalStream = computed(() => cfg.value?.typeStream === 'localStream')
 const canShowFifo = computed(() => cfg.value?.typeStream === 'StreamOutFifo')
 
-/* --------- API --------- */
 async function fetchOne() {
   try {
     loading.value = true
     errorMsg.value = null
 
-    const res = await http.get(`/lecteur/${id}`)
-    const data = Array.isArray(res.data) ? res.data[0] : res.data
-    lecteur.value = data
+    const data = await getLecteur(id)
+    if (!data) throw new Error('Lecteur introuvable')
 
-    // clone config
-    cfg.value = {
-      ...cfg.value,
-      ...(data?.config || {})
-    }
+    lecteur.value = data
+    cfg.value = { ...cfg.value, ...(data.config || {}) }
     ensureSubConfigs()
 
-    // harmonise cfg.name si vide
-    if (!cfg.value.name) cfg.value.name = data?.name || ''
+    if (!cfg.value.name) cfg.value.name = data.name || ''
 
-    // EQ
-    if (data?.conf_eq) {
+    if (data.conf_eq) {
       confEqEnabled.value = true
       confEq.value = {
         rate: Number(data.conf_eq.rate ?? 48000),
@@ -143,78 +105,67 @@ async function fetchOne() {
         path_eq: String(data.conf_eq.path_eq ?? ''),
         order: Array.isArray(data.conf_eq.order)
           ? [...data.conf_eq.order]
-          : ['FL','FR','FC','LFE','BL','BR','SL','SR']
+          : ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'SL', 'SR']
       }
     } else {
       confEqEnabled.value = false
     }
-  } catch (e: any) {
-    console.error(e)
+  } catch {
     errorMsg.value = 'Impossible de charger ce lecteur.'
-    toast?.add?.({ title: 'Erreur', description: errorMsg.value, color: 'error' })
+    toast.add({ title: 'Erreur', description: errorMsg.value, color: 'error' })
   } finally {
     loading.value = false
   }
 }
 
-watch(() => cfg.value.typeStream, () => {
-  ensureSubConfigs()
-})
+watch(() => cfg.value.typeStream, ensureSubConfigs)
 
-async function saveLecteur() {
+async function onSave() {
   if (!lecteur.value) return
   try {
     saving.value = true
-
-    const payload = {
+    await updateLecteur(id, {
       name: lecteur.value.name,
       type: lecteur.value.type,
       config: cfg.value,
       conf_eq: confEqEnabled.value ? confEq.value : null
-    }
-
-    await http.put(`/lecteur/${id}`, payload)
-
-    toast?.add?.({ title: 'Sauvegardé', color: 'success' })
+    })
+    toast.add({ title: 'Sauvegardé', color: 'success' })
     await fetchOne()
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Sauvegarde impossible', color: 'error' })
+  } catch {
+    toast.add({ title: 'Sauvegarde impossible', color: 'error' })
   } finally {
     saving.value = false
   }
 }
 
-async function startLecteur() {
+async function onStart() {
   try {
-    await http.put(`/lecteur/${id}/start`)
-    toast?.add?.({ title: 'Lecteur démarré', color: 'success' })
+    await startLecteur(id)
+    toast.add({ title: 'Lecteur démarré', color: 'success' })
     await fetchOne()
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Start impossible', color: 'error' })
+  } catch {
+    toast.add({ title: 'Start impossible', color: 'error' })
   }
 }
 
-async function stopLecteur() {
+async function onStop() {
   try {
-    await http.put(`/lecteur/${id}/stop`)
-    toast?.add?.({ title: 'Lecteur stoppé', color: 'secondary' })
+    await stopLecteur(id)
+    toast.add({ title: 'Lecteur stoppé', color: 'secondary' })
     await fetchOne()
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Stop impossible', color: 'error' })
+  } catch {
+    toast.add({ title: 'Stop impossible', color: 'error' })
   }
 }
 
-/* EQ helpers */
 function removeChannel(i: number) {
   confEq.value.order.splice(i, 1)
 }
 function addChannel() {
   const ch = newChannel.value
-  if (!ch) return
-  if (!confEq.value.order.includes(ch)) confEq.value.order.push(ch)
+  if (!ch || confEq.value.order.includes(ch)) return
+  confEq.value.order.push(ch)
 }
 
 onMounted(fetchOne)
@@ -231,7 +182,6 @@ onMounted(fetchOne)
       variant="subtle"
       :ui="{ container: 'p-4 space-y-4' }"
     >
-      <!-- Header -->
       <div class="flex items-center justify-between gap-3">
         <div class="min-w-0">
           <div class="text-sm text-dimmed">Lecteur #{{ id }}</div>
@@ -248,34 +198,22 @@ onMounted(fetchOne)
         </div>
 
         <div class="flex flex-wrap gap-2 justify-end">
-          <UButton color="neutral" variant="ghost" @click="router.push('/lecteurs')">
-            Retour
-          </UButton>
+          <UButton color="neutral" variant="ghost" @click="router.push('/lecteurs')">Retour</UButton>
 
           <UButton
             v-if="!Number(lecteur.isStarting)"
             color="primary"
             variant="ghost"
-            @click="startLecteur"
+            @click="onStart"
           >
             ▶ Start
           </UButton>
-          <UButton
-            v-else
-            color="amber"
-            variant="ghost"
-            @click="stopLecteur"
-          >
-            ⏹ Stop
-          </UButton>
+          <UButton v-else color="amber" variant="ghost" @click="onStop">⏹ Stop</UButton>
 
-          <UButton color="primary" :loading="saving" @click="saveLecteur">
-            Sauvegarder
-          </UButton>
+          <UButton color="primary" :loading="saving" @click="onSave">Sauvegarder</UButton>
         </div>
       </div>
 
-      <!-- Informations -->
       <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
         <h3 class="font-semibold">Informations</h3>
 
@@ -287,23 +225,111 @@ onMounted(fetchOne)
 
           <div>
             <label class="text-sm text-dimmed">Type</label>
-            <USelect
-              v-model="lecteur.type"
-              :items="typeItems"
-              class="min-w-[180px]"
-            />
+            <USelect v-model="lecteur.type" :items="typeItems" class="min-w-[180px]" />
           </div>
         </div>
       </UPageCard>
 
-      <!-- Configuration lecteur -->
-      <LecteurServiceConfig
-        :cfg="cfg"
-        :lecteur-type="lecteur.type"
-        @update:cfg="cfg = $event"
-      />
+      <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
+        <h3 class="font-semibold">Configuration lecteur</h3>
 
-      <!-- EQ -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="text-sm text-dimmed">Backend</label>
+            <UInput v-model="cfg.backend" placeholder="pipe" />
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Bitrate</label>
+            <USelect
+              v-model="cfg.bitrate"
+              :items="typeStreamOptions[lecteur.type]?.bitrateItems ?? []"
+              class="min-w-[220px]"
+            />
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Initial volume</label>
+            <UInput v-model="cfg['initial-volume']" placeholder="100" />
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Device type</label>
+            <USelect
+              v-model="cfg['device-type']"
+              :items="typeStreamOptions[lecteur.type]?.Device_typeItems ?? []"
+              class="min-w-[220px]"
+            />
+          </div>
+
+          <div class="md:col-span-2">
+            <label class="text-sm text-dimmed">Path audio (base)</label>
+            <UInput v-model="cfg['path-audio']" placeholder="/tmp/" />
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Frames / buffer</label>
+            <USelect
+              v-model="cfg.frames_per_buffer"
+              :items="typeStreamOptions[lecteur.type]?.frames_per_bufferItems ?? []"
+              class="min-w-[220px]"
+            />
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Normalisation volume</label>
+            <UToggle v-model="cfg['enable-volume-normalisation']" />
+          </div>
+
+          <div class="md:col-span-2">
+            <label class="text-sm text-dimmed">Type Stream</label>
+            <USelect v-model="cfg.typeStream" :items="streamTypeItems" class="min-w-[220px]" />
+          </div>
+        </div>
+
+        <div v-if="canShowLocalStream" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="md:col-span-2">
+            <h4 class="font-semibold text-sm">localStream</h4>
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Output device index</label>
+            <UInput v-model.number="cfg.localStream.output_device_index" type="number" />
+          </div>
+
+          <div class="md:col-span-2">
+            <label class="text-sm text-dimmed">Path fifo</label>
+            <UInput v-model="cfg.localStream['path-audio']" placeholder="/tmp/spotify/multiroom_Snap.fifo" />
+          </div>
+        </div>
+
+        <div v-if="canShowFifo" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="md:col-span-2">
+            <h4 class="font-semibold text-sm">StreamOutFifo</h4>
+          </div>
+
+          <div class="md:col-span-2">
+            <label class="text-sm text-dimmed">Path fifo</label>
+            <UInput v-model="cfg.StreamOutFifo['path-audio']" placeholder="/tmp/spotify/Cuisine_Snap.fifo" />
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Channels</label>
+            <UInput v-model.number="cfg.StreamOutFifo.channels" type="number" />
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Rate</label>
+            <USelect v-model="cfg.StreamOutFifo.rate" :items="rateItems" class="min-w-[220px]" />
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Config</label>
+            <USelect v-model="cfg.StreamOutFifo.config" :items="audioConfigItems" class="min-w-[160px]" />
+          </div>
+        </div>
+      </UPageCard>
+
       <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
         <div class="flex items-center justify-between">
           <h3 class="font-semibold">Égalisation (EQ)</h3>
@@ -313,20 +339,12 @@ onMounted(fetchOne)
         <div v-if="confEqEnabled" class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="text-sm text-dimmed">Sample rate</label>
-            <USelect
-              v-model="confEq.rate"
-              :items="rateItems"
-              class="min-w-[220px]"
-            />
+            <USelect v-model="confEq.rate" :items="rateItems" class="min-w-[220px]" />
           </div>
 
           <div>
             <label class="text-sm text-dimmed">Configuration</label>
-            <USelect
-              v-model="confEq.config"
-              :items="audioConfigItems"
-              class="min-w-[160px]"
-            />
+            <USelect v-model="confEq.config" :items="audioConfigItems" class="min-w-[160px]" />
           </div>
 
           <div class="md:col-span-2">

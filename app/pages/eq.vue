@@ -32,13 +32,12 @@ const fs = ref(48000)
 const curvePoints = ref(1000)
 const dbRange = ref(20)
 
-const selectedLayout = ref<string>("") // ✅ string, plus de LayoutKey
+const selectedLayout = ref<string>("")
 const selectedPresetName = ref<string>("")
 const selectedChannel = ref<string>("FL")
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
-// ----- Data (API) -----
 const presetsData = ref<ApiPreset[]>([])
 const presetsOriginal = ref<ApiPreset[]>([])
 const pending = ref(false)
@@ -72,17 +71,15 @@ async function postEqPreset() {
     configLayouts: {
       rate: fs.value,
       config: selectedLayout.value,
-      path_eq: selectedPreset.value?.config?.path_eq // ou un champ dédié
+      path_eq: (p as any).config?.path_eq
     },
-    eqListe: selectedPreset.value.eq.eqListe
+    eqListe: p.eq.eqListe
   }
 
   try {
-    if (typeof (http as any).post === "function") {
-      await (http as any).post("/eq/q", body)
-      toast.add({ title: "EQ sauvegardé", color: "success" })
-      presetsOriginal.value = JSON.parse(JSON.stringify(presetsData.value))
-    }
+    await http.post("/eq/q", body)
+    toast.add({ title: "EQ sauvegardé", color: "success" })
+    presetsOriginal.value = JSON.parse(JSON.stringify(presetsData.value))
   } catch (e: any) {
     toast.add({
       title: "Erreur sauvegarde EQ",
@@ -94,16 +91,13 @@ async function postEqPreset() {
 
 onMounted(fetchEq)
 
-// ----- Computed presets -----
 const presets = computed(() => presetsData.value || [])
 const presetItems = computed(() => presets.value.map(p => ({ label: p.name, value: p.name })))
 
 const selectedPreset = computed(() => {
-  const p = presets.value.find(p => p.name === selectedPresetName.value)
-  return p || presets.value[0]
+  return presets.value.find(p => p.name === selectedPresetName.value) || presets.value[0]
 })
 
-// ✅ layouts depuis API
 const layoutKeys = computed(() => {
   const p = selectedPreset.value
   return p ? Object.keys(p.eq?.layouts || {}) : []
@@ -113,33 +107,21 @@ const layoutItems = computed(() =>
   layoutKeys.value.map(k => ({ label: k, value: k }))
 )
 
-// ✅ layout courant (déf)
 const currentLayoutDef = computed<LayoutDef | null>(() => {
   const p = selectedPreset.value
   if (!p) return null
-  const def = p.eq?.layouts?.[selectedLayout.value]
-  return def || null
+  return p.eq?.layouts?.[selectedLayout.value] || null
 })
 
 watch(selectedPreset, (p) => {
   if (!p) return
-
-  // fs depuis l'API
   if (typeof p.rate === "number" && p.rate > 0) fs.value = p.rate
 
-  // choisir layout depuis l'API (configLayouts.config)
   const apiLayout = p.eq?.configLayouts?.config
   const available = Object.keys(p.eq?.layouts || {})
-
-  if (apiLayout && available.includes(apiLayout)) {
-    selectedLayout.value = apiLayout
-  } else {
-    // fallback: premier layout dispo
-    selectedLayout.value = available[0] || ""
-  }
+  selectedLayout.value = (apiLayout && available.includes(apiLayout)) ? apiLayout : (available[0] || "")
 }, { immediate: true })
 
-// ----- Channels available = order(layout) ∩ keys(eqListe) -----
 const channelItems = computed(() => {
   const p = selectedPreset.value
   const def = currentLayoutDef.value
@@ -147,12 +129,10 @@ const channelItems = computed(() => {
 
   const keys = Object.keys(p.eq?.eqListe || {})
   const order = Array.isArray(def.order) ? def.order : []
-
   const final = order.length ? order.filter(ch => keys.includes(ch)) : keys
   return final.map(ch => ({ label: ch, value: ch }))
 })
 
-// s’assurer que selectedChannel existe
 watch([channelItems, selectedPresetName, selectedLayout], () => {
   const items = channelItems.value
   if (!items.length) return
@@ -161,55 +141,31 @@ watch([channelItems, selectedPresetName, selectedLayout], () => {
   }
 }, { immediate: true })
 
-// ----- Bands state -----
 const bands = ref<UiBand[]>([])
 
-function ensureSixCells() {
-  const byCell = new Map<number, UiBand>()
-  for (const b of bands.value) byCell.set(b.cell, b)
-
-  // for (let cell = 1; cell <= 20; cell++) {
-  //   if (!byCell.has(cell)) {
-  //     bands.value.push({
-  //       id: `cell_${cell}_${Math.random().toString(36).slice(2)}`,
-  //       cell,
-  //       enabled: false,
-  //       type: "peaking",
-  //       freq: 1000,
-  //       q: 1,
-  //       gainDb: 0
-  //     })
-  //   }
-  // }
-
-  bands.value = bands.value
-    .filter(b => b.cell >= 1)
-    .sort((a, b) => a.cell - b.cell)
+function sortBands() {
+  bands.value = bands.value.filter(b => b.cell >= 1).sort((a, b) => a.cell - b.cell)
 }
 
 function loadBandsFromApi() {
   const p = selectedPreset.value
   if (!p) return
-  const cells = p.eq?.eqListe?.[selectedChannel.value] || []
-  bands.value = apiCellsToBands(cells)
-  ensureSixCells()
+  bands.value = apiCellsToBands(p.eq?.eqListe?.[selectedChannel.value] || [])
+  sortBands()
 }
 
 watch([selectedPresetName, selectedChannel], loadBandsFromApi, { immediate: true })
 
 const channelBands = computed(() => {
-  ensureSixCells()
+  sortBands()
   return bands.value
 })
 
-// écriture locale sur le preset courant
 watch(bands, () => {
   const p = selectedPreset.value
   if (!p) return
-
   const channelId = p.eq?.eqListe?.[selectedChannel.value]?.[0]?.["@channel"]
   if (!p.eq.eqListe) p.eq.eqListe = {}
-
   p.eq.eqListe[selectedChannel.value] = bandsToApiCells(bands.value, channelId)
 }, { deep: true })
 
@@ -223,84 +179,29 @@ function toggleBand(cell: number, v: boolean) {
 function resetChannel() {
   const orig = presetsOriginal.value.find(p => p.name === selectedPresetName.value)
   if (!orig) return
-  const cells = orig.eq?.eqListe?.[selectedChannel.value] || []
-  bands.value = apiCellsToBands(cells)
-  ensureSixCells()
-}
-
-function copyFromChannel(from: string) {
-  const p = selectedPreset.value
-  if (!p) return
-  const src = p.eq?.eqListe?.[from]
-  if (!src) return
-  bands.value = apiCellsToBands(src)
-  ensureSixCells()
+  bands.value = apiCellsToBands(orig.eq?.eqListe?.[selectedChannel.value] || [])
+  sortBands()
 }
 
 function addBand(type: UiBand["type"]) {
-  ensureSixCells()
+  sortBands()
   const cell = bands.value.length + 1
   bands.value.push({
-    id: `cell_${cell}_${Math.random().toString(36).slice(2)}`,
+    id: crypto.randomUUID(),
     cell,
-    enabled: false,
-    type: "peaking",
-    freq: 1000,
-    q: 1,
-    gainDb: 0
+    enabled: true,
+    type,
+    freq: type === "highpass" ? 80 : type === "lowpass" ? 12000 : type === "lowshelf" ? 80 : type === "highshelf" ? 10000 : 1000,
+    q: 0.9,
+    gainDb: type === "lowshelf" ? 1.5 : type === "highshelf" ? 1.0 : 0
   })
-  const target = bands.value.find(b => !b.enabled)
-  if (!target) return
-
-  target.enabled = true
-  target.type = type
-  target.q = 0.9
-
-  if (type === "highpass") { target.freq = 80; target.gainDb = 0 }
-  else if (type === "lowpass") { target.freq = 12000; target.gainDb = 0 }
-  else if (type === "lowshelf") { target.freq = 80; target.gainDb = 1.5 }
-  else if (type === "highshelf") { target.freq = 10000; target.gainDb = 1.0 }
-  else { target.freq = 1000; target.gainDb = 0 }
 }
 
-const apiJson = computed(() => {
-  const p = selectedPreset.value
-  if (!p) return ""
-  const out = {
-    name: p.name,
-    layout: selectedLayout.value,
-    channel: selectedChannel.value,
-    eq: p.eq?.eqListe?.[selectedChannel.value] || []
-  }
-  return JSON.stringify(out, null, 2)
-})
-
-async function copyApi() {
-  const text = apiJson.value
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch {
-    const ta = document.createElement("textarea")
-    ta.value = text
-    document.body.appendChild(ta)
-    ta.select()
-    document.execCommand("copy")
-    document.body.removeChild(ta)
-  }
-}
-
-// ----- Graphe -----
 const eqCurve = ref<{ f: number; db: number }[]>([])
 
 async function recomputeCurve() {
   try {
-    eqCurve.value = await computeEqCurveWebAudio(
-      bands.value,
-      fs.value,
-      curvePoints.value,
-      20,
-      20000
-    )
+    eqCurve.value = await computeEqCurveWebAudio(bands.value, fs.value, curvePoints.value, 20, 20000)
   } catch {
     eqCurve.value = []
   }
@@ -328,8 +229,7 @@ function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement) {
 
 function cssVar(name: string, fallback = "#00beff") {
   if (typeof window === "undefined") return fallback
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return v || fallback
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 }
 
 function draw() {
@@ -343,12 +243,7 @@ function draw() {
 
   const w = rect.width
   const h = rect.height
-
-  const padL = 56
-  const padR = 14
-  const padT = 14
-  const padB = 28
-
+  const padL = 56, padR = 14, padT = 14, padB = 28
   const r = dbRange.value
   const fMin = 20
   const fMax = Math.min(20000, fs.value / 2 - 1)
@@ -358,40 +253,28 @@ function draw() {
     return (Math.log10(f) - a) / (b - a)
   }
   const xFromF = (f: number) => padL + logX(f) * (w - padL - padR)
-  const yFromDb = (db: number) => {
-    const t = (db + r) / (2 * r)
-    return (1 - t) * (h - padT - padB) + padT
-  }
+  const yFromDb = (db: number) => (1 - (db + r) / (2 * r)) * (h - padT - padB) + padT
 
   ctx.clearRect(0, 0, w, h)
   ctx.fillStyle = cssVar("--ui-color-neutral-700")
   ctx.fillRect(0, 0, w, h)
-
   ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace"
   ctx.textBaseline = "middle"
-
   ctx.lineWidth = 2
   ctx.strokeStyle = "rgba(255,255,255,0.10)"
   ctx.fillStyle = "rgba(255,255,255,0.65)"
 
   for (let db = -r; db <= r; db += 6) {
     const y = yFromDb(db)
-    ctx.beginPath()
-    ctx.moveTo(padL, y)
-    ctx.lineTo(w - padR, y)
-    ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke()
     ctx.fillText(`${db} dB`, 8, y)
   }
 
   ctx.strokeStyle = "rgba(255,255,255,0.25)"
   ctx.lineWidth = 1.5
-  ctx.beginPath()
-  ctx.moveTo(padL, yFromDb(0))
-  ctx.lineTo(w - padR, yFromDb(0))
-  ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(padL, yFromDb(0)); ctx.lineTo(w - padR, yFromDb(0)); ctx.stroke()
 
   const ticks = [20, 30, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].filter(f => f <= fMax)
-
   ctx.lineWidth = 1
   ctx.strokeStyle = "rgba(255,255,255,0.10)"
   ctx.fillStyle = "rgba(255,255,255,0.65)"
@@ -399,14 +282,9 @@ function draw() {
 
   for (const f of ticks) {
     const x = xFromF(f)
-    ctx.beginPath()
-    ctx.moveTo(x, padT)
-    ctx.lineTo(x, h - padB)
-    ctx.stroke()
-
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, h - padB); ctx.stroke()
     const label = f >= 1000 ? `${f / 1000}k` : `${f}`
-    const textW = ctx.measureText(label).width
-    ctx.fillText(label, x - textW / 2, h - 10)
+    ctx.fillText(label, x - ctx.measureText(label).width / 2, h - 10)
   }
 
   const pts = eqCurve.value
@@ -420,10 +298,8 @@ function draw() {
   ctx.lineWidth = 2
   ctx.beginPath()
   for (let i = 0; i < pts.length; i++) {
-    const x = xFromF(pts[i].f)
-    const y = yFromDb(pts[i].db)
-    if (i === 0) ctx.moveTo(x, y)
-    else ctx.lineTo(x, y)
+    const x = xFromF(pts[i].f), y = yFromDb(pts[i].db)
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
   }
   ctx.stroke()
 }
@@ -456,15 +332,11 @@ watch([eqCurve, dbRange], scheduleDraw)
             <USelect v-model="selectedPresetName" :items="presetItems" class="min-w-[160px]" />
             <UButton color="neutral" variant="soft" :loading="pending" @click="fetchEq">Reload</UButton>
             <UButton color="neutral" variant="soft" @click="resetChannel">Reset canal</UButton>
-            <!-- <UButton color="primary" variant="soft" icon="i-lucide-copy" @click="copyApi">Copier API</UButton> -->
-            <UButton color="primary" icon="i-lucide-save" @click="postEqPreset">
-              Sauvegarder
-            </UButton>
+            <UButton color="primary" icon="i-lucide-save" @click="postEqPreset">Sauvegarder</UButton>
           </div>
 
           <div v-if="loadError" class="text-sm text-red-500">{{ loadError }}</div>
 
-          <!-- Channel buttons -->
           <div class="flex flex-1 gap-1">
             <UButton
               v-for="it in channelItems"
@@ -483,7 +355,6 @@ watch([eqCurve, dbRange], scheduleDraw)
 
     <main class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-2 sm:px-6 lg:px-8">
       <div class="w-full lg:max-w-12xl py-6 sm:py-8 lg:py-12 space-y-6">
-        <!-- Graph -->
         <UCard>
           <div class="flex flex-wrap gap-3 items-end">
             <div class="min-w-[160px]">
@@ -509,7 +380,6 @@ watch([eqCurve, dbRange], scheduleDraw)
           </div>
         </UCard>
 
-        <!-- 6 cellules -->
         <div class="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-6 gap-4">
           <UCard
             v-for="b in channelBands"
@@ -521,8 +391,8 @@ watch([eqCurve, dbRange], scheduleDraw)
               <div class="font-medium">Cell {{ b.cell }}</div>
               <UCheckbox
                 :model-value="b.enabled"
-                @update:model-value="(v:boolean)=>toggleBand(b.cell, v)"
                 label="ON"
+                @update:model-value="(v: boolean) => toggleBand(b.cell, v)"
               />
             </div>
 
@@ -573,7 +443,7 @@ watch([eqCurve, dbRange], scheduleDraw)
                   <UBadge variant="subtle">{{ b.gainDb.toFixed(1) }} dB</UBadge>
                 </div>
                 <input
-                  type="range" min="-38" max="" step="0.1"
+                  type="range" min="-38" max="18" step="0.1"
                   class="w-full accent-current h-1.5 range-primary-0"
                   :disabled="b.type === 'highpass' || b.type === 'lowpass'"
                   :value="b.gainDb"
@@ -583,7 +453,6 @@ watch([eqCurve, dbRange], scheduleDraw)
             </div>
           </UCard>
         </div>
-        <!-- Export API -->
       </div>
     </main>
   </div>

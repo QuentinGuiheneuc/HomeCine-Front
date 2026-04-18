@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { getLecteurs, deleteLecteur, type Lecteur } from '@/src/api/lecteur'
-import { useToast } from '#imports'
-import http from '@/src/lib/https'
+import {
+  getLecteurs,
+  deleteLecteur,
+  startLecteur,
+  stopLecteur,
+  postSpotifyUrl,
+  type Lecteur
+} from '@/src/api/lecteur'
 
-const toast = useToast?.()
+const toast = useToast()
 
 const lecteurs = ref<Lecteur[]>([])
 const loading = ref(true)
@@ -18,10 +23,9 @@ async function fetchLecteurs() {
     loading.value = true
     errorMsg.value = null
     lecteurs.value = await getLecteurs()
-  } catch (e: any) {
-    console.error(e)
+  } catch {
     errorMsg.value = 'Impossible de charger les lecteurs.'
-    toast?.add?.({ title: 'Erreur', description: errorMsg.value, color: 'error' })
+    toast.add({ title: 'Erreur', description: errorMsg.value, color: 'error' })
   } finally {
     loading.value = false
   }
@@ -47,67 +51,60 @@ async function onDelete(id: number) {
   try {
     await deleteLecteur(id)
     await fetchLecteurs()
-    toast?.add?.({ title: 'Supprimé', color: 'success' })
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Suppression impossible', color: 'error' })
+    toast.add({ title: 'Supprimé', color: 'success' })
+  } catch {
+    toast.add({ title: 'Suppression impossible', color: 'error' })
   }
 }
 
-/* Helpers */
-function getStreamType(l: any) {
-  return l.config?.typeStream || 'n/a'
+function getStreamType(l: Lecteur) {
+  return (l.config as any)?.typeStream || 'n/a'
 }
-function getInitialVolume(l: any): number | 'n/a' {
-  const v = l.config?.['initial-volume']
+function getInitialVolume(l: Lecteur): number | 'n/a' {
+  const v = (l.config as any)?.['initial-volume']
   if (v === undefined || v === null || v === '') return 'n/a'
   const n = Number(v)
   return Number.isFinite(n) ? n : 'n/a'
 }
-function getAudioConfig(l: any) {
-  return l.conf_eq?.config || l.config?.StreamOutFifo?.config || 'n/a'
+function getAudioConfig(l: Lecteur) {
+  return l.conf_eq?.config || (l.config as any)?.StreamOutFifo?.config || 'n/a'
 }
-function getChannels(l: any) {
+function getChannels(l: Lecteur) {
   const eqOrderLen = l.conf_eq?.order?.length
   if (eqOrderLen) return eqOrderLen
-  const ch = l.config?.StreamOutFifo?.channels
-  return ch ?? 'n/a'
+  return (l.config as any)?.StreamOutFifo?.channels ?? 'n/a'
 }
-function isRunning(l: any) {
+function isRunning(l: Lecteur) {
   return Number(l.isStarting) === 1
 }
 
-/* Actions */
-async function startLecteur(id: number) {
+async function onStart(id: number) {
   try {
-    await http.put(`/lecteur/${id}/start`)
-    toast?.add?.({ title: 'Lecteur démarré', color: 'success' })
+    await startLecteur(id)
+    toast.add({ title: 'Lecteur démarré', color: 'success' })
     await fetchLecteurs()
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Start impossible', color: 'error' })
+  } catch {
+    toast.add({ title: 'Start impossible', color: 'error' })
   }
 }
-async function stopLecteur(id: number) {
+async function onStop(id: number) {
   try {
-    await http.put(`/lecteur/${id}/stop`)
-    toast?.add?.({ title: 'Lecteur stoppé', color: 'secondary' })
+    await stopLecteur(id)
+    toast.add({ title: 'Lecteur stoppé', color: 'secondary' })
     await fetchLecteurs()
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Stop impossible', color: 'error' })
+  } catch {
+    toast.add({ title: 'Stop impossible', color: 'error' })
   }
 }
-async function postUrl(url:any , name:any) {
+async function onPostUrl(url: string, name: string) {
   try {
-    await http.post(`/spotify/audio`, { url, name })
-    toast?.add?.({ title: 'URL envoyée', color: 'success' })
-    await fetchLecteurs()
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Envoi impossible', color: 'error' })
+    await postSpotifyUrl(url, name)
+    toast.add({ title: 'URL envoyée', color: 'success' })
+  } catch {
+    toast.add({ title: 'Envoi impossible', color: 'error' })
   }
 }
+
 onMounted(fetchLecteurs)
 </script>
 
@@ -167,7 +164,6 @@ onMounted(fetchLecteurs)
 
                 <div class="text-xs text-dimmed font-mono">stream: {{ getStreamType(l) }}</div>
 
-                <!-- EQ résumé (pas JSON) -->
                 <div class="text-xs text-dimmed mt-1">
                   EQ:
                   <span v-if="l.conf_eq" class="font-mono">
@@ -179,7 +175,13 @@ onMounted(fetchLecteurs)
                     <a v-for="(u, i) in l.url" :key="i" :href="u.url" class="font-mono block">
                       {{ u.type }}
                     </a>
-                    <input v-if="l.type === 'spotify'" type="text" placeholder="Ajouter URL Spotify" class="mt-1 w-full text-xs" @keyup.enter="postUrl($event.target.value,l.config.name ); $event.target.value=''">
+                    <input
+                      v-if="l.type === 'spotify'"
+                      type="text"
+                      placeholder="Ajouter URL Spotify"
+                      class="mt-1 w-full text-xs"
+                      @keyup.enter="onPostUrl(($event.target as HTMLInputElement).value, (l.config as any).name); ($event.target as HTMLInputElement).value = ''"
+                    />
                   </div>
                 </div>
               </div>
@@ -213,10 +215,10 @@ onMounted(fetchLecteurs)
             </div>
 
             <div class="flex flex-wrap gap-2 mt-3">
-              <UButton class="px-2 p-1" size="s" color="primary" variant="subtle" v-if="!isRunning(l)" @click="startLecteur(l.id)">
+              <UButton v-if="!isRunning(l)" class="px-2 p-1" size="s" color="primary" variant="subtle" @click="onStart(l.id)">
                 Start
               </UButton>
-              <UButton class="px-2 p-1" size="1xs" color="primary" variant="subtle"  @click="stopLecteur(l.id)">
+              <UButton class="px-2 p-1" size="1xs" color="primary" variant="subtle" @click="onStop(l.id)">
                 Stop
               </UButton>
             </div>

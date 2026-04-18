@@ -1,4 +1,3 @@
-// ~/utils/eqPreset.ts
 export type ChannelKey =
   | "FL" | "FR" | "FC" | "LFE"
   | "SL" | "SR" | "BL" | "BR"
@@ -15,7 +14,7 @@ export type ApiEqBand = {
   "@channel"?: string
   "@cell": string
   "@EQon": "0" | "1"
-  "@EQtype": string // "0" | "3" | "4" | "5" | "6"
+  "@EQtype": string
   "@dblevel": string
   "@freq": string
   "@Q": string
@@ -23,7 +22,7 @@ export type ApiEqBand = {
 
 export type EqBand = {
   id: string
-  cell: number          // 1..6
+  cell: number
   enabled: boolean
   type: EqType
   freq: number
@@ -34,16 +33,11 @@ export type EqBand = {
 export type ApiEqPreset = Record<string, ApiEqBand[]>
 export type EqPreset = Record<string, EqBand[]>
 
-// --- uid sans crypto ---
-let __uid = 0
-export function uid(prefix = "band") {
-  __uid += 1
-  return `${prefix}_${__uid}`
+function uid(prefix = "band") {
+  return `${prefix}_${crypto.randomUUID()}`
 }
 
-// --- mapping EQtype (API) -> type WebAudio ---
 export function apiEqTypeToUi(eqType: number): EqType {
-  // 0=PEAK, 3=LPF, 4=HPF, 5=LOW_SHELF, 6=HIGH_SHELF
   if (eqType === 0) return "peaking"
   if (eqType === 3) return "lowpass"
   if (eqType === 4) return "highpass"
@@ -61,7 +55,6 @@ export function uiEqTypeToApi(type: EqType): number {
   return 0
 }
 
-// --- normalisation API -> UI ---
 export function normalizeApiPreset(api: ApiEqPreset): EqPreset {
   const out: EqPreset = {}
   for (const [ch, arr] of Object.entries(api || {})) {
@@ -82,7 +75,6 @@ export function normalizeApiPreset(api: ApiEqPreset): EqPreset {
   return out
 }
 
-// --- export UI -> API (en gardant 6 cellules par canal) ---
 export function exportToApiPreset(
   preset: EqPreset,
   channelOrder: string[],
@@ -91,7 +83,7 @@ export function exportToApiPreset(
   const out: ApiEqPreset = {}
   for (let i = 0; i < channelOrder.length; i++) {
     const ch = channelOrder[i]
-    const chanNumber = String(i + 1) // 1..N
+    const chanNumber = String(i + 1)
     const bands = (preset[ch] || []).slice().sort((a, b) => a.cell - b.cell)
 
     out[ch] = bands.map((b) => {
@@ -110,7 +102,6 @@ export function exportToApiPreset(
   return out
 }
 
-// --- helpers preset ---
 export function ensureChannel(preset: EqPreset, ch: string) {
   if (!preset[ch]) preset[ch] = []
 }
@@ -121,8 +112,9 @@ export function ensure6Cells(preset: EqPreset, ch: string) {
   const arr: EqBand[] = []
   for (let cell = 1; cell <= 6; cell++) {
     const b = existing.get(cell)
-    if (b) arr.push(b)
-    else {
+    if (b) {
+      arr.push(b)
+    } else {
       arr.push({
         id: uid(`${ch}_c${cell}`),
         cell,
