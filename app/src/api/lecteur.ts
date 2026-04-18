@@ -7,7 +7,7 @@ export type LecteurPayload = {
   name: string
   type: string
   config: Record<string, any>
-  conf_eq: ConfEq | null
+  conf_eq_id: number | null
 }
 
 export async function getLecteurs(): Promise<Lecteur[]> {

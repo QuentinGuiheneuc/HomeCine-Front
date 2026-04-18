@@ -14,6 +14,7 @@ export type Lecteur = {
   isStarting: number | boolean
   config: any
   conf_eq: ConfEq | null
+  conf_eq_id: number | null
   url?: Array<{ url: string; type: string }>
 }
 

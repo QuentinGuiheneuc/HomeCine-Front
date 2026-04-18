@@ -128,7 +128,7 @@ async function onSave() {
       name: lecteur.value.name,
       type: lecteur.value.type,
       config: cfg.value,
-      conf_eq: confEqEnabled.value ? confEq.value : null
+      conf_eq_id: confEqEnabled.value ? lecteur.value.conf_eq_id ?? null : null
     })
     toast.add({ title: 'Sauvegardé', color: 'success' })
     await fetchOne()
