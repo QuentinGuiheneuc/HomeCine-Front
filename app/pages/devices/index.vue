@@ -77,6 +77,7 @@ watch(wsStatus, s => { if (s === 'connected'){
 } })
 
 const offWs = wsOn((msg: any) => {
+  console.log("send ws", msg)
   if (msg?.msg?.method === 'State.audio' && msg.from && msg.msg?.State?.audio) {
     audioByKey.value = { ...audioByKey.value, [String(msg.from)]: msg.msg.State.audio as StateAudio }
     return
@@ -400,7 +401,7 @@ function refresh() {
               <div v-if="d.audio?.output" class="space-y-2">
                 <div class="flex items-center justify-between">
                   <span class="flex items-center gap-1.5 font-medium text-[#ccc]">
-                    <UIcon name="i-lucide-volume-2" class="size-3.5" /> Sortie
+                    <UIcon name="i-lucide-volume-2" class="size-3.5" /> {{ d.audio?.output?.name}}
                   </span>
                   <span class="text-[10px]" :class="isMuted(d.audio.output.mute) ? 'text-amber-400' : 'text-dimmed'">
                     {{ isMuted(d.audio.output.mute) ? 'MUTE' : 'Mute: off' }}
@@ -456,7 +457,7 @@ function refresh() {
               <div v-if="d.audio?.input" class="space-y-2">
                 <div class="flex items-center justify-between">
                   <span class="flex items-center gap-1.5 font-medium text-[#ccc]">
-                    <UIcon name="i-lucide-mic" class="size-3.5" /> Entrée
+                    <UIcon name="i-lucide-mic" class="size-3.5" /> {{ d.audio?.input?.name}}
                   </span>
                   <span class="text-[10px]" :class="isMuted(d.audio.input.mute) ? 'text-amber-400' : 'text-dimmed'">
                     {{ isMuted(d.audio.input.mute) ? 'MUTE' : 'Mute: off' }}
