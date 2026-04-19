@@ -269,14 +269,18 @@ function scrollTo(key: string) {
 }
 
 /* ─── Lifecycle ──────────────────────────────────────────────────────────── */
-onMounted(fetchDevices)
+function requestData() {
+  if (wsStatus.value === 'connected') { wsSend('Get.Device'); wsSend('Get.audio') }
+}
+
+onMounted(() => { fetchDevices(); requestData() })
 onBeforeUnmount(() => { offWs(); offSnapNotif(); snapDisconnect() })
 
 watch(isDeviceSlideoverOpen, async (open) => {
   if (!open) { snapDisconnect(); return }
   snapConnect()
   await fetchDevices()
-  if (wsStatus.value === 'connected') { wsSend('Get.Device'); wsSend('Get.audio') }
+  requestData()
   const key = activeDeviceKey.value ? String(activeDeviceKey.value) : ''
   if (key) { q.value = key; await nextTick(); scrollTo(key) }
 })

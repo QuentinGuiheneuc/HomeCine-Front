@@ -77,8 +77,6 @@ watch(wsStatus, s => { if (s === 'connected'){
 } })
 
 const offWs = wsOn((msg: any) => {
-  // { from: "192.168.1.40", msg: { method: "State.audio", State: { audio: {...} } } }
-  console.log('Audio state received from', msg.from, msg)
   if (msg?.msg?.method === 'State.audio' && msg.from && msg.msg?.State?.audio) {
     audioByKey.value = { ...audioByKey.value, [String(msg.from)]: msg.msg.State.audio as StateAudio }
     return
@@ -239,17 +237,26 @@ function openSlideover(key: string) {
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let pollTimerAudio: ReturnType<typeof setInterval> | null = null
 
+function requestData() {
+  wsSend('Get.Device')
+  wsSend('Get.audio')
+}
+
 onMounted(() => {
-  pollTimer = setInterval(() => wsSend('Get.Device'), 5_000)
-  pollTimerAudio = setInterval(() => wsSend('Get.audio'), 10_000)
+  // Si le WS singleton est déjà connecté, le watch ne se déclenche pas → envoi immédiat
+  if (wsStatus.value === 'connected') requestData()
+  pollTimer      = setInterval(() => wsSend('Get.Device'), 5_000)
+  pollTimerAudio = setInterval(() => wsSend('Get.audio'),  10_000)
 })
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
+  if (pollTimer)      clearInterval(pollTimer)
   if (pollTimerAudio) clearInterval(pollTimerAudio)
   offWs()
 })
-function refresh() {  pollTimer = setInterval(() => wsSend('Get.Device'), 5_000)
-  pollTimerAudio = setInterval(() => wsSend('Get.audio'), 10_000) }
+
+function refresh() {
+  requestData()
+}
 
 </script>
 
