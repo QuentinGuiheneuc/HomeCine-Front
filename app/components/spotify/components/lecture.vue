@@ -138,8 +138,8 @@ const seekDebounced = useDebounceFn(async (ms: number) => {
   await http.put('/spotify/devices/seek', { query: { position_ms: ms } })
   await loadPlayback()
 }, 250)
-function onSeek(pct: number) {
-  progress.value = pct
+function onSeek(ms: number) {
+  positionMs.value = Math.max(0, Math.min(ms, duration.value))
   seekDebounced(positionMs.value)
 }
 
