@@ -129,105 +129,149 @@ const MOCK_MADE_FOR_YOU: SimplePlaylist[] = [
 ]
 
 /* ═══════════════════════════════════════════════
-   APPELS API (à décommenter & adapter)
+   APPELS API
+   Endpoints backend (HomeCine-Serv/modules/spotify) :
+     GET /spotify/me
+     GET /spotify/me/player/recently-played
+     GET /spotify/browse/featured-playlists
+     GET /spotify/browse/new-releases
+     GET /spotify/playlists/me  (pour "Faits pour vous")
 ═══════════════════════════════════════════════ */
 
-/**
- * Profil de l'utilisateur connecté
- * GET /spotify/me
- */
-// async function fetchUser() {
-//   try {
-//     const { data } = await http.get<UserProfile>('/spotify/me')
-//     user.value = data
-//   } catch (e) { console.warn('[HomeView] fetchUser', e) }
-// }
+/** Profil utilisateur — GET /spotify/me */
+async function fetchUser() {
+  try {
+    const data = await http.get<UserProfile>('/spotify/me')
+    user.value = (data as any)?.data ?? data
+  } catch (e) {
+    console.warn('[HomeView] fetchUser – fallback mock', e)
+    user.value = MOCK_USER
+  }
+}
 
 /**
- * Récemment joués
- * GET /spotify/me/player/recently-played?limit=12
- * → { items: Array<{ played_at, context, track }> }
+ * Récemment joués — GET /spotify/me/player/recently-played?limit=12
+ * Réponse : { items: Array<{ played_at, context, track }>, cursors, next, limit }
+ * On déduplique par track.id pour n'avoir qu'une entrée par morceau.
  */
-// async function fetchRecentlyPlayed() {
-//   try {
-//     const { data } = await http.get<{ items: Array<{ played_at: string; context: any; track: any }> }>(
-//       '/spotify/me/player/recently-played', { params: { limit: 12 } }
-//     )
-//     recentlyPlayed.value = data.items.map(it => ({
-//       played_at: it.played_at,
-//       context_type: it.context?.type,
-//       context_uri: it.context?.uri,
-//       id: it.track.id,
-//       name: it.track.name,
-//       subtitle: (it.track.artists ?? []).map((a: Artist) => a.name).join(', '),
-//       image: it.track.album?.images?.[1]?.url ?? it.track.album?.images?.[0]?.url,
-//       uri: it.track.uri,
-//     }))
-//   } catch (e) { console.warn('[HomeView] fetchRecentlyPlayed', e) }
-// }
+async function fetchRecentlyPlayed() {
+  try {
+    const raw = await http.get<{ items: Array<{ played_at: string; context: any; track: any }> }>(
+      '/spotify/me/player/recently-played', { params: { limit: 20 } }
+    )
+    const data = (raw as any)?.data ?? raw
+    const seen = new Set<string>()
+    const items: RecentItem[] = []
+    for (const it of (data.items ?? [])) {
+      const t = it.track
+      if (!t?.id || seen.has(t.id)) continue
+      seen.add(t.id)
+      items.push({
+        played_at:    it.played_at,
+        context_type: it.context?.type,
+        context_uri:  it.context?.uri,
+        id:           t.id,
+        name:         t.name,
+        subtitle:     (t.artists ?? []).map((a: Artist) => a.name).join(', '),
+        image:        t.album?.images?.[1]?.url ?? t.album?.images?.[0]?.url,
+        uri:          t.uri,
+      })
+      if (items.length >= 12) break
+    }
+    if (items.length) recentlyPlayed.value = items
+    else recentlyPlayed.value = MOCK_RECENTLY_PLAYED
+  } catch (e) {
+    console.warn('[HomeView] fetchRecentlyPlayed – fallback mock', e)
+    recentlyPlayed.value = MOCK_RECENTLY_PLAYED
+  }
+}
 
 /**
- * Playlists mises en avant
- * GET /spotify/browse/featured-playlists?locale=fr_FR&limit=12
- * → { message: string, playlists: Paging<SimplePlaylist> }
+ * Playlists mises en avant — GET /spotify/browse/featured-playlists
+ * Réponse : { message, playlists: { items: SimplePlaylist[] } }
  */
-// async function fetchFeatured() {
-//   try {
-//     const { data } = await http.get<{ playlists: { items: SimplePlaylist[] } }>(
-//       '/spotify/browse/featured-playlists', { params: { locale: 'fr_FR', limit: 12 } }
-//     )
-//     featured.value = (data.playlists?.items ?? []).map(p => ({ ...p, type: 'playlist' as const }))
-//   } catch (e) { console.warn('[HomeView] fetchFeatured', e) }
-// }
+async function fetchFeatured() {
+  try {
+    const raw = await http.get<{ playlists: { items: SimplePlaylist[] } }>(
+      '/spotify/browse/featured-playlists', { params: { locale: 'fr_FR', country: 'FR', limit: 12 } }
+    )
+    const data = (raw as any)?.data ?? raw
+    const items = (data.playlists?.items ?? []).map((p: any) => ({ ...p, type: 'playlist' as const }))
+    if (items.length) featured.value = items
+    else featured.value = MOCK_FEATURED
+  } catch (e) {
+    console.warn('[HomeView] fetchFeatured – fallback mock', e)
+    featured.value = MOCK_FEATURED
+  }
+}
 
 /**
- * Nouvelles sorties
- * GET /spotify/browse/new-releases?market=FR&limit=12
- * → { albums: Paging<SimpleAlbum> }
+ * Nouvelles sorties — GET /spotify/browse/new-releases
+ * Réponse : { albums: { items: SimpleAlbum[] } }
  */
-// async function fetchNewReleases() {
-//   try {
-//     const { data } = await http.get<{ albums: { items: SimpleAlbum[] } }>(
-//       '/spotify/browse/new-releases', { params: { market: 'FR', limit: 12 } }
-//     )
-//     newReleases.value = (data.albums?.items ?? []).map(a => ({ ...a, type: 'album' as const }))
-//   } catch (e) { console.warn('[HomeView] fetchNewReleases', e) }
-// }
+async function fetchNewReleases() {
+  try {
+    const raw = await http.get<{ albums: { items: SimpleAlbum[] } }>(
+      '/spotify/browse/new-releases', { params: { country: 'FR', limit: 12 } }
+    )
+    const data = (raw as any)?.data ?? raw
+    const items = (data.albums?.items ?? []).map((a: any) => ({ ...a, type: 'album' as const }))
+    if (items.length) newReleases.value = items
+    else newReleases.value = MOCK_NEW_RELEASES
+  } catch (e) {
+    console.warn('[HomeView] fetchNewReleases – fallback mock', e)
+    newReleases.value = MOCK_NEW_RELEASES
+  }
+}
 
 /**
- * Faits pour vous (Discover Weekly, Daily Mixes…)
- * Il n'y a pas de endpoint Spotify dédié : on filtre les playlists de l'utilisateur
- * dont le owner.id === 'spotify' et dont le nom contient "Mix" ou "Découvertes".
- * GET /spotify/playlists/me?limit=50  (déjà disponible dans LibrarySidebar)
+ * Faits pour vous — GET /spotify/playlists/me?limit=50
+ * On filtre les playlists dont le owner est Spotify
+ * et dont le nom contient des mots-clés caractéristiques.
  */
-// async function fetchMadeForYou(allPlaylists: SimplePlaylist[]) {
-//   const keywords = ['mix', 'découverte', 'radar', 'revisit', 'daily', 'weekly']
-//   madeForYou.value = allPlaylists.filter(p =>
-//     p.owner?.display_name?.toLowerCase() === 'spotify' &&
-//     keywords.some(k => p.name.toLowerCase().includes(k))
-//   ).slice(0, 8)
-// }
+async function fetchMadeForYou() {
+  try {
+    const raw = await http.get<{ items: SimplePlaylist[] }>(
+      '/spotify/playlists/me', { params: { limit: 50 } }
+    )
+    const data = (raw as any)?.data ?? raw
+    const keywords = ['mix', 'découverte', 'radar', 'revisit', 'daily', 'weekly', 'mélange', 'release']
+    const items = (data.items ?? [])
+      .filter((p: any) =>
+        (p.owner?.id === 'spotify' || p.owner?.display_name?.toLowerCase() === 'spotify') &&
+        keywords.some(k => p.name.toLowerCase().includes(k))
+      )
+      .slice(0, 8)
+      .map((p: any) => ({ ...p, type: 'playlist' as const }))
+    if (items.length) madeForYou.value = items
+    else madeForYou.value = MOCK_MADE_FOR_YOU
+  } catch (e) {
+    console.warn('[HomeView] fetchMadeForYou – fallback mock', e)
+    madeForYou.value = MOCK_MADE_FOR_YOU
+  }
+}
 
 /* ═══════════════════════════════════════════════
-   INIT (mock → vrai fetch quand prêt)
+   INIT
 ═══════════════════════════════════════════════ */
 onMounted(async () => {
-  // — Remplacer par les vrais appels API —
-  // await Promise.allSettled([ fetchUser(), fetchRecentlyPlayed(), fetchFeatured(), fetchNewReleases() ])
-
-  user.value          = MOCK_USER
-  recentlyPlayed.value = MOCK_RECENTLY_PLAYED
-  featured.value      = MOCK_FEATURED
-  newReleases.value   = MOCK_NEW_RELEASES
-  madeForYou.value    = MOCK_MADE_FOR_YOU
-  loading.value       = false
-
-  // couleur du gradient selon l'heure
+  // gradient selon l'heure
   const h = new Date().getHours()
-  if (h < 6)       gradientColor.value = '#0d1b2a'  // nuit  – bleu nuit
-  else if (h < 12) gradientColor.value = '#1a2e1c'  // matin – vert forêt
-  else if (h < 18) gradientColor.value = '#2a1f0e'  // après-midi – orangé sombre
-  else             gradientColor.value = '#1a1a2e'  // soir – violet
+  if (h < 6)       gradientColor.value = '#0d1b2a'
+  else if (h < 12) gradientColor.value = '#1a2e1c'
+  else if (h < 18) gradientColor.value = '#2a1f0e'
+  else             gradientColor.value = '#1a1a2e'
+
+  // appels parallèles — chacun retombe sur les mocks en cas d'erreur
+  await Promise.allSettled([
+    fetchUser(),
+    fetchRecentlyPlayed(),
+    fetchFeatured(),
+    fetchNewReleases(),
+    fetchMadeForYou(),
+  ])
+
+  loading.value = false
 })
 
 /* ═══════════════════════════════════════════════
