@@ -186,47 +186,10 @@ async function fetchRecentlyPlayed() {
   }
 }
 
-/**
- * Playlists mises en avant — GET /spotify/browse/featured-playlists
- * Réponse : { message, playlists: { items: SimplePlaylist[] } }
- */
-async function fetchFeatured() {
-  try {
-    const { data } = await http.get<{ playlists: { items: SimplePlaylist[] } }>(
-      '/spotify/browse/featured-playlists', { params: { locale: 'fr_FR', country: 'FR', limit: 12 } }
-    )
-    const items = (data.playlists?.items ?? []).map((p: any) => ({ ...p, type: 'playlist' as const }))
-    if (items.length) featured.value = items
-    else featured.value = MOCK_FEATURED
-  } catch (e) {
-    console.warn('[HomeView] fetchFeatured – fallback mock', e)
-    featured.value = MOCK_FEATURED
-  }
-}
+// ⚠️ GET /browse/featured-playlists et GET /browse/new-releases sont dépréciés
+// par Spotify depuis 2024 (403 pour les nouvelles apps). On garde les mocks.
+// Remplacer par une alternative si Spotify en propose une à l'avenir.
 
-/**
- * Nouvelles sorties — GET /spotify/browse/new-releases
- * Réponse : { albums: { items: SimpleAlbum[] } }
- */
-async function fetchNewReleases() {
-  try {
-    const { data } = await http.get<{ albums: { items: SimpleAlbum[] } }>(
-      '/spotify/browse/new-releases', { params: { country: 'FR', limit: 12 } }
-    )
-    const items = (data.albums?.items ?? []).map((a: any) => ({ ...a, type: 'album' as const }))
-    if (items.length) newReleases.value = items
-    else newReleases.value = MOCK_NEW_RELEASES
-  } catch (e) {
-    console.warn('[HomeView] fetchNewReleases – fallback mock', e)
-    newReleases.value = MOCK_NEW_RELEASES
-  }
-}
-
-/**
- * Faits pour vous — GET /spotify/playlists/me?limit=50
- * On filtre les playlists dont le owner est Spotify
- * et dont le nom contient des mots-clés caractéristiques.
- */
 /**
  * Faits pour vous — GET /spotify/playlists/me?limit=50
  * Filtre les playlists dont le owner est Spotify + mots-clés caractéristiques.
@@ -263,14 +226,14 @@ onMounted(async () => {
   else if (h < 18) gradientColor.value = '#2a1f0e'
   else             gradientColor.value = '#1a1a2e'
 
-  // appels parallèles — chacun retombe sur les mocks en cas d'erreur
+  // appels API fonctionnels (featured-playlists et new-releases sont dépréciés par Spotify → mocks)
   await Promise.allSettled([
     fetchUser(),
     fetchRecentlyPlayed(),
-    fetchFeatured(),
-    fetchNewReleases(),
     fetchMadeForYou(),
   ])
+  featured.value      = MOCK_FEATURED
+  newReleases.value   = MOCK_NEW_RELEASES
 
   loading.value = false
 })
