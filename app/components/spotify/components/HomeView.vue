@@ -141,8 +141,8 @@ const MOCK_MADE_FOR_YOU: SimplePlaylist[] = [
 /** Profil utilisateur — GET /spotify/me */
 async function fetchUser() {
   try {
-    const data = await http.get<UserProfile>('/spotify/me')
-    user.value = (data as any)?.data ?? data
+    const { data } = await http.get<UserProfile>('/spotify/me')
+    user.value = data
   } catch (e) {
     console.warn('[HomeView] fetchUser – fallback mock', e)
     user.value = MOCK_USER
@@ -150,16 +150,16 @@ async function fetchUser() {
 }
 
 /**
- * Récemment joués — GET /spotify/me/player/recently-played?limit=12
+ * Récemment joués — GET /spotify/me/player/recently-played
+ * Scope requis : user-read-recently-played
  * Réponse : { items: Array<{ played_at, context, track }>, cursors, next, limit }
- * On déduplique par track.id pour n'avoir qu'une entrée par morceau.
+ * On déduplique par track.id pour n'afficher chaque titre qu'une seule fois.
  */
 async function fetchRecentlyPlayed() {
   try {
-    const raw = await http.get<{ items: Array<{ played_at: string; context: any; track: any }> }>(
+    const { data } = await http.get<{ items: Array<{ played_at: string; context: any; track: any }> }>(
       '/spotify/me/player/recently-played', { params: { limit: 20 } }
     )
-    const data = (raw as any)?.data ?? raw
     const seen = new Set<string>()
     const items: RecentItem[] = []
     for (const it of (data.items ?? [])) {
@@ -192,10 +192,9 @@ async function fetchRecentlyPlayed() {
  */
 async function fetchFeatured() {
   try {
-    const raw = await http.get<{ playlists: { items: SimplePlaylist[] } }>(
+    const { data } = await http.get<{ playlists: { items: SimplePlaylist[] } }>(
       '/spotify/browse/featured-playlists', { params: { locale: 'fr_FR', country: 'FR', limit: 12 } }
     )
-    const data = (raw as any)?.data ?? raw
     const items = (data.playlists?.items ?? []).map((p: any) => ({ ...p, type: 'playlist' as const }))
     if (items.length) featured.value = items
     else featured.value = MOCK_FEATURED
@@ -211,10 +210,9 @@ async function fetchFeatured() {
  */
 async function fetchNewReleases() {
   try {
-    const raw = await http.get<{ albums: { items: SimpleAlbum[] } }>(
+    const { data } = await http.get<{ albums: { items: SimpleAlbum[] } }>(
       '/spotify/browse/new-releases', { params: { country: 'FR', limit: 12 } }
     )
-    const data = (raw as any)?.data ?? raw
     const items = (data.albums?.items ?? []).map((a: any) => ({ ...a, type: 'album' as const }))
     if (items.length) newReleases.value = items
     else newReleases.value = MOCK_NEW_RELEASES
@@ -229,12 +227,15 @@ async function fetchNewReleases() {
  * On filtre les playlists dont le owner est Spotify
  * et dont le nom contient des mots-clés caractéristiques.
  */
+/**
+ * Faits pour vous — GET /spotify/playlists/me?limit=50
+ * Filtre les playlists dont le owner est Spotify + mots-clés caractéristiques.
+ */
 async function fetchMadeForYou() {
   try {
-    const raw = await http.get<{ items: SimplePlaylist[] }>(
+    const { data } = await http.get<{ items: SimplePlaylist[] }>(
       '/spotify/playlists/me', { params: { limit: 50 } }
     )
-    const data = (raw as any)?.data ?? raw
     const keywords = ['mix', 'découverte', 'radar', 'revisit', 'daily', 'weekly', 'mélange', 'release']
     const items = (data.items ?? [])
       .filter((p: any) =>
