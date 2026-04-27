@@ -69,6 +69,9 @@ const ms = (v: number) => {
   return `${m}:${ss}`
 }
 
+/** Supprime les balises HTML d'une description Spotify (ex: <a href="…">…</a>) */
+const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').trim()
+
 /* ---------- Lecture ---------- */
 /** Tente le contexte "collection", sinon fallback URIs */
 async function playLikedContext(offset = 0) {
@@ -120,7 +123,7 @@ function onRowPlay(idx: number) {
         <div class="min-w-0 pb-1">
           <p class="text-xs uppercase tracking-widest text-dimmed mb-1">Playlist</p>
           <h1 class="text-2xl font-bold leading-tight truncate">{{ item?.name || 'Playlist' }}</h1>
-          <p v-if="item?.description" class="mt-1 text-xs text-dimmed line-clamp-2" v-html="item.description" />
+          <p v-if="item?.description" class="mt-1 text-xs text-dimmed line-clamp-2">{{ stripHtml(item.description) }}</p>
           <p class="mt-2 text-xs text-dimmed">
             {{ item.tracks?.total ?? rows.length }} titre{{ (item.tracks?.total ?? rows.length) !== 1 ? 's' : '' }}
             <template v-if="rows.length !== (item.tracks?.total ?? rows.length)">

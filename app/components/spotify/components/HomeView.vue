@@ -221,10 +221,10 @@ async function fetchMadeForYou() {
 onMounted(async () => {
   // gradient selon l'heure
   const h = new Date().getHours()
-  if (h < 6)       gradientColor.value = '#0d1b2a'
-  else if (h < 12) gradientColor.value = '#1a2e1c'
-  else if (h < 18) gradientColor.value = '#2a1f0e'
-  else             gradientColor.value = '#1a1a2e'
+  if (h < 6)       gradientColor.value = '--ui-color-primary-500'
+  else if (h < 12) gradientColor.value = '--ui-color-primary-600'
+  else if (h < 18) gradientColor.value = '--ui-color-primary-700'
+  else             gradientColor.value = '--ui-color-primary-900'
 
   // appels API fonctionnels (featured-playlists et new-releases sont dépréciés par Spotify → mocks)
   await Promise.allSettled([
@@ -241,12 +241,9 @@ onMounted(async () => {
 /* ═══════════════════════════════════════════════
    ACTIONS
 ═══════════════════════════════════════════════ */
-async function playUri(uri: string) {
-  try {
-    await http.put('/spotify/devices/play', { context_uri: uri, offset: { position: 0 } })
-  } catch (e) {
-    console.warn('[HomeView] playUri', e)
-  }
+/** Émet play-uri vers le parent (pages/spotify.vue) qui vérifie si l'URI est réel */
+function playUri(uri: string) {
+  if (uri) emit('play-uri', uri)
 }
 
 function handleCardClick(item: { id: string; playlist_id?: string; uri?: string; type?: string }) {
@@ -268,12 +265,12 @@ function handleShortcutClick(item: RecentItem) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto">
+  <div class="overflow-y-auto">
 
     <!-- Fond dégradé dynamique en haut -->
     <div
       class="relative"
-      :style="{ background: `linear-gradient(to bottom, ${gradientColor}cc 0%, transparent 340px)` }"
+      :style="{ background: `linear-gradient(to bottom, var(${gradientColor}) 0%, transparent 340px)` }"
     >
       <div class="px-6 pt-8 pb-6 space-y-8">
 
