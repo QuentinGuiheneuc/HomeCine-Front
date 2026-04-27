@@ -1,0 +1,15 @@
+services:
+  homecine-front:
+    build:
+      context: .
+      args:
+        # URLs du backend — modifier ici selon ton environnement
+        API_URL: http://192.168.1.40:3007
+        WS_BASE: ws://192.168.1.40:8099
+    image: homecine-front:latest
+    container_name: homecine-front
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production

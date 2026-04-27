@@ -18,6 +18,14 @@ export default defineNuxtConfig({
     }
   },
 
+  // Expose les variables d'environnement au bundle client (baked au build)
+  vite: {
+    define: {
+      'process.env.API_URL': JSON.stringify(process.env.API_URL ?? 'http://192.168.1.40:3007'),
+      'process.env.WS_BASE': JSON.stringify(process.env.WS_BASE ?? 'ws://192.168.1.40:8099')
+    }
+  },
+
   routeRules: {
     '/api/**': {
       cors: true
