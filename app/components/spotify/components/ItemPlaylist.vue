@@ -115,56 +115,81 @@ function onRowPlay(idx: number) {
   <div class="flex flex-col h-full min-h-0">
     <!-- Header non scrollant -->
     <div class="pb-3 shrink-0">
-      <div class="flex items-center gap-4">
-        <img :src="cover" class="h-24 w-24 rounded object-cover" alt="" />
-        <div>
-          <h1 class="text-xl font-semibold">{{ item?.name || 'Playlist' }}</h1>
-          <p class="text-sm text-dimmed">
-            {{ rows.length }} / {{ item.tracks?.total ?? rows.length }} titres
+      <div class="flex items-end gap-5">
+        <img :src="cover" class="h-36 w-36 rounded-md object-cover shadow-lg shrink-0" alt="" />
+        <div class="min-w-0 pb-1">
+          <p class="text-xs uppercase tracking-widest text-dimmed mb-1">Playlist</p>
+          <h1 class="text-2xl font-bold leading-tight truncate">{{ item?.name || 'Playlist' }}</h1>
+          <p v-if="item?.description" class="mt-1 text-xs text-dimmed line-clamp-2" v-html="item.description" />
+          <p class="mt-2 text-xs text-dimmed">
+            {{ item.tracks?.total ?? rows.length }} titre{{ (item.tracks?.total ?? rows.length) !== 1 ? 's' : '' }}
+            <template v-if="rows.length !== (item.tracks?.total ?? rows.length)">
+              &nbsp;· {{ rows.length }} chargés
+            </template>
           </p>
-          <div class="mt-2">
-            <UButton icon="i-lucide-play" @click="onHeaderPlay">Lire</UButton>
+          <div class="mt-3 flex items-center gap-2">
+            <UButton icon="i-lucide-play" size="sm" @click="onHeaderPlay">Lire</UButton>
+            <UButton icon="i-lucide-shuffle" size="sm" variant="ghost" color="neutral" @click="onHeaderPlay" />
           </div>
         </div>
       </div>
-      <p v-if="item?.description" class="mt-2 text-sm text-dimmed line-clamp-2">
-        {{ item.description }}
-      </p>
     </div>
 
     <!-- Zone scrollable interne -->
     <div
-      class="flex-1 min-h-0 overflow-y-auto rounded-md border border-default divide-y divide-default"
+      class="flex-1 min-h-0 overflow-y-auto"
       :style="{ paddingBottom: (playerHeight ?? 104) + 'px' }"
     >
-      <div v-if="rows.length === 0" class="p-3 text-sm text-dimmed">Aucun titre.</div>
+      <!-- En-tête colonnes -->
+      <div class="grid grid-cols-[2rem_2rem_1fr_1fr_4rem] gap-x-3 px-2 py-1.5 text-[11px] uppercase tracking-wider text-dimmed border-b border-default sticky top-0 bg-background/80 backdrop-blur z-10">
+        <span class="text-center">#</span>
+        <span />
+        <span>Titre</span>
+        <span class="hidden md:block">Album</span>
+        <span class="text-right">Durée</span>
+      </div>
+
+      <div v-if="rows.length === 0" class="p-4 text-sm text-dimmed">Aucun titre.</div>
 
       <div
         v-for="(t, idx) in rows"
         :key="t.id"
-        class="group flex items-center gap-3 p-2 hover:bg-elevated/40"
+        class="group grid grid-cols-[2rem_2rem_1fr_1fr_4rem] gap-x-3 items-center px-2 py-1.5 hover:bg-elevated/40 rounded cursor-default"
         @dblclick="onRowPlay(idx)"
       >
-        <span class="w-8 text-center text-xs tabular-nums text-dimmed">{{ idx + 1 }}</span>
+        <!-- Numéro / bouton play -->
+        <div class="flex items-center justify-center">
+          <span class="text-xs tabular-nums text-dimmed group-hover:hidden">{{ idx + 1 }}</span>
+          <UButton
+            icon="i-lucide-play"
+            variant="ghost"
+            color="neutral"
+            size="xs"
+            class="hidden group-hover:flex"
+            @click.stop="onRowPlay(idx)"
+          />
+        </div>
 
+        <!-- Miniature album -->
         <img
-          :src="t.album?.images?.[2]?.url || t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || 'https://via.placeholder.com/96x96?text=♪'"
-          class="h-18 w-18 rounded object-cover"
+          :src="t.album?.images?.[2]?.url || t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || 'https://via.placeholder.com/40x40?text=♪'"
+          class="h-8 w-8 rounded object-cover"
           :alt="t.name"
         />
 
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium">{{ t.name }}</p>
+        <!-- Titre + artistes -->
+        <div class="min-w-0">
+          <p class="truncate text-sm font-medium leading-tight">{{ t.name }}</p>
           <p class="truncate text-xs text-dimmed">
             {{ (t.artists || []).map(a => a.name).join(', ') }}
           </p>
         </div>
 
-        <span class="text-xs text-dimmed w-12 text-right">{{ ms(t.duration_ms) }}</span>
+        <!-- Album name -->
+        <p class="hidden md:block truncate text-xs text-dimmed">{{ t.album?.name ?? '' }}</p>
 
-        <div class="ms-2 hidden items-center gap-1 group-hover:flex">
-          <UButton icon="i-lucide-play" variant="ghost" size="xs" @click="onRowPlay(idx)" />
-        </div>
+        <!-- Durée -->
+        <span class="text-xs tabular-nums text-dimmed text-right">{{ ms(t.duration_ms) }}</span>
       </div>
 
       <div v-if="hasMore" class="p-3">

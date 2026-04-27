@@ -42,29 +42,15 @@ export function useSnapWs() {
     _notifHandlers.forEach(h => h(msg))
   })
 
-  /**
-   * Envoie un appel JSON-RPC et retourne une Promise avec la réponse.
-   * @param method — ex. 'Server.GetStatusLocal'
-   * @param params — paramètres optionnels
-   * @param timeout — délai max en ms (défaut 5000)
-   */
-  function rpc(method: string, params: object = {}, timeout = 5000): Promise<any> {
+  /** Envoie un appel JSON-RPC et retourne une Promise avec la réponse. */
+  function rpc(method: string, params: object = {}): Promise<any> {
     return new Promise((resolve, reject) => {
       const id = ++_rpcId
-      const timer = setTimeout(() => {
-        _pending.delete(id)
-        reject(new Error(`Timeout RPC ${method} #${id}`))
-      }, timeout)
-
       _pending.set(id, (result, error) => {
-        clearTimeout(timer)
         if (error) reject(error)
         else resolve(result)
       })
-
-      const ok = send({ jsonrpc: '2.0', id, method, params })
-      if (!ok) {
-        clearTimeout(timer)
+      if (!send({ jsonrpc: '2.0', id, method, params })) {
         _pending.delete(id)
         reject(new Error('WebSocket non connecté'))
       }

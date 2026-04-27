@@ -5,7 +5,7 @@
 import Lecture from '@/components/spotify/components/lecture.vue'
 import LibrarySidebar from '@/components/spotify/components/LibrarySidebar.vue'
 import ItemPlaylist from '@/components/spotify/components/ItemPlaylist.vue'
-import PlaylistList from '@/components/spotify/components/PlaylistList.vue'
+import HomeView from '@/components/spotify/components/HomeView.vue'
 import { usePlaylists } from '@/components/spotify/composable/usePlaylists'
 import { useEventListener } from '@vueuse/core'
 import http from '@/src/lib/https'
@@ -50,6 +50,16 @@ const playerHeight = 104
 const { playlist, fetchPlaylist } = usePlaylists()
 const route = useRoute()
 const router = useRouter()
+
+/* Nom + cover affichés dans le breadcrumb */
+const currentPlaylistName = computed(() => {
+  if (selectedId.value === 'liked') return likedDetail.value?.name ?? 'Titres likés'
+  return playlist.value?.name ?? ''
+})
+const currentPlaylistCover = computed(() => {
+  if (selectedId.value === 'liked') return likedDetail.value?.images?.[0]?.url ?? null
+  return playlist.value?.images?.[0]?.url ?? null
+})
 
 // null => vue liste ; 'liked' => Titres likés ; sinon => id playlist
 const selectedId = ref<string | null>(null)
@@ -231,11 +241,21 @@ async function onPlayLikedAt(offset: number) {
               <!-- Vue détail (playlist ou liked) -->
               <div v-if="selectedId" class="flex flex-col h-full min-h-0">
                 <!-- Header sticky local -->
-                <div class="mb-4 flex items-center gap-2 sticky top-0 z-10 bg-elevated/60 backdrop-blur py-2">
-                  <UButton icon="i-lucide-arrow-left" variant="ghost" @click="clearSelection">Retour</UButton>
-                  <span class="text-sm text-dimmed">
-                    {{ selectedId === 'liked' ? 'Titres likés' : `Playlist: ${selectedId}` }}
-                  </span>
+                <div class="mb-4 flex items-center gap-2 sticky top-0 z-10 bg-elevated/60 backdrop-blur py-2 px-1">
+                  <UButton icon="i-lucide-arrow-left" variant="ghost" size="sm" @click="clearSelection" />
+                  <img
+                    v-if="currentPlaylistCover"
+                    :src="currentPlaylistCover"
+                    class="h-7 w-7 rounded object-cover shrink-0"
+                    alt=""
+                  />
+                  <div
+                    v-else-if="selectedId === 'liked'"
+                    class="h-7 w-7 rounded bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shrink-0"
+                  >
+                    <UIcon name="i-lucide-heart" class="text-white size-3.5" />
+                  </div>
+                  <span class="text-sm font-medium truncate">{{ currentPlaylistName }}</span>
                 </div>
 
                 <!-- États -->
@@ -281,11 +301,13 @@ async function onPlayLikedAt(offset: number) {
                 <div v-else class="text-sm text-dimmed">Aucune donnée.</div>
               </div>
 
-              <!-- Vue liste par défaut -->
-              <div v-else class="h-full overflow-auto">
-                <h1 class="text-2xl font-semibold mb-6">Playlists</h1>
-                <PlaylistList />
-              </div>
+              <!-- Vue accueil style Spotify -->
+              <HomeView
+                v-else
+                @select-playlist="selectPlaylist"
+                @open-liked="openLiked"
+                @play-uri="(uri) => http.put('/spotify/devices/play', { context_uri: uri, offset: { position: 0 } }).catch(() => {})"
+              />
             </div>
           </Transition>
         </div>
