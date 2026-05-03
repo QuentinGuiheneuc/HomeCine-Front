@@ -5,11 +5,6 @@ export default defineNuxtConfig({
     '@nuxt/ui',
     '@vueuse/nuxt'
   ],
-
-  devtools: {
-    enabled: true
-  },
-
   css: ['~/assets/css/main.css', '~/assets/css/sliders-many-colors.css'],
 
   runtimeConfig: {

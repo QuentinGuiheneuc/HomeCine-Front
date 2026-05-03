@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Devices — Options de design</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #e5e5e5; padding: 32px 24px; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 40px; }
+
+  /* ── Section label ─────────────────────────────── */
+  .section-label {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 16px;
+  }
+  .section-label h2 { font-size: 15px; font-weight: 600; color: #fff; }
+  .section-label .badge {
+    background: #2563eb22; color: #60a5fa;
+    border: 1px solid #2563eb44;
+    font-size: 11px; padding: 2px 8px; border-radius: 99px;
+  }
+  .section-label p { font-size: 12px; color: #666; margin-top: 4px; }
+  .label-desc { display: flex; flex-direction: column; }
+  .section { margin-bottom: 56px; }
+
+  /* ── Shared UI atoms ───────────────────────────── */
+  .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; }
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 6px; font-size: 11px; border: 1px solid #333; background: #222; color: #bbb; cursor: pointer; }
+  .btn-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .btn-sm { padding: 2px 7px; font-size: 10px; }
+  .dot-green  { width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block; }
+  .dot-gray   { width: 8px; height: 8px; border-radius: 50%; background: #444;    display: inline-block; }
+  .dot-ws     { width: 7px; height: 7px; border-radius: 50%; background: #34d399; display: inline-block; box-shadow: 0 0 6px #34d39966; }
+  .badge-online  { background: #064e3b; color: #34d399; border: 1px solid #065f4622; font-size: 10px; padding: 1px 6px; border-radius: 99px; }
+  .badge-offline { background: #1c1c1c; color: #555; border: 1px solid #333; font-size: 10px; padding: 1px 6px; border-radius: 99px; }
+  .badge-type { background: #1e293b; color: #7dd3fc; border: 1px solid #1e40af33; font-size: 10px; padding: 1px 6px; border-radius: 99px; }
+  .tag { background: #1e1e1e; color: #666; border: 1px solid #2a2a2a; font-size: 10px; padding: 1px 6px; border-radius: 4px; }
+  .slider { width: 100%; height: 4px; border-radius: 2px; background: linear-gradient(to right, #2563eb 65%, #333 65%); appearance: none; outline: none; }
+  .slider-sm { width: 100%; height: 3px; border-radius: 2px; background: linear-gradient(to right, #2563eb 40%, #333 40%); }
+  .divider { border: none; border-top: 1px solid #222; margin: 0; }
+  .mono { font-family: monospace; }
+  .dimmed { color: #555; }
+  .icon { font-size: 13px; }
+
+  /* ──────────────────────────────────────────────── */
+  /* OPTION A — Liste accordéon                       */
+  /* ──────────────────────────────────────────────── */
+  .opt-a { max-width: 860px; }
+
+  /* Topbar */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    background: #141414; border: 1px solid #252525; border-radius: 10px;
+    margin-bottom: 12px;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 10px; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
+
+  /* Filter bar */
+  .filterbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: #141414; border: 1px solid #252525; border-radius: 8px;
+    margin-bottom: 10px; font-size: 11px;
+  }
+  .search-input {
+    flex: 1; background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 6px;
+    padding: 4px 10px; color: #999; font-size: 11px;
+  }
+
+  /* Accordion list */
+  .acc-list { display: flex; flex-direction: column; gap: 3px; }
+
+  .acc-row {
+    background: #171717; border: 1px solid #252525; border-radius: 8px;
+    overflow: hidden;
+  }
+  .acc-row.open { border-color: #2563eb44; }
+
+  .acc-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; cursor: pointer;
+  }
+  .acc-header:hover { background: #1e1e1e; }
+
+  .acc-name { font-weight: 600; font-size: 13px; flex: 1; }
+  .acc-ip { font-family: monospace; font-size: 10px; color: #555; }
+  .acc-vban { font-size: 10px; color: #444; }
+  .acc-level-bar {
+    width: 60px; height: 5px; border-radius: 3px;
+    background: linear-gradient(to right, #34d399 75%, #333 75%);
+  }
+  .acc-chevron { color: #444; font-size: 12px; transition: transform .2s; }
+  .acc-row.open .acc-chevron { transform: rotate(180deg); color: #60a5fa; }
+
+  .acc-body {
+    padding: 12px 14px 14px;
+    border-top: 1px solid #222;
+    background: #131313;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  }
+  .audio-section { display: flex; flex-direction: column; gap: 6px; }
+  .audio-section-title {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .05em; color: #555;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .audio-vol-row { display: flex; align-items: center; gap: 6px; font-size: 10px; }
+  .audio-vol-row .pct { color: #60a5fa; font-family: monospace; width: 28px; text-align: right; }
+  .ch-rows { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+  .ch-row { display: flex; align-items: center; gap: 6px; font-size: 9px; color: #555; }
+  .ch-row .ch-slider { flex: 1; height: 2px; background: linear-gradient(to right, #2563eb55 45%, #2a2a2a 45%); border-radius: 2px; }
+
+  .acc-actions {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px;
+    border-top: 1px solid #1e1e1e;
+    background: #131313;
+  }
+
+  /* ──────────────────────────────────────────────── */
+  /* OPTION B — Split layout                          */
+  /* ──────────────────────────────────────────────── */
+  .opt-b { max-width: 960px; }
+  .split { display: flex; gap: 0; border: 1px solid #252525; border-radius: 12px; overflow: hidden; }
+
+  /* Left list */
+  .split-left { width: 280px; min-width: 280px; background: #141414; border-right: 1px solid #252525; display: flex; flex-direction: column; }
+  .split-left-header { padding: 12px 14px; border-bottom: 1px solid #222; display: flex; align-items: center; justify-content: space-between; }
+  .split-left-search { padding: 8px 10px; border-bottom: 1px solid #1e1e1e; }
+  .split-left-search input { width: 100%; background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 6px; padding: 5px 9px; color: #888; font-size: 11px; }
+
+  .split-device-list { flex: 1; overflow: auto; }
+  .split-device-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border-bottom: 1px solid #1c1c1c;
+    cursor: pointer;
+  }
+  .split-device-item:hover { background: #1e1e1e; }
+  .split-device-item.active { background: #1e293b; border-left: 2px solid #2563eb; }
+  .split-device-name { font-size: 12px; font-weight: 500; flex: 1; }
+  .split-device-ip { font-family: monospace; font-size: 9px; color: #555; }
+  .split-device-level { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+  .mini-bar { width: 36px; height: 3px; border-radius: 2px; }
+  .mini-bar.out { background: linear-gradient(to right, #2563eb 70%, #2a2a2a 70%); }
+  .mini-bar.inp { background: linear-gradient(to right, #7c3aed 45%, #2a2a2a 45%); }
+
+  /* Right detail */
+  .split-right { flex: 1; background: #111; display: flex; flex-direction: column; }
+  .split-right-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid #222;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .split-right-body { flex: 1; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .detail-card { background: #1a1a1a; border: 1px solid #252525; border-radius: 8px; padding: 10px 12px; }
+  .detail-card-title { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: #444; margin-bottom: 6px; }
+
+  .audio-detail { background: #151515; border: 1px solid #222; border-radius: 10px; padding: 14px; }
+  .audio-detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .audio-detail-section { margin-bottom: 12px; }
+  .audio-detail-label { font-size: 10px; color: #555; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; }
+  .vol-row { display: flex; align-items: center; gap: 8px; font-size: 11px; margin-bottom: 8px; }
+  .vol-row .pct { font-family: monospace; color: #60a5fa; width: 32px; text-align: right; }
+  .ch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .ch-item { display: flex; align-items: center; gap: 5px; font-size: 9px; color: #555; }
+  .ch-item .bar { flex: 1; height: 2px; border-radius: 1px; background: linear-gradient(to right, #2563eb55 50%, #222 50%); }
+
+  /* ──────────────────────────────────────────────── */
+  /* OPTION C — Cards larges avec jauges              */
+  /* ──────────────────────────────────────────────── */
+  .opt-c { max-width: 860px; }
+  .big-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  .big-card { background: #161616; border: 1px solid #252525; border-radius: 14px; overflow: hidden; }
+  .big-card-header {
+    padding: 14px 16px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .device-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: #2563eb22; border: 1px solid #2563eb33;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .big-card-title { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+  .big-card-sub { font-size: 10px; color: #555; font-family: monospace; }
+  .big-card-badges { display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
+
+  .big-card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* Gauge VU-meter style */
+  .vu-section { display: flex; flex-direction: column; gap: 8px; }
+  .vu-label { font-size: 10px; color: #555; display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+  .vu-bar-wrap {
+    height: 12px; border-radius: 4px; background: #1c1c1c;
+    overflow: hidden; position: relative;
+  }
+  .vu-bar {
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(to right, #059669, #34d399 60%, #fbbf24 80%, #ef4444);
+    transition: width .3s;
+  }
+  .vu-bar-wrap::after {
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0;
+    width: 30%; background: #1c1c1c; border-radius: 4px;
+  }
+  .vu-bar-75 { width: 75%; }
+  .vu-bar-45 { width: 45%; }
+  .vu-bar-62 { width: 62%; }
+  .vu-bar-30 { width: 30%; }
+
+  .vu-pct {
+    font-size: 22px; font-weight: 700; font-family: monospace;
+    color: #34d399; text-align: right; line-height: 1;
+  }
+  .vu-pct span { font-size: 12px; color: #555; }
+
+  .vol-control { display: flex; align-items: center; gap: 8px; }
+  .vol-control .slider { flex: 1; height: 6px; border-radius: 3px; }
+
+  .quick-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+
+  .big-card-footer {
+    padding: 8px 16px;
+    border-top: 1px solid #1e1e1e;
+    display: flex; align-items: center; justify-content: space-between;
+    background: #121212;
+  }
+  .net-info { font-size: 9px; color: #444; font-family: monospace; }
+  .vban-pill {
+    background: #1e293b; color: #7dd3fc;
+    border: 1px solid #1e40af33;
+    font-size: 9px; padding: 2px 7px; border-radius: 99px; font-family: monospace;
+  }
+
+  /* ── Options labels ───────────────────────────── */
+  .options-grid { display: flex; flex-direction: column; gap: 48px; }
+</style>
+</head>
+<body>
+
+<h1>🎛 /devices — Options de design</h1>
+<p class="subtitle">3 approches visuelles pour la page de gestion des appareils audio</p>
+
+<div class="options-grid">
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- OPTION A                                                -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">
+      <div style="width:28px;height:28px;border-radius:8px;background:#2563eb22;border:1px solid #2563eb44;display:flex;align-items:center;justify-content:center;font-weight:700;color:#60a5fa;font-size:13px;">A</div>
+      <div class="label-desc">
+        <h2>Liste accordéon</h2>
+        <p>Rows compactes • Contrôles audio se déplient au clic • Max de devices visibles</p>
+      </div>
+    </div>
+    <div class="opt-a">
+
+      <!-- Topbar -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <span style="font-size:16px;">🔊</span>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Devices</div>
+            <div style="font-size:10px;color:#555;">3 en ligne · 1 hors ligne</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px;">
+            <span class="dot-ws"></span><span style="color:#555;">connecté</span>
+          </div>
+          <span class="btn">↺ Refresh</span>
+          <span class="btn btn-primary">+ Ajouter</span>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="filterbar">
+        <div style="color:#555;font-size:12px;">🔍</div>
+        <input class="search-input" placeholder="Rechercher par nom, IP, type…" style="pointer-events:none;" />
+        <div style="display:flex;gap:4px;">
+          <span class="btn btn-sm" style="color:#60a5fa;border-color:#2563eb44;background:#1e293b;">Tous</span>
+          <span class="btn btn-sm">2.0</span><span class="btn btn-sm">5.1</span><span class="btn btn-sm">7.1</span>
+        </div>
+        <div style="display:flex;gap:4px;">
+          <span class="btn btn-sm" style="color:#60a5fa;border-color:#2563eb44;background:#1e293b;">En ligne</span>
+          <span class="btn btn-sm">Hors ligne</span>
+        </div>
+        <span style="color:#555;font-size:10px;margin-left:auto;">4 affiché(s)</span>
+      </div>
+
+      <!-- Accordion list -->
+      <div class="acc-list">
+
+        <!-- Row 1 — OPEN -->
+        <div class="acc-row open">
+          <div class="acc-header">
+            <span class="dot-green"></span>
+            <span class="acc-name">Salon Principal</span>
+            <span class="badge-online">En ligne</span>
+            <span class="badge-type">7.1</span>
+            <span class="acc-ip">192.168.1.40</span>
+            <span class="acc-vban">VBAN: main_out · 8ch · 48kHz</span>
+            <div class="acc-level-bar"></div>
+            <span style="color:#555;font-size:11px;">▾</span>
+          </div>
+          <div class="acc-body">
+            <div class="audio-section">
+              <div class="audio-section-title">
+                <span>🔊 Sortie</span>
+                <span class="btn btn-sm" style="color:#f59e0b;border-color:#78350f44;">Mute</span>
+              </div>
+              <div class="audio-vol-row">
+                <span style="color:#555;">Vol</span>
+                <input type="range" class="slider" style="flex:1;" disabled />
+                <span class="pct">75%</span>
+              </div>
+              <div style="display:flex;gap:5px;margin-top:2px;">
+                <span class="btn btn-sm">+5%</span>
+                <span class="btn btn-sm">-5%</span>
+              </div>
+              <div class="ch-rows">
+                <div class="ch-row"><span style="width:40px;color:#444;">FL</span><div class="ch-slider"></div><span>75</span></div>
+                <div class="ch-row"><span style="width:40px;color:#444;">FR</span><div class="ch-slider" style="background:linear-gradient(to right,#2563eb55 50%,#2a2a2a 50%);"></div><span>70</span></div>
+                <div class="ch-row"><span style="width:40px;color:#444;">C</span><div class="ch-slider" style="background:linear-gradient(to right,#2563eb55 60%,#2a2a2a 60%);"></div><span>80</span></div>
+                <div class="ch-row" style="color:#444;">+ 5 autres canaux…</div>
+              </div>
+            </div>
+            <div class="audio-section">
+              <div class="audio-section-title">
+                <span>🎤 Entrée</span>
+                <span class="btn btn-sm" style="color:#555;">Mute: off</span>
+              </div>
+              <div class="audio-vol-row">
+                <span style="color:#555;">Gain</span>
+                <input type="range" class="slider" style="flex:1;background:linear-gradient(to right,#7c3aed 45%,#333 45%);" disabled />
+                <span class="pct" style="color:#a78bfa;">45%</span>
+              </div>
+              <div style="display:flex;gap:5px;margin-top:2px;">
+                <span class="btn btn-sm">+5%</span>
+                <span class="btn btn-sm">-5%</span>
+              </div>
+              <div class="ch-rows">
+                <div class="ch-row"><span style="width:40px;color:#444;">L</span><div class="ch-slider" style="background:linear-gradient(to right,#7c3aed44 40%,#2a2a2a 40%);"></div><span>40</span></div>
+                <div class="ch-row"><span style="width:40px;color:#444;">R</span><div class="ch-slider" style="background:linear-gradient(to right,#7c3aed44 48%,#2a2a2a 48%);"></div><span>48</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="acc-actions">
+            <span class="btn btn-sm">⊞ Détails</span>
+            <span class="btn btn-sm">↗ Ouvrir</span>
+            <span class="btn btn-sm" style="margin-left:auto;color:#444;">{ } Config</span>
+          </div>
+        </div>
+
+        <!-- Row 2 — closed -->
+        <div class="acc-row">
+          <div class="acc-header">
+            <span class="dot-green"></span>
+            <span class="acc-name">Chambre Nord</span>
+            <span class="badge-online">En ligne</span>
+            <span class="badge-type">2.0</span>
+            <span class="acc-ip">192.168.1.42</span>
+            <span class="acc-vban">VBAN: bed_out · 2ch · 44.1kHz</span>
+            <div class="acc-level-bar" style="background:linear-gradient(to right,#34d399 50%,#333 50%);"></div>
+            <span class="acc-chevron">▾</span>
+          </div>
+        </div>
+
+        <!-- Row 3 — closed -->
+        <div class="acc-row">
+          <div class="acc-header">
+            <span class="dot-green"></span>
+            <span class="acc-name">Bureau</span>
+            <span class="badge-online">En ligne</span>
+            <span class="badge-type">5.1</span>
+            <span class="acc-ip">192.168.1.45</span>
+            <span class="acc-vban">VBAN: office · 6ch · 48kHz</span>
+            <div class="acc-level-bar" style="background:linear-gradient(to right,#34d399 85%,#333 85%);"></div>
+            <span class="acc-chevron">▾</span>
+          </div>
+        </div>
+
+        <!-- Row 4 — offline -->
+        <div class="acc-row" style="opacity:.45;">
+          <div class="acc-header">
+            <span class="dot-gray"></span>
+            <span class="acc-name" style="color:#444;">Terrasse</span>
+            <span class="badge-offline">Hors ligne</span>
+            <span class="badge-type">2.0</span>
+            <span class="acc-ip">192.168.1.50</span>
+            <span style="color:#444;font-size:10px;">Aucune donnée audio</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- OPTION B                                                -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">
+      <div style="width:28px;height:28px;border-radius:8px;background:#7c3aed22;border:1px solid #7c3aed44;display:flex;align-items:center;justify-content:center;font-weight:700;color:#a78bfa;font-size:13px;">B</div>
+      <div class="label-desc">
+        <h2>Split — Liste + Panneau détail</h2>
+        <p>Colonne gauche : liste • Colonne droite : contrôles complets du device sélectionné</p>
+      </div>
+    </div>
+    <div class="opt-b">
+      <div class="split" style="height:480px;">
+
+        <!-- Left -->
+        <div class="split-left">
+          <div class="split-left-header">
+            <span style="font-size:12px;font-weight:600;">Devices</span>
+            <div style="display:flex;align-items:center;gap:5px;font-size:10px;">
+              <span class="dot-ws"></span><span style="color:#555;">WS</span>
+            </div>
+          </div>
+          <div class="split-left-search">
+            <input placeholder="🔍 Rechercher…" style="pointer-events:none;" />
+          </div>
+          <div style="padding:6px 8px;font-size:9px;color:#444;border-bottom:1px solid #1c1c1c;">4 APPAREILS</div>
+          <div class="split-device-list">
+            <div class="split-device-item active">
+              <span class="dot-green"></span>
+              <div style="flex:1;">
+                <div class="split-device-name">Salon Principal</div>
+                <div class="split-device-ip">192.168.1.40 · 7.1</div>
+              </div>
+              <div class="split-device-level">
+                <div class="mini-bar out"></div>
+                <div class="mini-bar inp"></div>
+              </div>
+            </div>
+            <div class="split-device-item">
+              <span class="dot-green"></span>
+              <div style="flex:1;">
+                <div class="split-device-name">Chambre Nord</div>
+                <div class="split-device-ip">192.168.1.42 · 2.0</div>
+              </div>
+              <div class="split-device-level">
+                <div class="mini-bar out" style="background:linear-gradient(to right,#2563eb 50%,#2a2a2a 50%);"></div>
+                <div class="mini-bar inp" style="width:36px;height:3px;background:#2a2a2a;"></div>
+              </div>
+            </div>
+            <div class="split-device-item">
+              <span class="dot-green"></span>
+              <div style="flex:1;">
+                <div class="split-device-name">Bureau</div>
+                <div class="split-device-ip">192.168.1.45 · 5.1</div>
+              </div>
+              <div class="split-device-level">
+                <div class="mini-bar out" style="background:linear-gradient(to right,#2563eb 85%,#2a2a2a 85%);"></div>
+                <div class="mini-bar inp" style="background:linear-gradient(to right,#7c3aed 30%,#2a2a2a 30%);"></div>
+              </div>
+            </div>
+            <div class="split-device-item" style="opacity:.4;">
+              <span class="dot-gray"></span>
+              <div style="flex:1;">
+                <div class="split-device-name" style="color:#444;">Terrasse</div>
+                <div class="split-device-ip">192.168.1.50 · 2.0</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:8px 12px;border-top:1px solid #222;">
+            <span class="btn" style="width:100%;justify-content:center;font-size:10px;">+ Ajouter un device</span>
+          </div>
+        </div>
+
+        <!-- Right -->
+        <div class="split-right">
+          <div class="split-right-header">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:18px;">🔊</span>
+              <div>
+                <div style="font-weight:700;font-size:14px;">Salon Principal</div>
+                <div style="font-size:10px;color:#555;font-family:monospace;">192.168.1.40:3007 · 7.1 · pcm:hw:0,0</div>
+              </div>
+              <span class="badge-online">En ligne</span>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <span class="btn btn-sm">↗ Ouvrir</span>
+              <span class="btn btn-sm">⊞ Config</span>
+            </div>
+          </div>
+          <div class="split-right-body">
+
+            <!-- Info grid -->
+            <div class="detail-grid">
+              <div class="detail-card">
+                <div class="detail-card-title">Réseau</div>
+                <div style="font-family:monospace;font-size:11px;">192.168.1.40</div>
+                <div style="font-size:10px;color:#555;">http://192.168.1.40:3007</div>
+              </div>
+              <div class="detail-card">
+                <div class="detail-card-title">VBAN</div>
+                <div style="font-size:11px;font-family:monospace;">main_out</div>
+                <div style="font-size:10px;color:#555;">8ch · 48 000Hz · PCM16</div>
+              </div>
+              <div class="detail-card">
+                <div class="detail-card-title">Audio</div>
+                <div style="font-size:11px;font-family:monospace;">hw:0,0</div>
+                <div style="font-size:10px;color:#555;">card 0 · 8 canaux actifs</div>
+              </div>
+            </div>
+
+            <!-- Audio controls -->
+            <div class="audio-detail">
+              <div class="audio-detail-header">
+                <span style="font-size:12px;font-weight:600;">Contrôles audio live</span>
+                <div style="display:flex;gap:5px;">
+                  <span class="btn btn-sm">↺</span>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <!-- Output -->
+                <div class="audio-detail-section">
+                  <div class="audio-detail-label">
+                    <span style="font-weight:600;">🔊 Sortie</span>
+                    <span class="btn btn-sm" style="color:#f59e0b;border-color:#78350f44;">Mute: off</span>
+                  </div>
+                  <div class="vol-row">
+                    <span style="color:#555;font-size:12px;">🔊</span>
+                    <input type="range" style="flex:1;height:6px;accent-color:#2563eb;" disabled value="75" />
+                    <span class="pct">75%</span>
+                  </div>
+                  <div style="display:flex;gap:4px;margin-bottom:10px;">
+                    <span class="btn btn-sm">+5%</span><span class="btn btn-sm">-5%</span>
+                    <span class="btn btn-sm" style="color:#f59e0b;">Mute</span>
+                  </div>
+                  <div class="audio-detail-label"><span>Canaux</span></div>
+                  <div class="ch-grid">
+                    <div class="ch-item">FL<div class="bar"></div>75</div>
+                    <div class="ch-item">FR<div class="bar" style="background:linear-gradient(to right,#2563eb55 50%,#222 50%);"></div>70</div>
+                    <div class="ch-item">C <div class="bar" style="background:linear-gradient(to right,#2563eb55 60%,#222 60%);"></div>80</div>
+                    <div class="ch-item">LFE<div class="bar" style="background:linear-gradient(to right,#2563eb55 30%,#222 30%);"></div>30</div>
+                    <div class="ch-item">SL<div class="bar" style="background:linear-gradient(to right,#2563eb55 70%,#222 70%);"></div>70</div>
+                    <div class="ch-item">SR<div class="bar" style="background:linear-gradient(to right,#2563eb55 68%,#222 68%);"></div>68</div>
+                    <div class="ch-item">BL<div class="bar" style="background:linear-gradient(to right,#2563eb55 65%,#222 65%);"></div>65</div>
+                    <div class="ch-item">BR<div class="bar" style="background:linear-gradient(to right,#2563eb55 72%,#222 72%);"></div>72</div>
+                  </div>
+                </div>
+                <!-- Input -->
+                <div class="audio-detail-section">
+                  <div class="audio-detail-label">
+                    <span style="font-weight:600;">🎤 Entrée</span>
+                    <span class="btn btn-sm" style="color:#555;">Mute: off</span>
+                  </div>
+                  <div class="vol-row">
+                    <span style="color:#555;font-size:12px;">🎤</span>
+                    <input type="range" style="flex:1;height:6px;accent-color:#7c3aed;" disabled value="45" />
+                    <span class="pct" style="color:#a78bfa;">45%</span>
+                  </div>
+                  <div style="display:flex;gap:4px;margin-bottom:10px;">
+                    <span class="btn btn-sm">+5%</span><span class="btn btn-sm">-5%</span>
+                    <span class="btn btn-sm" style="color:#f59e0b;">Mute</span>
+                  </div>
+                  <div class="audio-detail-label"><span>Canaux</span></div>
+                  <div class="ch-grid">
+                    <div class="ch-item">L<div class="bar" style="background:linear-gradient(to right,#7c3aed44 40%,#222 40%);"></div>40</div>
+                    <div class="ch-item">R<div class="bar" style="background:linear-gradient(to right,#7c3aed44 48%,#222 48%);"></div>48</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- OPTION C                                                -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">
+      <div style="width:28px;height:28px;border-radius:8px;background:#059669;border:1px solid #065f4644;display:flex;align-items:center;justify-content:center;font-weight:700;color:#34d399;font-size:13px;">C</div>
+      <div class="label-desc">
+        <h2>Cards larges avec jauges visuelles</h2>
+        <p>Barres VU-mètre colorées · Niveaux en grand · Actions directes sans dérouler</p>
+      </div>
+    </div>
+    <div class="opt-c">
+
+      <!-- Topbar -->
+      <div class="topbar" style="margin-bottom:14px;">
+        <div class="topbar-left">
+          <span style="font-size:16px;">🔊</span>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Devices</div>
+            <div style="font-size:10px;color:#555;">3 en ligne · 1 hors ligne</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px;">
+            <span class="dot-ws"></span><span style="color:#555;">connecté</span>
+          </div>
+          <span class="btn">↺ Refresh</span>
+          <span class="btn btn-primary">+ Ajouter</span>
+        </div>
+      </div>
+
+      <div class="big-grid">
+
+        <!-- Card 1 -->
+        <div class="big-card">
+          <div class="big-card-header">
+            <div class="device-icon">🔊</div>
+            <div style="flex:1;">
+              <div class="big-card-title">Salon Principal</div>
+              <div class="big-card-sub">192.168.1.40 · 7.1</div>
+              <div class="big-card-badges">
+                <span class="badge-online">● En ligne</span>
+                <span class="badge-type">7.1</span>
+                <span class="vban-pill">VBAN main_out</span>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="vu-pct">75<span>%</span></div>
+              <div style="font-size:9px;color:#555;margin-top:2px;">sortie</div>
+            </div>
+          </div>
+          <div class="big-card-body">
+            <div class="vu-section">
+              <div class="vu-label">
+                <span>🔊 Sortie</span>
+                <span style="color:#555;">Mute: off</span>
+              </div>
+              <div class="vu-bar-wrap"><div class="vu-bar vu-bar-75"></div></div>
+              <div class="vol-control">
+                <span style="color:#555;font-size:11px;">🔇</span>
+                <input type="range" class="slider" style="flex:1;height:6px;accent-color:#2563eb;" disabled value="75" />
+                <span style="font-size:11px;">🔊</span>
+              </div>
+              <div class="quick-btns">
+                <span class="btn btn-sm">+5%</span>
+                <span class="btn btn-sm">-5%</span>
+                <span class="btn btn-sm" style="color:#f59e0b;">Mute</span>
+              </div>
+            </div>
+            <hr class="divider" />
+            <div class="vu-section">
+              <div class="vu-label">
+                <span>🎤 Entrée</span>
+                <span style="color:#555;">Mute: off</span>
+              </div>
+              <div class="vu-bar-wrap"><div class="vu-bar vu-bar-45" style="background:linear-gradient(to right,#059669,#a78bfa 60%,#f59e0b 80%,#ef4444);"></div></div>
+              <div class="vol-control">
+                <span style="color:#555;font-size:11px;">🎤</span>
+                <input type="range" class="slider" style="flex:1;height:6px;accent-color:#7c3aed;" disabled value="45" />
+                <span style="font-size:11px;">🎤</span>
+              </div>
+              <div class="quick-btns">
+                <span class="btn btn-sm">+5%</span>
+                <span class="btn btn-sm">-5%</span>
+                <span class="btn btn-sm" style="color:#f59e0b;">Mute</span>
+              </div>
+            </div>
+          </div>
+          <div class="big-card-footer">
+            <span class="net-info">pcm:hw:0,0 · 8ch actifs</span>
+            <div style="display:flex;gap:5px;">
+              <span class="btn btn-sm">⊞ Détails</span>
+              <span class="btn btn-sm">↗ Ouvrir</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="big-card">
+          <div class="big-card-header">
+            <div class="device-icon">🔉</div>
+            <div style="flex:1;">
+              <div class="big-card-title">Bureau</div>
+              <div class="big-card-sub">192.168.1.45 · 5.1</div>
+              <div class="big-card-badges">
+                <span class="badge-online">● En ligne</span>
+                <span class="badge-type">5.1</span>
+                <span class="vban-pill">VBAN office</span>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="vu-pct" style="color:#fbbf24;">85<span>%</span></div>
+              <div style="font-size:9px;color:#555;margin-top:2px;">sortie</div>
+            </div>
+          </div>
+          <div class="big-card-body">
+            <div class="vu-section">
+              <div class="vu-label"><span>🔊 Sortie</span><span style="color:#555;">Mute: off</span></div>
+              <div class="vu-bar-wrap"><div class="vu-bar" style="width:85%;"></div></div>
+              <div class="vol-control">
+                <span style="color:#555;font-size:11px;">🔇</span>
+                <input type="range" class="slider" style="flex:1;height:6px;accent-color:#2563eb;" disabled value="85" />
+                <span style="font-size:11px;">🔊</span>
+              </div>
+              <div class="quick-btns">
+                <span class="btn btn-sm">+5%</span><span class="btn btn-sm">-5%</span>
+                <span class="btn btn-sm" style="color:#f59e0b;">Mute</span>
+              </div>
+            </div>
+            <hr class="divider" />
+            <div class="vu-section">
+              <div class="vu-label"><span>🎤 Entrée</span><span style="color:#555;">Mute: off</span></div>
+              <div class="vu-bar-wrap"><div class="vu-bar vu-bar-30" style="background:linear-gradient(to right,#059669,#a78bfa 60%,#f59e0b 80%,#ef4444);"></div></div>
+              <div class="vol-control">
+                <span style="color:#555;font-size:11px;">🎤</span>
+                <input type="range" class="slider" style="flex:1;height:6px;accent-color:#7c3aed;" disabled value="30" />
+                <span style="font-size:11px;">🎤</span>
+              </div>
+              <div class="quick-btns">
+                <span class="btn btn-sm">+5%</span><span class="btn btn-sm">-5%</span>
+                <span class="btn btn-sm" style="color:#f59e0b;">Mute</span>
+              </div>
+            </div>
+          </div>
+          <div class="big-card-footer">
+            <span class="net-info">pcm:hw:1,0 · 6ch actifs</span>
+            <div style="display:flex;gap:5px;">
+              <span class="btn btn-sm">⊞ Détails</span>
+              <span class="btn btn-sm">↗ Ouvrir</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3 — offline -->
+        <div class="big-card" style="opacity:.4;">
+          <div class="big-card-header" style="background:linear-gradient(135deg,#111 0%,#141414 100%);">
+            <div class="device-icon" style="background:#1e1e1e;border-color:#2a2a2a;">🔇</div>
+            <div style="flex:1;">
+              <div class="big-card-title" style="color:#444;">Terrasse</div>
+              <div class="big-card-sub">192.168.1.50 · 2.0</div>
+              <div class="big-card-badges">
+                <span class="badge-offline">● Hors ligne</span>
+                <span class="badge-type">2.0</span>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="vu-pct" style="color:#333;">—<span>%</span></div>
+              <div style="font-size:9px;color:#333;margin-top:2px;">hors ligne</div>
+            </div>
+          </div>
+          <div class="big-card-body">
+            <div style="text-align:center;color:#333;font-size:12px;padding:20px;">Aucune donnée audio disponible</div>
+          </div>
+          <div class="big-card-footer">
+            <span class="net-info" style="color:#333;">Dernière vue: il y a 2h</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

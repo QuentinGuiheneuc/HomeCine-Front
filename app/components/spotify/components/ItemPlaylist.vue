@@ -25,6 +25,14 @@ type PlaylistDetail = {
     total: number
     offset: number
     items: PlaylistTrackItem[]
+    _restricted?: boolean
+  }
+  items: {
+    limit: number
+    total: number
+    offset: number
+    items: PlaylistTrackItem[]
+    _restricted?: boolean
   }
 }
 
@@ -51,6 +59,7 @@ const emit = defineEmits<{
 
 /* ---------- Computed ---------- */
 const isLiked = computed(() => props.item?.id === 'liked')
+const isRestricted = computed(() => !!props.item?.tracks?._restricted)
 
 const rows = computed<Track[]>(() =>
   (props.item?.tracks?.items ?? [])
@@ -152,7 +161,12 @@ function onRowPlay(idx: number) {
         <span class="text-right">Durée</span>
       </div>
 
-      <div v-if="rows.length === 0" class="p-4 text-sm text-dimmed">Aucun titre.</div>
+      <div v-if="isRestricted" class="p-6 flex flex-col items-center gap-2 text-center text-dimmed">
+        <UIcon name="i-lucide-lock" class="text-2xl" />
+        <p class="text-sm font-medium">Playlist non accessible via l'API</p>
+        <p class="text-xs">Spotify bloque l'accès aux playlists générées automatiquement<br>(Discover Weekly, Daily Mix, Release Radar…)</p>
+      </div>
+      <div v-else-if="rows.length === 0" class="p-4 text-sm text-dimmed">Aucun titre.</div>
 
       <div
         v-for="(t, idx) in rows"

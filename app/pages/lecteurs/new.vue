@@ -47,7 +47,7 @@ function defaultCfg(type: string): any {
 }
 
 // ── État principal ───────────────────────────────────────────────────────────
-const lecteur = ref({ name: '', type: 'spotify' })
+const lecteur = ref({ name: '', type: 'spotify', isStarting: false })
 const cfg = ref<any>(defaultCfg('spotify'))
 
 watch(() => lecteur.value.type, (newType) => {
@@ -55,29 +55,45 @@ watch(() => lecteur.value.type, (newType) => {
 })
 
 // ── EQ presets (chargés depuis /eq) ─────────────────────────────────────────
-const eqPresets = ref<EqPreset[]>([])
-const eqLoading = ref(false)
-const confEqEnabled = ref(false)
+const eqPresets          = ref<EqPreset[]>([])
+const eqLoading          = ref(false)
+const confEqEnabled      = ref(false)
 const selectedEqPresetId = ref<number | null>(null)
-
-const eqPresetItems = computed(() =>
-  eqPresets.value.map(p => ({ label: `${p.name}${p.description ? ' — ' + p.description : ''}`, value: p.id }))
-)
 
 const selectedPreset = computed(() =>
   eqPresets.value.find(p => p.id === selectedEqPresetId.value) ?? null
 )
 
 const confEq = computed(() => {
-  const cfg = selectedPreset.value?.config
-  if (!cfg) return null
+  const c = selectedPreset.value?.config
+  if (!c) return null
   return {
-    rate: cfg.rate ?? 48000,
-    config: cfg.config ?? '7.1',
-    path_eq: cfg.path_eq ?? '',
-    order: Array.isArray(cfg.order) ? cfg.order : []
+    rate:    c.rate    ?? 48000,
+    config:  c.config  ?? '7.1',
+    path_eq: c.path_eq ?? '',
+    order:   Array.isArray(c.order) ? c.order : []
   }
 })
+
+function toggleEqPreset(id: number) {
+  if (selectedEqPresetId.value === id) {
+    selectedEqPresetId.value = null
+    confEqEnabled.value = false
+  } else {
+    selectedEqPresetId.value = id
+    confEqEnabled.value = true
+    const preset = eqPresets.value.find(p => p.id === id)
+    if (preset?.eq?.config?.channels != null) {
+      cfg.value.StreamOutFifo.channels = preset.eq.config.channels
+    }
+    if (preset?.config?.config) {
+      cfg.value.StreamOutFifo.config = preset.config.config
+    }
+    if (preset?.config?.rate) {
+      cfg.value.StreamOutFifo.rate = preset.config.rate
+    }
+  }
+}
 
 onMounted(async () => {
   eqLoading.value = true
@@ -101,7 +117,8 @@ async function onCreate() {
       name: lecteur.value.name,
       type: lecteur.value.type,
       config: cfg.value,
-      conf_eq_id: confEqEnabled.value ? selectedEqPresetId.value : null
+      conf_eq_id: confEqEnabled.value ? selectedEqPresetId.value : null,
+      autostart: lecteur.value.isStarting
     })
 
     toast.add({ title: 'Créé', color: 'success' })
@@ -144,6 +161,11 @@ async function onCreate() {
             <label class="text-sm text-dimmed">Type</label>
             <USelect v-model="lecteur.type" :items="typeItems" class="mt-1 min-w-[180px]" />
           </div>
+
+          <div class="flex items-center gap-3">
+            <label class="text-sm text-dimmed">Démarrer à la création</label>
+            <USwitch v-model="lecteur.isStarting" />
+          </div>
         </div>
       </UPageCard>
 
@@ -157,61 +179,78 @@ async function onCreate() {
       <!-- EQ -->
       <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
         <div class="flex items-center justify-between">
-          <h3 class="font-semibold">Égalisation (EQ)</h3>
-          <USwitch v-model="confEqEnabled" />
+          <div>
+            <h3 class="font-semibold">Égalisation (EQ)</h3>
+            <p class="text-xs text-dimmed mt-0.5">
+              {{ selectedEqPresetId ? `Preset #${selectedEqPresetId} actif` : 'Aucun preset sélectionné' }}
+            </p>
+          </div>
+          <USwitch v-model="confEqEnabled" @update:model-value="(v) => { if (!v) selectedEqPresetId = null }" />
         </div>
 
-        <template v-if="confEqEnabled">
-          <!-- Sélection du preset EQ -->
-          <div>
-            <label class="text-sm text-dimmed">Preset EQ</label>
-            <USelect
-              v-model="selectedEqPresetId"
-              :items="eqPresetItems"
-              :loading="eqLoading"
-              placeholder="Choisir un preset…"
-              class="mt-1"
-            />
-          </div>
+        <!-- Cards presets -->
+        <div v-if="eqLoading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <USkeleton v-for="i in 3" :key="i" class="h-20 rounded-lg" />
+        </div>
 
-          <!-- Résumé du preset sélectionné -->
-          <div v-if="selectedPreset && confEq" class="space-y-3">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-              <div class="rounded-lg border border-default bg-muted/20 px-3 py-2">
-                <div class="text-xs text-dimmed mb-0.5">Sample rate</div>
-                <div class="font-mono font-medium">{{ confEq.rate }} Hz</div>
-              </div>
-              <div class="rounded-lg border border-default bg-muted/20 px-3 py-2">
-                <div class="text-xs text-dimmed mb-0.5">Configuration</div>
-                <div class="font-mono font-medium">{{ confEq.config }}</div>
-              </div>
-              <div class="rounded-lg border border-default bg-muted/20 px-3 py-2">
-                <div class="text-xs text-dimmed mb-0.5">Fichier EQ</div>
-                <div class="font-mono font-medium truncate">{{ confEq.path_eq || '—' }}</div>
-              </div>
+        <div v-else-if="eqPresets.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <button
+            v-for="preset in eqPresets"
+            :key="preset.id"
+            class="group relative text-left rounded-lg border transition-all p-4 flex items-start gap-3"
+            :class="selectedEqPresetId === preset.id
+              ? 'border-primary bg-primary/10 shadow-sm'
+              : 'border-default bg-muted hover:bg-accented hover:border-accented'"
+            @click="toggleEqPreset(preset.id)"
+          >
+            <div
+              class="shrink-0 w-9 h-9 rounded-md flex items-center justify-center"
+              :class="selectedEqPresetId === preset.id ? 'bg-primary text-white' : 'bg-accented text-dimmed'"
+            >
+              <UIcon name="si:equalizer-fill" class="size-5" />
             </div>
-            <div>
-              <div class="text-xs text-dimmed mb-1">Ordre des canaux</div>
-              <div class="flex flex-wrap gap-1">
-                <UBadge
-                  v-for="(ch, i) in confEq.order"
-                  :key="i"
-                  variant="subtle"
-                  class="font-mono text-xs"
-                >
-                  {{ i }}→{{ ch }}
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium truncate">{{ preset.name }}</p>
+              <p class="text-xs text-dimmed truncate mt-0.5">{{ preset.description || `Preset #${preset.id}` }}</p>
+              <div class="flex gap-1 mt-1 flex-wrap">
+                <UBadge v-if="preset.config?.config" variant="subtle" size="xs" class="font-mono">
+                  {{ preset.config.config }}
+                </UBadge>
+                <UBadge v-if="preset.eq?.config?.channels" variant="subtle" size="xs" class="font-mono">
+                  {{ preset.eq.config.channels }} ch
                 </UBadge>
               </div>
             </div>
-          </div>
+          </button>
+        </div>
 
-          <div v-else-if="!eqLoading && eqPresets.length === 0" class="text-sm text-dimmed">
-            Aucun preset EQ disponible. <NuxtLink to="/eqconfig" class="text-primary underline">Créer un preset</NuxtLink>
-          </div>
-        </template>
+        <div v-else class="text-sm text-dimmed italic">
+          Aucun preset EQ disponible —
+          <NuxtLink to="/eq" class="text-primary underline">créer un preset</NuxtLink>
+        </div>
 
-        <div v-else class="text-sm text-dimmed">
-          EQ désactivé (<span class="font-mono">conf_eq: null</span>)
+        <!-- Résumé config preset sélectionné -->
+        <div v-if="selectedPreset && confEq" class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-default text-sm">
+          <div class="rounded-lg border border-default bg-muted/20 px-3 py-2">
+            <div class="text-xs text-dimmed mb-0.5">Sample rate</div>
+            <div class="font-mono font-medium">{{ confEq.rate }} Hz</div>
+          </div>
+          <div class="rounded-lg border border-default bg-muted/20 px-3 py-2">
+            <div class="text-xs text-dimmed mb-0.5">Configuration</div>
+            <div class="font-mono font-medium">{{ confEq.config }}</div>
+          </div>
+          <div class="rounded-lg border border-default bg-muted/20 px-3 py-2">
+            <div class="text-xs text-dimmed mb-0.5">Fichier EQ</div>
+            <div class="font-mono font-medium truncate">{{ confEq.path_eq || '—' }}</div>
+          </div>
+          <div class="md:col-span-3">
+            <div class="text-xs text-dimmed mb-1">Ordre des canaux</div>
+            <div class="flex flex-wrap gap-1">
+              <UBadge v-for="(ch, i) in confEq.order" :key="i" variant="subtle" class="font-mono text-xs">
+                {{ i }}→{{ ch }}
+              </UBadge>
+            </div>
+          </div>
         </div>
       </UPageCard>
     </UPageCard>

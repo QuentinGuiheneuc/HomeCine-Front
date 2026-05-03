@@ -39,17 +39,18 @@ const localValue = computed({
       <UInput
         v-model="localValue['path-audio']"
         placeholder="/tmp/spotify/Cuisine_Snap.fifo"
+        class="min-w-[160px] w-full flex items-center h-8 rounded-md border border-accented bg-elevated text-sm font-mono"
       />
     </div>
 
     <div>
       <label class="text-sm text-dimmed">Channels</label>
-      <UInput v-model.number="localValue.channels" type="number" />
+      <UInput v-model.number="localValue.channels" type="number" class="min-w-[160px] w-full flex items-center h-8 rounded-md border border-accented bg-elevated text-sm font-mono"/>
     </div>
 
     <div>
       <label class="text-sm text-dimmed">Rate</label>
-      <UInput v-model.number="localValue.rate" type="number" />
+      <UInput v-model.number="localValue.rate" type="number" class="min-w-[160px] w-full flex items-center h-8 rounded-md border border-accented bg-elevated text-sm font-mono"/>
     </div>
 
     <div>
@@ -57,7 +58,7 @@ const localValue = computed({
       <USelect
         v-model="localValue.config"
         :items="audioConfigItems"
-        class="min-w-[160px]"
+        class="min-w-[160px] w-full flex items-center h-8 rounded-md border border-accented bg-elevated text-sm font-mono"
       />
     </div>
   </div>

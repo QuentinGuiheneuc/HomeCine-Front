@@ -20,6 +20,7 @@ type Playlist = {
   id: string; name: string; uri: string; href: string
   images?: Image[]
   tracks?: { href: string; total: number }
+  items?: { href: string; total: number }
   snapshot_id?: string
   owner?: { display_name?: string }
 }
@@ -327,13 +328,13 @@ const scrollStyle = computed(() => ({
       <div class="px-3 pb-2 flex items-center justify-between">
         <p class="text-xs text-dimmed">
           <template v-if="active === 'playlists'">
-            Playlists <span v-if="paging.total">({{ paging.total }})</span>
+          <!--  Playlists <span v-if="paging.total">({{ paging.total }})</span> -->
           </template>
           <template v-else-if="active === 'albums'">
-            Albums <span v-if="albumPaging.total">({{ albumPaging.total }})</span>
+            <!-- Albums <span v-if="albumPaging.total">({{ albumPaging.total }})</span> -->
           </template>
           <template v-else-if="active === 'artists'">
-            Artistes <span v-if="artistTotal">({{ artistTotal }})</span>
+            <!-- Artistes <span v-if="artistTotal">({{ artistTotal }})</span> -->
           </template>
         </p>
         <UIcon v-if="loading" name="i-lucide-loader-circle" class="animate-spin text-dimmed size-4" />
@@ -392,7 +393,7 @@ const scrollStyle = computed(() => ({
             <div class="min-w-0">
               <p class="truncate text-sm">{{ p.name }}</p>
               <p class="truncate text-xs text-dimmed">
-                {{ p.tracks?.total ?? 0 }} titres
+                {{ p.items?.total ?? 0 }} titres
                 <span v-if="p.owner?.display_name"> · {{ p.owner.display_name }}</span>
               </p>
             </div>

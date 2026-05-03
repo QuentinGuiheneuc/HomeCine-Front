@@ -247,7 +247,7 @@ function draw() {
   const r = dbRange.value
   const fMin = 20
   const fMax = Math.min(20000, fs.value / 2 - 1)
-
+  const colorGrid = cssVar('--ui-eq-5')
   const logX = (f: number) => {
     const a = Math.log10(fMin), b = Math.log10(fMax)
     return (Math.log10(f) - a) / (b - a)
@@ -256,13 +256,14 @@ function draw() {
   const yFromDb = (db: number) => (1 - (db + r) / (2 * r)) * (h - padT - padB) + padT
 
   ctx.clearRect(0, 0, w, h)
-  ctx.fillStyle = cssVar("--ui-color-neutral-700")
+  ctx.fillStyle = cssVar("--ui-eq-6") //background
   ctx.fillRect(0, 0, w, h)
   ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace"
   ctx.textBaseline = "middle"
   ctx.lineWidth = 2
-  ctx.strokeStyle = "rgba(255,255,255,0.10)"
-  ctx.fillStyle = "rgba(255,255,255,0.65)"
+  ctx.strokeStyle = colorGrid
+
+  ctx.fillStyle = colorGrid
 
   for (let db = -r; db <= r; db += 6) {
     const y = yFromDb(db)
@@ -270,14 +271,14 @@ function draw() {
     ctx.fillText(`${db} dB`, 8, y)
   }
 
-  ctx.strokeStyle = "rgba(255,255,255,0.25)"
+  ctx.strokeStyle = colorGrid
   ctx.lineWidth = 1.5
   ctx.beginPath(); ctx.moveTo(padL, yFromDb(0)); ctx.lineTo(w - padR, yFromDb(0)); ctx.stroke()
 
   const ticks = [20, 30, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].filter(f => f <= fMax)
   ctx.lineWidth = 1
-  ctx.strokeStyle = "rgba(255,255,255,0.10)"
-  ctx.fillStyle = "rgba(255,255,255,0.65)"
+  ctx.strokeStyle = colorGrid
+  ctx.fillStyle = colorGrid
   ctx.textBaseline = "alphabetic"
 
   for (const f of ticks) {
@@ -289,12 +290,12 @@ function draw() {
 
   const pts = eqCurve.value
   if (!pts.length) {
-    ctx.fillStyle = "rgba(255,255,255,0.7)"
+    ctx.fillStyle = cssVar("--ui-bg-dimmed")
     ctx.fillText("No curve data", padL, padT + 14)
     return
   }
 
-  ctx.strokeStyle = cssVar("--ui-color-primary-600")
+  ctx.strokeStyle = cssVar("--ui-color-primary-500")
   ctx.lineWidth = 2
   ctx.beginPath()
   for (let i = 0; i < pts.length; i++) {

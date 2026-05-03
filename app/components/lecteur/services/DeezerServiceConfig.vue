@@ -72,7 +72,7 @@ const framesPerBufferItems = computed(() => typeStreamOptions.deezer?.frames_per
 
       <div>
         <label class="text-sm text-dimmed">Normalisation volume</label>
-        <UToggle v-model="localCfg['enable-volume-normalisation']" />
+        <USwitch v-model="localCfg['enable-volume-normalisation']" />
       </div>
 
       <div class="md:col-span-2">

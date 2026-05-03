@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import http from '@/src/lib/https'
+import { useDebounceFn } from '@vueuse/core'
 
 /* ═══════════════════════════════════════════════
    TYPES  (miroir des réponses API Spotify)
@@ -55,11 +56,44 @@ const emit = defineEmits<{
   (e: 'select-playlist', id: string): void
   (e: 'open-liked'): void
   (e: 'play-uri', uri: string): void
+  (e: 'select-album', id: string): void
+  (e: 'select-artist', id: string): void
 }>()
 
 /* ═══════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════
+   RECHERCHE
+═══════════════════════════════════════════════ */
+const searchQuery   = ref('')
+const searchLoading = ref(false)
+const searchResults = ref<{ tracks: any[]; albums: any[]; artists: any[] }>({ tracks: [], albums: [], artists: [] })
+const isSearching   = computed(() => searchQuery.value.trim().length > 0)
+
+const doSearch = useDebounceFn(async (q: string) => {
+  if (!q.trim()) { searchResults.value = { tracks: [], albums: [], artists: [] }; return }
+  searchLoading.value = true
+  try {
+    const [tr, al, ar] = await Promise.allSettled([
+      http.get('/spotify/search/tracks',  { params: { q, limit: 10, market: 'FR' } }),
+      http.get('/spotify/search/albums',  { params: { q, limit: 8, market: 'FR' } }),
+      http.get('/spotify/search/artists', { params: { q, limit: 8, market: 'FR' } }),
+    ])
+    searchResults.value = {
+      tracks:  tr.status === 'fulfilled' ? ((tr.value as any).data?.tracks?.items  ?? (tr.value as any).data?.items  ?? []) : [],
+      albums:  al.status === 'fulfilled' ? ((al.value as any).data?.albums?.items  ?? (al.value as any).data?.items  ?? []) : [],
+      artists: ar.status === 'fulfilled' ? ((ar.value as any).data?.artists?.items ?? (ar.value as any).data?.items ?? []) : [],
+    }
+  } catch (e) {
+    console.error('[search]', e)
+  } finally {
+    searchLoading.value = false
+  }
+}, 350)
+
+watch(searchQuery, (q) => doSearch(q))
+
 const user            = ref<UserProfile | null>(null)
 const recentlyPlayed  = ref<RecentItem[]>([])
 const featured        = ref<SimplePlaylist[]>([])
@@ -267,6 +301,115 @@ function handleShortcutClick(item: RecentItem) {
 <template>
   <div class="overflow-y-auto">
 
+    <!-- ── Barre de recherche sticky ── -->
+    <div class="sticky top-0 z-30 px-6 pt-4 pb-3 bg-elevated/80 backdrop-blur border-b border-default">
+      <UInput
+        v-model="searchQuery"
+        icon="i-lucide-search"
+        placeholder="Titres, albums, artistes…"
+        size="lg"
+        class="w-full"
+        :trailing-icon="searchQuery ? 'i-lucide-x' : undefined"
+        @click:trailing="searchQuery = ''"
+      />
+    </div>
+
+    <!-- ── Résultats de recherche ── -->
+    <div v-if="isSearching" class="px-6 py-6 space-y-8">
+
+      <!-- Loader -->
+      <div v-if="searchLoading" class="flex justify-center py-10">
+        <UIcon name="i-lucide-loader-circle" class="size-8 text-dimmed animate-spin" />
+      </div>
+
+      <template v-else>
+        <!-- Titres -->
+        <section v-if="searchResults.tracks.length">
+          <h2 class="text-lg font-bold mb-3">Titres</h2>
+          <div class="space-y-1">
+            <button
+              v-for="track in searchResults.tracks"
+              :key="track.id"
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accented transition-colors text-left"
+              @click="emit('play-uri', track.uri)"
+            >
+              <img
+                :src="track.album?.images?.[2]?.url ?? track.album?.images?.[0]?.url"
+                class="h-10 w-10 rounded object-cover shrink-0"
+                alt=""
+              />
+              <div class="min-w-0">
+                <p class="text-sm font-medium truncate">{{ track.name }}</p>
+                <p class="text-xs text-dimmed truncate">{{ (track.artists ?? []).map((a: any) => a.name).join(', ') }}</p>
+              </div>
+              <UIcon name="i-lucide-play" class="ml-auto size-4 text-dimmed shrink-0" />
+            </button>
+          </div>
+        </section>
+
+        <!-- Albums -->
+        <section v-if="searchResults.albums.length">
+          <h2 class="text-lg font-bold mb-3">Albums</h2>
+          <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+            <div
+              v-for="album in searchResults.albums"
+              :key="album.id"
+              class="group shrink-0 w-36 cursor-pointer"
+              @click="emit('select-album', album.id)"
+            >
+              <div class="relative rounded-md overflow-hidden mb-2">
+                <img
+                  :src="album.images?.[1]?.url ?? album.images?.[0]?.url ?? 'https://via.placeholder.com/144'"
+                  class="h-36 w-36 object-cover"
+                  alt=""
+                />
+                <button
+                  class="absolute bottom-2 right-2 h-9 w-9 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all"
+                  @click.stop="emit('play-uri', album.uri)"
+                >
+                  <UIcon name="i-lucide-play" class="text-black size-4 ml-0.5" />
+                </button>
+              </div>
+              <p class="text-xs font-semibold truncate">{{ album.name }}</p>
+              <p class="text-xs text-dimmed truncate">{{ (album.artists ?? []).map((a: any) => a.name).join(', ') }}</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Artistes -->
+        <section v-if="searchResults.artists.length">
+          <h2 class="text-lg font-bold mb-3">Artistes</h2>
+          <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+            <div
+              v-for="artist in searchResults.artists"
+              :key="artist.id"
+              class="group shrink-0 w-36 cursor-pointer text-center"
+              @click="emit('select-artist', artist.id)"
+            >
+              <img
+                :src="artist.images?.[1]?.url ?? artist.images?.[0]?.url ?? 'https://via.placeholder.com/144'"
+                class="h-36 w-36 rounded-full object-cover mb-2 mx-auto"
+                alt=""
+              />
+              <p class="text-xs font-semibold truncate">{{ artist.name }}</p>
+              <p class="text-xs text-dimmed">Artiste</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Aucun résultat -->
+        <div
+          v-if="!searchResults.tracks.length && !searchResults.albums.length && !searchResults.artists.length"
+          class="text-center py-16 text-dimmed"
+        >
+          <UIcon name="i-lucide-search-x" class="size-12 mx-auto mb-3 opacity-40" />
+          <p>Aucun résultat pour « {{ searchQuery }} »</p>
+        </div>
+      </template>
+    </div>
+
+    <!-- ── Vue Home (masquée pendant la recherche) ── -->
+    <div v-else>
     <!-- Fond dégradé dynamique en haut -->
     <div
       class="relative"
@@ -489,6 +632,7 @@ function handleShortcutClick(item: RecentItem) {
 
       </div>
     </div>
+    </div> <!-- fin v-else home -->
   </div>
 </template>
 

@@ -43,7 +43,7 @@ const devices      = ref<Device[]>([])
 const loading      = ref(false)
 const q            = ref('')
 const typeFilter   = ref<TypeFilter>('all')
-const statusFilter = ref<StatusFilter>('all')
+const statusFilter = ref<StatusFilter>('online')
 
 const audioByKey        = ref<Record<string, StateAudio>>({})
 const outPercent        = ref<Record<string, number>>({})
@@ -328,7 +328,7 @@ watch(activeDeviceKey, async (key) => {
           :color="typeFilter === t ? 'primary' : 'neutral'" @click="typeFilter = t as TypeFilter">
           {{ t === 'all' ? 'Tous' : t }}
         </UButton>
-        <span class="text-dimmed ml-2">Statut</span>
+        <span class='text-dimmed ml-2'>Statut</span>
         <UButton size="2xs" variant="ghost" :color="statusFilter==='all'?'primary':'neutral'" @click="statusFilter='all'">Tous</UButton>
         <UButton size="2xs" variant="ghost" :color="statusFilter==='online'?'primary':'neutral'" @click="statusFilter='online'">En ligne</UButton>
         <UButton size="2xs" variant="ghost" :color="statusFilter==='offline'?'primary':'neutral'" @click="statusFilter='offline'">Hors ligne</UButton>
@@ -404,7 +404,7 @@ watch(activeDeviceKey, async (key) => {
                 <div v-if="d.audio.output" class="space-y-2">
                   <div class="flex items-center justify-between">
                     <span class="flex items-center gap-1.5 font-medium text-[#ccc]">
-                      <UIcon name="i-lucide-volume-2" class="size-3.5" /> Sortie
+                      <UIcon name="i-lucide-volume-2" class="size-3.5" /> {{ d.audio?.output?.name}}
                     </span>
                     <span class="text-[10px]" :class="isMuted(d.audio.output.mute) ? 'text-amber-400' : 'text-dimmed'">
                       {{ isMuted(d.audio.output.mute) ? 'MUTE' : 'off' }}
@@ -462,7 +462,7 @@ watch(activeDeviceKey, async (key) => {
                 <div v-if="d.audio.input" class="space-y-2">
                   <div class="flex items-center justify-between">
                     <span class="flex items-center gap-1.5 font-medium text-[#ccc]">
-                      <UIcon name="i-lucide-mic" class="size-3.5" /> Entrée
+                      <UIcon name="i-lucide-mic" class="size-3.5" /> {{ d.audio?.input?.name}}
                     </span>
                     <span class="text-[10px]" :class="isMuted(d.audio.input.mute) ? 'text-amber-400' : 'text-dimmed'">
                       {{ isMuted(d.audio.input.mute) ? 'MUTE' : 'off' }}

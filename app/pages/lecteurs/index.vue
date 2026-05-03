@@ -75,7 +75,7 @@ function getChannels(l: Lecteur) {
   return (l.config as any)?.StreamOutFifo?.channels ?? 'n/a'
 }
 function isRunning(l: Lecteur) {
-  return Number(l.isStarting) === 1
+  return !!(l as any).isStart?.alive
 }
 
 async function onStart(id: number) {
@@ -114,7 +114,7 @@ onMounted(fetchLecteurs)
       <template #leading>
         <UPageCard
           title="Lecteurs"
-          :description="`Total: ${lecteurs.length} • Actifs: ${lecteurs.filter(l=>Number(l.isStarting)===1).length}`"
+          :description="`Total: ${lecteurs.length} • Actifs: ${lecteurs.filter(l=>(l as any).isStart?.alive).length}`"
           variant="naked"
           orientation="horizontal"
           :ui="{ container: 'p-4 sm:p-4 gap-3' }"
@@ -132,15 +132,12 @@ onMounted(fetchLecteurs)
 
     <main class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8">
       <div class="w-full lg:max-w-12xl py-6 sm:py-8 lg:py-10 space-y-4">
-
         <UAlert v-if="errorMsg" color="error" :title="errorMsg" />
-
         <UPageCard variant="subtle" :ui="{ container: 'p-3' }">
           <div class="flex flex-col md:flex-row gap-3 md:items-center">
             <div class="flex-1">
               <UInput v-model="q" icon="i-lucide-search" placeholder="Rechercher..." />
             </div>
-
             <div class="flex gap-2 items-center text-xs">
               <span class="text-dimmed">Type</span>
               <UButton size="2xs" variant="ghost" :color="typeFilter==='all'?'primary':'neutral'" @click="typeFilter='all'">Tous</UButton>
@@ -215,10 +212,10 @@ onMounted(fetchLecteurs)
             </div>
 
             <div class="flex flex-wrap gap-2 mt-3">
-              <UButton v-if="!isRunning(l)" class="px-2 p-1" size="s" color="primary" variant="subtle" @click="onStart(l.id)">
+              <UButton v-if="!isRunning(l)" class="px-2 p-1" size="xs" color="primary" variant="subtle" @click="onStart(l.id)">
                 Start
               </UButton>
-              <UButton class="px-2 p-1" size="1xs" color="primary" variant="subtle" @click="onStop(l.id)">
+              <UButton v-else class="px-2 p-1" size="xs" color="primary" variant="subtle" @click="onStop(l.id)">
                 Stop
               </UButton>
             </div>

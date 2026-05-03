@@ -44,8 +44,8 @@ type StateAudio = {
   pcm: string
   id?: string
   device?: number
-  output?: { volume: Record<string, number>; mute: any } | null
-  input?:  { volume: Record<string, number>; mute: any } | null
+  output?: { name: string; volume: Record<string, number>; mute: any } | null
+  input?:  { name: string; volume: Record<string, number>; mute: any } | null
 }
 
 type TypeFilter   = 'all' | '2.0' | '4.2' | '5.1' | '7.1'
@@ -56,7 +56,7 @@ type StatusFilter = 'all' | 'online' | 'offline'
 const devices       = ref<Device[]>([])
 const q             = ref('')
 const typeFilter    = ref<TypeFilter>('all')
-const statusFilter  = ref<StatusFilter>('all')
+const statusFilter  = ref<StatusFilter>('online')
 
 /** États audio reçus par IP (clé = msg.from) */
 const audioByKey = ref<Record<string, StateAudio>>({})
@@ -299,7 +299,6 @@ function refresh() {
 
     <main class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8">
       <div class="w-full lg:max-w-12xl py-6 sm:py-8 lg:py-10 space-y-4">
-
         <!-- ── FILTRES ──────────────────────────────────────────────────────── -->
         <UPageCard variant="subtle" :ui="{ container: 'p-3' }">
           <div class="flex flex-col md:flex-row gap-3 md:items-center">
@@ -340,24 +339,24 @@ function refresh() {
           <div
             v-for="d in rows"
             :key="d.id"
-            class="rounded-xl border border-[#252525] bg-[#161616] overflow-hidden flex flex-col transition-opacity"
-            :class="{ 'opacity-40': !d.online }"
+            class="rounded-xl border  overflow-hidden flex flex-col transition-opacity"
+            :class="{ 'opacity-40': !d.online, 'border-primary-700': d.online, 'border-neutral': !d.online, 'cursor-pointer': d.online }"
           >
             <!-- ── En-tête gradient ────────────────────────────────────────── -->
             <div
               class="flex items-start gap-3 px-4 py-3"
               :style="d.online
-                ? 'background: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%)'
-                : 'background: linear-gradient(135deg,#111 0%,#141414 100%)'"
+                ? 'background: linear-gradient(135deg,var(--ui-color-primary-700) 0%,var(--ui-color-primary-600) 100%)'
+                : 'background: linear-gradient(135deg,#FFF4 0%,#222 100%)'"
             >
               <!-- Icône device -->
               <div
                 class="size-10 rounded-xl flex items-center justify-center text-lg shrink-0 border"
                 :class="d.online
-                  ? 'bg-primary/10 border-primary/20'
+                  ? 'bg-primary/10 border-primary/10'
                   : 'bg-[#1e1e1e] border-[#2a2a2a]'"
               >
-                <UIcon name="i-lucide-monitor-speaker" class="size-5" :class="d.online ? 'text-primary' : 'text-[#444]'" />
+                <UIcon name="i-lucide-monitor-speaker" class="size-5" :class="d.online ? 'text-primary' : 'text-secondary'" />
               </div>
 
               <!-- Infos -->
@@ -385,7 +384,7 @@ function refresh() {
               <div v-if="d.audio?.output" class="shrink-0 text-right">
                 <div
                   class="text-2xl font-bold font-mono leading-none tabular-nums"
-                  :class="isMuted(d.audio.output.mute) ? 'text-amber-400' : 'text-emerald-400'"
+                  :class="isMuted(d.audio.output.mute) ? 'text-[var(--ui-color-primary-700)]' : 'text-[var(--ui-color-primary-400)]'"
                 >
                   {{ outVal(d.key, d.outLevel) }}<span class="text-xs font-normal text-dimmed">%</span>
                 </div>
@@ -400,7 +399,7 @@ function refresh() {
               <!-- Sortie -->
               <div v-if="d.audio?.output" class="space-y-2">
                 <div class="flex items-center justify-between">
-                  <span class="flex items-center gap-1.5 font-medium text-[#ccc]">
+                  <span class="flex items-center gap-1.5 font-medium ">
                     <UIcon name="i-lucide-volume-2" class="size-3.5" /> {{ d.audio?.output?.name}}
                   </span>
                   <span class="text-[10px]" :class="isMuted(d.audio.output.mute) ? 'text-amber-400' : 'text-dimmed'">
@@ -408,7 +407,7 @@ function refresh() {
                   </span>
                 </div>
                 <!-- Barre VU colorée -->
-                <div class="h-3 rounded overflow-hidden bg-[#1c1c1c]">
+                <div class="h-3 rounded overflow-hidden">
                   <div
                     class="h-full rounded"
                     :style="{ width: outVal(d.key, d.outLevel) + '%', background: 'linear-gradient(to right,#059669,#34d399 55%,#fbbf24 80%,#ef4444)' }"
@@ -440,8 +439,8 @@ function refresh() {
                   <div class="mt-2 space-y-1.5 max-h-28 overflow-y-auto pr-1">
                     <div v-for="(val, ch) in d.audio.output.volume" :key="ch" class="flex items-center gap-2">
                       <span class="text-dimmed w-14 truncate">{{ ch }}</span>
-                      <div class="flex-1 h-1.5 rounded overflow-hidden bg-[#1c1c1c]">
-                        <div class="h-full rounded" :style="{ width: outChVal(d.key, ch, Number(val)) + '%', background: 'linear-gradient(to right,#059669,#34d399 60%,#fbbf24 80%,#ef4444)' }" />
+                      <div class="flex-1 h-1.5 rounded overflow-hidden">
+                        <div class="h-full rounded" :style="{ width: outChVal(d.key, ch, Number(val)) + '%', background: 'linear-gradient(to right,#059669,#34d399 60%,#fbbf24 90%,#ef4444)' }" />
                       </div>
                       <input type="range" min="0" max="100" :value="outChVal(d.key, ch, Number(val))" class="range-primary-0 w-16 cursor-pointer" @input="onOutChannelSlider(d.key, ch, +($event.target as HTMLInputElement).value)" />
                       <span class="font-mono w-7 text-right">{{ outChVal(d.key, ch, Number(val)) }}</span>
@@ -464,7 +463,7 @@ function refresh() {
                   </span>
                 </div>
                 <!-- Barre VU violette -->
-                <div class="h-3 rounded overflow-hidden bg-[#1c1c1c]">
+                <div class="h-3 rounded overflow-hidden">
                   <div
                     class="h-full rounded"
                     :style="{ width: inVal(d.key, d.inLevel) + '%', background: 'linear-gradient(to right,#059669,#a78bfa 55%,#f59e0b 80%,#ef4444)' }"
@@ -477,7 +476,7 @@ function refresh() {
                     <input
                       type="range" min="0" max="100"
                       :value="inVal(d.key, d.inLevel)"
-                      class="range-purple-0 cursor-pointer"
+                      class="range-primary-0 cursor-pointer"
                       @input="onInSlider(d.key, +($event.target as HTMLInputElement).value)"
                     />
                   </div>
@@ -496,7 +495,7 @@ function refresh() {
                   <div class="mt-2 space-y-1.5 max-h-28 overflow-y-auto pr-1">
                     <div v-for="(val, ch) in d.audio.input.volume" :key="ch" class="flex items-center gap-2">
                       <span class="text-dimmed w-14 truncate">{{ ch }}</span>
-                      <div class="flex-1 h-1.5 rounded overflow-hidden bg-[#1c1c1c]">
+                      <div class="flex-1 h-1.5 rounded overflow-hidden">
                         <div class="h-full rounded" :style="{ width: inChVal(d.key, ch, Number(val)) + '%', background: 'linear-gradient(to right,#059669,#a78bfa 60%,#f59e0b 80%,#ef4444)' }" />
                       </div>
                       <input type="range" min="0" max="100" :value="inChVal(d.key, ch, Number(val))" class="range-purple-0 w-16 cursor-pointer" @input="onInChannelSlider(d.key, ch, +($event.target as HTMLInputElement).value)" />
@@ -514,7 +513,7 @@ function refresh() {
             </div>
 
             <!-- ── Footer ─────────────────────────────────────────────────── -->
-            <div class="border-t border-[#1e1e1e] bg-[#121212] px-4 py-2 flex items-center justify-between">
+            <div class="border-t border-[#1e1e1e] px-4 py-2 flex items-center justify-between">
               <div class="text-[10px] text-dimmed font-mono truncate">
                 {{ d.audio?.pcm || '' }}
                 <span v-if="d.vban?.channels"> · {{ d.vban.channels }}ch</span>
@@ -526,7 +525,7 @@ function refresh() {
                   <summary class="cursor-pointer select-none list-none">
                     <UButton size="2xs" variant="ghost" color="neutral" icon="i-lucide-code-2" />
                   </summary>
-                  <div class="absolute z-10 right-0 bottom-8 w-80 max-h-56 overflow-auto rounded-lg border border-[#252525] bg-[#111] shadow-lg p-2">
+                  <div class="absolute z-10 right-0 bottom-8 w-80 max-h-56 overflow-auto rounded-lg border border-[#252525] shadow-lg p-2">
                     <pre class="text-[9px] whitespace-pre-wrap break-all text-dimmed">{{ JSON.stringify(d.allconfig, null, 2) }}</pre>
                   </div>
                 </details>

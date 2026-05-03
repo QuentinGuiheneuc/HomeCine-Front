@@ -4,8 +4,8 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@10 --activate
 
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN pnpm install --no-frozen-lockfile
 
 # ─── Stage 2 : build ────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder

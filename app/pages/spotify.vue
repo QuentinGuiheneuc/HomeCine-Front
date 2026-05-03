@@ -444,6 +444,8 @@ async function onPlayUri(uri: string) {
                 @select-playlist="selectPlaylist"
                 @open-liked="openLiked"
                 @play-uri="onPlayUri"
+                @select-album="selectAlbum"
+                @select-artist="selectArtist"
               />
 
             </div>
