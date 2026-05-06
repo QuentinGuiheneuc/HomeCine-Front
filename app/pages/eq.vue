@@ -390,11 +390,20 @@ watch([eqCurve, dbRange], scheduleDraw)
           >
             <div class="flex items-center justify-between px-1">
               <div class="font-medium">Cell {{ b.cell }}</div>
-              <UCheckbox
-                :model-value="b.enabled"
-                label="ON"
-                @update:model-value="(v: boolean) => toggleBand(b.cell, v)"
-              />
+              <div class="flex items-center gap-2">
+                <UCheckbox
+                  :model-value="b.enabled"
+                  label="ON"
+                  @update:model-value="(v: boolean) => toggleBand(b.cell, v)"
+                />
+                <UButton
+                  size="xs"
+                  color="red"
+                  variant="ghost"
+                  icon="i-lucide-trash-2"
+                  @click="bands.splice(bands.indexOf(b), 1)"
+                />
+              </div>
             </div>
 
             <div class="mt-3 space-y-4">
