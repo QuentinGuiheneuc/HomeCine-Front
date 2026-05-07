@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import http from '@/src/lib/https'
-import { useToast } from '#imports'
 
 type BtAdapter = {
   name?: string
@@ -27,7 +26,7 @@ type BtDevice = {
   [key: string]: any
 }
 
-const toast = useToast?.()
+const toast = useToast()
 
 /* ---------- state ---------- */
 const loadingAdapters = ref(false)
@@ -330,7 +329,7 @@ onMounted(async () => {
 
         <div class="flex items-center gap-3">
           <div class="flex items-center gap-2">
-            <UToggle v-model="scanDuplicateData" />
+            <USwitch v-model="scanDuplicateData" />
             <span class="text-xs text-dimmed">duplicateData</span>
           </div>
 

@@ -121,7 +121,7 @@ const groups = computed(() => [
 
       <!-- Zone scrollable qui contient les pages -->
       <!-- ⬅️ flex-1 + overflow-y-auto = le coeur du scroll -->
-      <main class="flex-1 min-h-0 overflow-y-auto">
+      <main class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <slot />
       </main>
     </div>

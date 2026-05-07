@@ -1,6 +1,12 @@
 @import "tailwindcss" theme(static);
 @import "@nuxt/ui";
 
+/* Empêche tout débordement horizontal sur l'ensemble du site */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 @theme static {
   --font-sans: 'Public Sans', sans-serif;
 
@@ -15,4 +21,39 @@
   --color-green-800: #016538;
   --color-green-900: #0A5331;
   --color-green-950: #052E16;
+}
+
+/* ── Variables EQ — suivent la couleur primaire du thème ────────────────── */
+/* --ui-color-primary-* est géré par Nuxt UI et change selon :              */
+/*   - la couleur choisie (vert, bleu, rouge…)                              */
+/*   - le mode dark / light (les nuances s'inversent automatiquement)       */
+/* EQ — dégradé basé sur --ui-text, suit le thème dark/light automatiquement */
+:root, .dark {
+  --ui-eq-5:  color-mix(in srgb, oklch(92% 0.004 286.32) 50%, transparent);
+  --ui-eq-6:  color-mix(in srgb, oklch(92% 0.004 286.32) 84%, transparent);
+  --ui-eq-10: var(--ui-text);
+}
+
+:root, .light {
+  --ui-eq-5:  color-mix(in srgb, oklch(82.032% 0.00009 271.152) 90%, transparent);
+  --ui-eq-6:  color-mix(in srgb, oklch(88.282% 0.00281 285.813) 10%, transparent);
+  --ui-eq-10: var(--ui-text);
+}
+/* ── Overrides dark mode Nuxt UI ─────────────────────────────────────────── */
+.dark {
+  --ui-text-dimmed:      var(--ui-color-neutral-500);
+  --ui-text-muted:       var(--ui-color-neutral-400);
+  --ui-text-toned:       var(--ui-color-neutral-300);
+  --ui-text:             var(--ui-color-neutral-200);
+  --ui-text-highlighted: #fff;
+  --ui-text-inverted:    var(--ui-color-neutral-900);
+  --ui-bg:               var(--ui-color-neutral-900);
+  --ui-bg-muted:         var(--ui-color-neutral-800);
+  --ui-bg-elevated:      var(--ui-color-neutral-800);
+  --ui-bg-accented:      var(--ui-color-neutral-700);
+  --ui-bg-inverted:      #fff;
+  --ui-border:           var(--ui-color-neutral-800);
+  --ui-border-muted:     var(--ui-color-neutral-700);
+  --ui-border-accented:  var(--ui-color-neutral-700);
+  --ui-border-inverted:  #fff;
 }

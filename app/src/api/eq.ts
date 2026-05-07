@@ -4,7 +4,19 @@ export type EqPreset = {
   id: number
   name: string
   description: string
-  config: any // JSON (objet)
+  config: {
+    rate: number
+    config: string
+    path_eq: string
+    order: string[]
+  }
+  eq?: {
+    config?: {
+      channels?: number
+      [key: string]: any
+    }
+    layouts?: Record<string, { channels: number; order: string[] }>
+  }
 }
 
 export async function getEqPresets(): Promise<EqPreset[]> {

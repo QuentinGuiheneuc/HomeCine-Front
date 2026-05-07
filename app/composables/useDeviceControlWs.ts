@@ -1,5 +1,5 @@
 import type { WsStatus } from './useWs'
-
+import appConfig from '@/src/config'
 /**
  * useDeviceControlWs — WebSocket singleton pour le contrôle des appareils
  *
@@ -29,7 +29,6 @@ const _handlers = new Set<(data: any) => void>()
 let _ws: WebSocket | null = null
 let _refCount = 0
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
-let _wsBase = ''
 
 function _clearTimer() {
   if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null }
@@ -42,7 +41,7 @@ function _scheduleReconnect() {
 
 function _connect() {
   if (!import.meta.client) return
-  if (!_wsBase) return
+  if (!appConfig.WS_URL) return
   if (_ws?.readyState === WebSocket.OPEN || _ws?.readyState === WebSocket.CONNECTING) return
 
   _clearTimer()
@@ -50,7 +49,7 @@ function _connect() {
   _error.value = null
 
   try {
-    _ws = new WebSocket(`${_wsBase}/controlOfDevice`)
+    _ws = new WebSocket(`${appConfig.WS_URL}/controlOfDevice`)
   } catch (e) {
     _status.value = 'error'
     _error.value = String(e)
@@ -92,9 +91,6 @@ function _disconnect() {
 
 // ── Composable public ────────────────────────────────────────────────────────
 export function useDeviceControlWs() {
-  const { public: { wsBase } } = useRuntimeConfig() as any
-  _wsBase = wsBase || 'ws://192.168.1.40:8099'
-
   /**
    * Envoie une commande vers le serveur.
    * @returns true si envoyée, false si le socket n'est pas ouvert

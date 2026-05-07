@@ -386,7 +386,7 @@ onMounted(async () => {
               {{ filteredPlayers.length }} / {{ players.length }} lecteurs
             </div>
           </div>
-          <UDivider />
+          <USeparator />
         </div>
       </template>
 

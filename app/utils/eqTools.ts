@@ -35,12 +35,18 @@ export function uiTypeToApi(t: EqType): number {
   if (t === "highshelf") return 6
   return 0
 }
-
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+} 
 export function apiCellsToBands(cells: ApiCell[]): UiBand[] {
   return [...cells]
     .sort((a, b) => Number(a["@cell"]) - Number(b["@cell"]))
     .map((c) => ({
-      id: crypto.randomUUID(),
+      id: uuid(),
       cell: Number(c["@cell"]),
       enabled: c["@EQon"] === "1" && Number(c["@freq"]) > 0,
       type: apiTypeToUi(Number(c["@EQtype"])),

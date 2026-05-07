@@ -1,5 +1,5 @@
 import type { LecteurState } from '@/types/lecteur'
-
+import appConfig from '@/src/config'
 /**
  * useLecteursWs — états temps réel des lecteurs via WebSocket
  *
@@ -12,12 +12,10 @@ import type { LecteurState } from '@/types/lecteur'
  */
 export function useLecteursWs() {
   const toast = useToast()
-  const { public: { wsBase } } = useRuntimeConfig() as any
-
   const stateById = ref<Record<number, LecteurState>>({})
 
   const { status: wsStatus, error: wsError, connect, send, on } = useWs(
-    `${wsBase}/lecteur`,
+    `${appConfig.WS_URL}/lecteur`,
     {
       reconnect: true,
       reconnectDelay: 2000,

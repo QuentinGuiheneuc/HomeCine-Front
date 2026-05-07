@@ -480,6 +480,9 @@ onUnmounted(() => {
                   <UBadge :color="getFirstClient(g)?.connected ? 'primary' : 'error'" variant="subtle">
                     {{ alive(!!getFirstClient(g)?.connected) }}
                   </UBadge>
+                  <UBadge :color="g.muted ? 'primary' : 'error'" variant="subtle">
+                    {{ "Mute" }}
+                  </UBadge>
                   <UBadge variant="subtle" color="primary">
                     {{ g.stream_id || '—' }}
                   </UBadge>

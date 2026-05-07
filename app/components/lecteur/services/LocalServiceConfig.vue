@@ -44,7 +44,7 @@ watch(() => localCfg.value?.typeStream, ensureSubConfigs, { immediate: true })
 
       <div>
         <label class="text-sm text-dimmed">Loop</label>
-        <UToggle v-model="localCfg.loop" />
+        <USwitch v-model="localCfg.loop" />
       </div>
 
       <div class="md:col-span-2">

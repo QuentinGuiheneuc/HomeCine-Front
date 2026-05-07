@@ -22,7 +22,7 @@ useHead({
 //   setCookie('TOKEN', '')
 // })
 
-const title = 'HomeCine - Dashboard' 
+const title = 'HomeCine - Dashboard'
 const description = 'HomeCine est un projet de serveur de streaming audio personnel, conçu pour offrir une expérience d’écoute de haute qualité et personnalisée. Avec HomeCine, vous pouvez diffuser votre musique préférée depuis n’importe où, tout en bénéficiant d’une interface conviviale et de fonctionnalités avancées pour gérer votre bibliothèque musicale.'
 
 useSeoMeta({

@@ -36,8 +36,11 @@ http.interceptors.response.use(
     const url = error.config?.url ?? ''
     const skip = (error.config as any)?.skipAuthRedirect
     const isAuthEndpoint = url.includes('/login') || url.includes('/logout')
+    // Les erreurs 401/403 des routes Spotify viennent de l'API Spotify (scope manquant,
+    // token expiré côté Spotify…) — elles ne doivent pas déconnecter l'utilisateur de l'appli.
+    const isSpotifyEndpoint = url.includes('/spotify/')
 
-    if (!skip && !isAuthEndpoint && (status === 401 || status === 402 || status === 403)) {
+    if (!skip && !isAuthEndpoint && !isSpotifyEndpoint && (status === 401 || status === 402 || status === 403)) {
       if (typeof document !== 'undefined') deleteCookie(CookieName.TOKEN)
       redirectToLoginOnce()
     }

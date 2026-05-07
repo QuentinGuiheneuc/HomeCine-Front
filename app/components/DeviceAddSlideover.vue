@@ -14,7 +14,7 @@ const wsErrorMsg = ref<string | null>(null)
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-const wsUrl = computed(() => `ws://192.168.1.40:9086/Device`)
+const wsUrl = computed(() => `ws://localhost:9086/Device`)
 
 /* Search results */
 type FoundDevice = {
