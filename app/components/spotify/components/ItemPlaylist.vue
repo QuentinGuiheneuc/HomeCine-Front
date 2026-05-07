@@ -128,7 +128,7 @@ function onRowPlay(idx: number) {
     <!-- Header non scrollant -->
     <div class="pb-3 shrink-0">
       <div class="flex items-end gap-5">
-        <img :src="cover" class="h-36 w-36 rounded-md object-cover shadow-lg shrink-0" alt="" />
+        <img :src="cover" class="h-24 w-24 sm:h-36 sm:w-36 rounded-md object-cover shadow-lg shrink-0" alt="" />
         <div class="min-w-0 pb-1">
           <p class="text-xs uppercase tracking-widest text-dimmed mb-1">Playlist</p>
           <h1 class="text-2xl font-bold leading-tight truncate">{{ item?.name || 'Playlist' }}</h1>
@@ -153,7 +153,7 @@ function onRowPlay(idx: number) {
       :style="{ paddingBottom: (playerHeight ?? 104) + 'px' }"
     >
       <!-- En-tête colonnes -->
-      <div class="grid grid-cols-[2rem_2rem_1fr_1fr_4rem] gap-x-3 px-2 py-1.5 text-[11px] uppercase tracking-wider text-dimmed border-b border-default sticky top-0 bg-background/80 backdrop-blur z-10">
+      <div class="grid grid-cols-[1.5rem_2rem_1fr_4rem] md:grid-cols-[2rem_2rem_1fr_1fr_4rem] gap-x-2 md:gap-x-3 px-2 py-1.5 text-[11px] uppercase tracking-wider text-dimmed border-b border-default sticky top-0 bg-background/80 backdrop-blur z-10">
         <span class="text-center">#</span>
         <span />
         <span>Titre</span>
@@ -203,7 +203,7 @@ function onRowPlay(idx: number) {
         </div>
 
         <!-- Album name -->
-        <p class="hidden md:block truncate text-xs text-dimmed">{{ t.album?.name ?? '' }}</p>
+        <p class="hidden md:block truncate text-xs text-dimmed col-start-4">{{ t.album?.name ?? '' }}</p>
 
         <!-- Durée -->
         <span class="text-xs tabular-nums text-dimmed text-right">{{ ms(t.duration_ms) }}</span>

@@ -98,12 +98,12 @@ async function playArtist() {
       <div class="relative flex items-end gap-5 px-1 pt-2 pb-3">
         <img
           :src="avatar"
-          class="h-36 w-36 rounded-full object-cover shadow-xl shrink-0 ring-2 ring-white/10"
+          class="h-24 w-24 sm:h-36 sm:w-36 rounded-full object-cover shadow-xl shrink-0 ring-2 ring-white/10"
           alt=""
         />
         <div class="min-w-0 pb-1">
           <p class="text-xs uppercase tracking-widest text-dimmed mb-1">Artiste</p>
-          <h1 class="text-3xl font-bold leading-tight truncate">{{ item.name }}</h1>
+          <h1 class="text-2xl sm:text-3xl font-bold leading-tight truncate">{{ item.name }}</h1>
           <p v-if="formattedFollowers" class="mt-1 text-sm text-dimmed">{{ formattedFollowers }}</p>
           <p v-if="item.genres?.length" class="mt-0.5 text-xs text-dimmed truncate">
             {{ item.genres.slice(0, 3).join(' · ') }}
@@ -129,7 +129,7 @@ async function playArtist() {
         <div
           v-for="(t, idx) in (item.topTracks ?? []).slice(0, 10)"
           :key="t.id"
-          class="group grid grid-cols-[2rem_2.5rem_1fr_4rem] gap-x-3 items-center px-2 py-1.5 hover:bg-elevated/40 rounded cursor-default"
+          class="group grid grid-cols-[1.5rem_2rem_1fr_3.5rem] sm:grid-cols-[2rem_2.5rem_1fr_4rem] gap-x-2 sm:gap-x-3 items-center px-2 py-1.5 hover:bg-elevated/40 rounded cursor-default"
           @dblclick="playTrack(t.uri)"
         >
           <div class="flex items-center justify-center">
@@ -168,17 +168,17 @@ async function playArtist() {
         </p>
 
         <div v-else class="overflow-x-auto pb-2 scrollbar-none">
-          <div class="flex gap-4 px-2">
+          <div class="flex gap-3 sm:gap-4 px-2">
             <div
               v-for="al in item.albums"
               :key="al.id"
-              class="group shrink-0 w-40 cursor-pointer"
+              class="group shrink-0 w-32 sm:w-40 cursor-pointer"
               @click="$emit('select-album', al.id)"
             >
               <div class="relative rounded-md overflow-hidden mb-2">
                 <img
                   :src="al.images?.[0]?.url ?? 'https://via.placeholder.com/160x160?text=Album'"
-                  class="h-40 w-40 object-cover"
+                  class="h-32 w-32 sm:h-40 sm:w-40 object-cover"
                   alt=""
                   loading="lazy"
                 />

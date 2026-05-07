@@ -142,28 +142,26 @@ function iconForDeviceType(type: string) {
 
 <template>
   <footer class="sticky bottom-0 z-40 border-t border-default bg-elevated/80 backdrop-blur supports-[backdrop-filter]:bg-elevated/60">
-    <div class="w-full px-4">
-      <div class="w-full grid grid-cols-1 md:grid-cols-12 items-center gap-2 p-2">
+    <!-- Desktop : 3 colonnes -->
+    <div class="hidden md:block w-full px-4">
+      <div class="w-full grid grid-cols-12 items-center gap-2 p-2">
         <!-- LEFT -->
-        <div class="flex items-center gap-3 min-w-0 md:col-span-4 xl:col-span-3">
-          <img :src="cover" :alt="title" class="h-16 w-16 md:h-20 md:w-20 rounded object-cover" />
+        <div class="flex items-center gap-3 min-w-0 col-span-3">
+          <img :src="cover" :alt="title" class="h-16 w-16 md:h-20 md:w-20 rounded object-cover shrink-0" />
           <div class="min-w-0">
             <p class="truncate text-sm font-medium">{{ title }}</p>
             <p class="truncate text-xs text-dimmed">{{ artists || '—' }}</p>
             <p v-if="device" class="text-[11px] text-muted/70">
               <span class="inline-flex items-center gap-1">
                 <UIcon :name="iconForDeviceType(device.type || '')" class="w-4 h-4" />
-                <span class="truncate">
-                  {{ device.name }} {{ device.is_private_session ? '🔒' : '' }}
-                </span>
+                <span class="truncate">{{ device.name }} {{ device.is_private_session ? '🔒' : '' }}</span>
               </span>
             </p>
           </div>
           <UButton icon="i-lucide-heart" variant="ghost" color="neutral" square />
         </div>
-
         <!-- CENTER -->
-        <div class="md:col-span-6 xl:col-span-5 flex flex-col items-center gap-3">
+        <div class="col-span-6 flex flex-col items-center gap-1">
           <div class="flex items-center gap-4">
             <UButton :color="shuffle ? 'primary' : 'neutral'" variant="ghost" icon="i-lucide-shuffle" size="sm" square @click="toggleShuffle" />
             <UButton variant="ghost" color="neutral" icon="i-lucide-skip-back" size="sm" square @click="prev" />
@@ -173,43 +171,54 @@ function iconForDeviceType(type: string) {
             <UButton variant="ghost" color="neutral" icon="i-lucide-skip-forward" size="sm" square @click="next" />
             <UButton :color="repeat !== 'off' ? 'primary' : 'neutral'" variant="ghost" :icon="repeat === 'track' ? 'i-lucide-repeat-1' : 'i-lucide-repeat'" size="sm" square @click="cycleRepeat" />
           </div>
-
-          <div class="flex items-center gap-3 w-full max-w-6xl">
+          <div class="flex items-center gap-3 w-full">
             <span class="text-xs tabular-nums text-dimmed w-10 text-right">{{ toTime(positionMs) }}</span>
             <div class="flex-1">
-              <input
-                type="range" min="0" :max="duration" :value="positionMs"
+              <input type="range" min="0" :max="duration" :value="positionMs"
                 class="w-full accent-current h-1.5 range-primary-0"
-                @input="onSeek(($event.target as HTMLInputElement).valueAsNumber)"
-              />
+                @input="onSeek(($event.target as HTMLInputElement).valueAsNumber)" />
             </div>
             <span class="text-xs tabular-nums text-dimmed w-10">{{ toTime(duration) }}</span>
           </div>
         </div>
-
         <!-- RIGHT -->
-        <div class="md:col-span-3 xl:col-span-4 flex items-center justify-end gap-2">
+        <div class="col-span-3 flex items-center justify-end gap-2">
           <UButton variant="ghost" color="neutral" icon="material-symbols:event-list-sharp" style="rotate: 180deg;" size="lg" square />
           <UButton variant="ghost" color="neutral" icon="i-lucide-list-music" size="lg" square />
           <UButton variant="ghost" :color="device?.type ? 'primary' : 'neutral'" :icon="iconForDeviceType(device?.type || 'i-lucide-monitor-speaker')" size="lg" square @click="isDevicSpotifyeSlideoverOpen = true" />
-          <div class="flex items-center gap-2 w-40 max-w-[12rem]" @wheel.prevent="onWheelMaster">
-            <UButton
-              variant="ghost" color="neutral"
-              :icon="volume === 0 ? 'i-lucide-volume-x' : volume < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2'" size="lg"
-              square
-              @click="setVolume(volume === 0 ? 60 : 0)"
-              :disabled="!device?.supports_volume"
-            />
-            <input
-              type="range" min="0" max="100" :value="volume"
-              class="w-full accent-current h-2 range-primary-0"
-              style="width: 131px; height: 12px;"
+          <div class="flex items-center gap-2" @wheel.prevent="onWheelMaster">
+            <UButton variant="ghost" color="neutral"
+              :icon="volume === 0 ? 'i-lucide-volume-x' : volume < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2'"
+              size="lg" square @click="setVolume(volume === 0 ? 60 : 0)" :disabled="!device?.supports_volume" />
+            <input type="range" min="0" max="100" :value="volume"
+              class="w-24 xl:w-32 accent-current h-2 range-primary-0"
               @input="setVolume(($event.target as HTMLInputElement).valueAsNumber)"
-              :disabled="!device?.supports_volume"
-            />
+              :disabled="!device?.supports_volume" />
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Mobile : track info + play button -->
+    <div class="md:hidden w-full px-3 py-2">
+      <div class="flex items-center gap-3">
+        <img :src="cover" :alt="title" class="h-12 w-12 rounded object-cover shrink-0" />
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-medium">{{ title }}</p>
+          <p class="truncate text-xs text-dimmed">{{ artists || '—' }}</p>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <UButton variant="ghost" color="neutral" icon="i-lucide-skip-back" size="sm" square @click="prev" />
+          <UButton size="lg" square class="rounded-full h-11 w-11 justify-center items-center" @click="togglePlay">
+            <UIcon :name="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'" class="w-5 h-5" />
+          </UButton>
+          <UButton variant="ghost" color="neutral" icon="i-lucide-skip-forward" size="sm" square @click="next" />
+        </div>
+      </div>
+      <!-- Progress bar mobile -->
+      <input type="range" min="0" :max="duration" :value="positionMs"
+        class="w-full accent-current h-1 range-primary-0 mt-2"
+        @input="onSeek(($event.target as HTMLInputElement).valueAsNumber)" />
     </div>
   </footer>
 </template>

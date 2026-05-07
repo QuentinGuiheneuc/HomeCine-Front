@@ -299,10 +299,10 @@ function handleShortcutClick(item: RecentItem) {
 </script>
 
 <template>
-  <div class="overflow-y-auto">
+  <div class="overflow-x-hidden overflow-y-hidden">
 
     <!-- ── Barre de recherche sticky ── -->
-    <div class="sticky top-0 z-30 px-6 pt-4 pb-3 bg-elevated/80 backdrop-blur border-b border-default">
+    <div class="sticky top-0 z-30 px-3 sm:px-6 pt-4 pb-3 bg-elevated/80 backdrop-blur border-b border-default">
       <UInput
         v-model="searchQuery"
         icon="i-lucide-search"
@@ -315,7 +315,7 @@ function handleShortcutClick(item: RecentItem) {
     </div>
 
     <!-- ── Résultats de recherche ── -->
-    <div v-if="isSearching" class="px-6 py-6 space-y-8">
+    <div v-if="isSearching" class="px-3 sm:px-6 py-4 sm:py-6 space-y-8">
 
       <!-- Loader -->
       <div v-if="searchLoading" class="flex justify-center py-10">
@@ -327,40 +327,47 @@ function handleShortcutClick(item: RecentItem) {
         <section v-if="searchResults.tracks.length">
           <h2 class="text-lg font-bold mb-3">Titres</h2>
           <div class="space-y-1">
-            <button
+            <div
               v-for="track in searchResults.tracks"
               :key="track.id"
-              class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accented transition-colors text-left"
-              @click="emit('play-uri', track.uri)"
+              class="w-full flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-accented transition-colors"
             >
               <img
                 :src="track.album?.images?.[2]?.url ?? track.album?.images?.[0]?.url"
                 class="h-10 w-10 rounded object-cover shrink-0"
                 alt=""
               />
-              <div class="min-w-0">
+              <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium truncate">{{ track.name }}</p>
                 <p class="text-xs text-dimmed truncate">{{ (track.artists ?? []).map((a: any) => a.name).join(', ') }}</p>
               </div>
-              <UIcon name="i-lucide-play" class="ml-auto size-4 text-dimmed shrink-0" />
-            </button>
+              <UButton
+                icon="i-lucide-play"
+                size="xs"
+                color="primary"
+                variant="soft"
+                square
+                class="shrink-0"
+                @click="emit('play-uri', track.uri)"
+              />
+            </div>
           </div>
         </section>
 
         <!-- Albums -->
         <section v-if="searchResults.albums.length">
           <h2 class="text-lg font-bold mb-3">Albums</h2>
-          <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+          <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
             <div
               v-for="album in searchResults.albums"
               :key="album.id"
-              class="group shrink-0 w-36 cursor-pointer"
+              class="group shrink-0 w-28 sm:w-36 cursor-pointer"
               @click="emit('select-album', album.id)"
             >
               <div class="relative rounded-md overflow-hidden mb-2">
                 <img
                   :src="album.images?.[1]?.url ?? album.images?.[0]?.url ?? 'https://via.placeholder.com/144'"
-                  class="h-36 w-36 object-cover"
+                  class="h-28 w-28 sm:h-36 sm:w-36 object-cover"
                   alt=""
                 />
                 <button
@@ -379,16 +386,16 @@ function handleShortcutClick(item: RecentItem) {
         <!-- Artistes -->
         <section v-if="searchResults.artists.length">
           <h2 class="text-lg font-bold mb-3">Artistes</h2>
-          <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+          <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
             <div
               v-for="artist in searchResults.artists"
               :key="artist.id"
-              class="group shrink-0 w-36 cursor-pointer text-center"
+              class="group shrink-0 w-28 sm:w-36 cursor-pointer text-center"
               @click="emit('select-artist', artist.id)"
             >
               <img
                 :src="artist.images?.[1]?.url ?? artist.images?.[0]?.url ?? 'https://via.placeholder.com/144'"
-                class="h-36 w-36 rounded-full object-cover mb-2 mx-auto"
+                class="h-28 w-28 sm:h-36 sm:w-36 rounded-full object-cover mb-2 mx-auto"
                 alt=""
               />
               <p class="text-xs font-semibold truncate">{{ artist.name }}</p>
@@ -409,30 +416,30 @@ function handleShortcutClick(item: RecentItem) {
     </div>
 
     <!-- ── Vue Home (masquée pendant la recherche) ── -->
-    <div v-else>
+    <div v-else class="space-y-8">
     <!-- Fond dégradé dynamique en haut -->
     <div
       class="relative"
       :style="{ background: `linear-gradient(to bottom, var(${gradientColor}) 0%, transparent 340px)` }"
     >
-      <div class="px-6 pt-8 pb-6 space-y-8">
+      <div class="px-3 sm:px-6 pt-4 sm:pt-8 pb-4 sm:pb-6 space-y-4">
 
         <!-- ── Greeting ── -->
         <div class="flex items-center justify-between">
-          <h1 class="text-3xl font-bold">{{ greeting }}</h1>
+          <h1 class="text-xl sm:text-3xl font-bold">{{ greeting }}</h1>
           <USkeleton v-if="loading" class="h-8 w-32" />
           <span v-else-if="user?.display_name" class="text-sm text-dimmed">{{ user.display_name }}</span>
         </div>
 
         <!-- ── Shortcuts (6 tuiles compactes en haut) ── -->
-        <div v-if="loading" class="grid grid-cols-2 xl:grid-cols-3 gap-2">
-          <USkeleton v-for="i in 6" :key="i" class="h-16 rounded" />
+        <div v-if="loading" class="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <USkeleton v-for="i in 8" :key="i" class="h-16 rounded" />
         </div>
-        <div v-else class="grid grid-cols-2 xl:grid-cols-3 gap-2">
+        <div v-else class="grid grid-cols-2 lg:grid-cols-4 gap-2">
           <button
-            v-for="item in recentlyPlayed.slice(0, 6)"
+            v-for="item in recentlyPlayed.slice(0, 8)"
             :key="item.id"
-            class="group flex items-center gap-0 bg-white/[0.07] hover:bg-white/[0.14] rounded overflow-hidden transition-colors text-left relative"
+            class="group flex items-center h-16 w-full bg-white/[0.07] hover:bg-white/[0.14] rounded overflow-hidden transition-colors text-left relative"
             @click="handleShortcutClick(item)"
           >
             <!-- image ou gradient "liked" -->
@@ -472,24 +479,24 @@ function handleShortcutClick(item: RecentItem) {
               <h2 class="text-xl font-bold">Récemment joués</h2>
               <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
             </div>
-            <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+            <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
               <div
                 v-for="item in recentlyPlayed"
                 :key="item.id"
-                class="group shrink-0 w-44 cursor-pointer"
+                class="group shrink-0 w-24 cursor-pointer"
                 @click="handleCardClick({ id: item.id, playlist_id: item.playlist_id, uri: item.uri })"
               >
                 <div class="relative rounded-md overflow-hidden mb-3">
                   <div
                     v-if="item.image === '__liked__'"
-                    class="h-44 w-44 bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"
+                    class="h-24 w-24 bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"
                   >
                     <UIcon name="i-lucide-heart" class="text-white size-16" />
                   </div>
                   <img
                     v-else
                     :src="item.image"
-                    class="h-44 w-44 object-cover"
+                    class="h-24 w-24 object-cover"
                     alt=""
                     loading="lazy"
                   />
@@ -513,17 +520,17 @@ function handleShortcutClick(item: RecentItem) {
               <h2 class="text-xl font-bold">Faits pour vous</h2>
               <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
             </div>
-            <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+            <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
               <div
                 v-for="pl in madeForYou"
                 :key="pl.id"
-                class="group shrink-0 w-44 cursor-pointer"
+                class="group shrink-0 w-24 cursor-pointer"
                 @click="handleCardClick({ id: pl.id, type: 'playlist' })"
               >
                 <div class="relative rounded-md overflow-hidden mb-3">
                   <img
                     :src="pl.images?.[0]?.url ?? 'https://via.placeholder.com/176x176?text=PL'"
-                    class="h-44 w-44 object-cover"
+                    class="h-24 w-24 object-cover"
                     alt=""
                     loading="lazy"
                   />
@@ -547,17 +554,17 @@ function handleShortcutClick(item: RecentItem) {
               <h2 class="text-xl font-bold">Mis en avant</h2>
               <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
             </div>
-            <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+            <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
               <div
                 v-for="pl in featured"
                 :key="pl.id"
-                class="group shrink-0 w-44 cursor-pointer"
+                class="group shrink-0 w-24 cursor-pointer"
                 @click="handleCardClick({ id: pl.id, type: 'playlist' })"
               >
                 <div class="relative rounded-md overflow-hidden mb-3">
                   <img
                     :src="pl.images?.[0]?.url ?? 'https://via.placeholder.com/176x176?text=PL'"
-                    class="h-44 w-44 object-cover"
+                    class="h-24 w-24 object-cover"
                     alt=""
                     loading="lazy"
                   />
@@ -583,17 +590,17 @@ function handleShortcutClick(item: RecentItem) {
               <h2 class="text-xl font-bold">Nouvelles sorties</h2>
               <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
             </div>
-            <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+            <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
               <div
                 v-for="album in newReleases"
                 :key="album.id"
-                class="group shrink-0 w-44 cursor-pointer"
+                class="group shrink-0 w-24 cursor-pointer"
                 @click="playUri(album.uri)"
               >
                 <div class="relative rounded-md overflow-hidden mb-3">
                   <img
                     :src="album.images?.[0]?.url ?? 'https://via.placeholder.com/176x176?text=AL'"
-                    class="h-44 w-44 object-cover"
+                    class="h-24 w-24 object-cover"
                     alt=""
                     loading="lazy"
                   />
@@ -637,7 +644,10 @@ function handleShortcutClick(item: RecentItem) {
 </template>
 
 <style scoped>
-/* Masquer la scrollbar horizontale sur les sections */
-.scrollbar-none { scrollbar-width: none; }
-.scrollbar-none::-webkit-scrollbar { display: none; }
+/* Scrollbar fine pour les sections horizontales */
+.scroll-thin { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
+.scroll-thin::-webkit-scrollbar { height: 4px; }
+.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+.scroll-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+.scroll-thin::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
 </style>

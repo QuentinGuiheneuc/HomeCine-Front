@@ -41,6 +41,8 @@ type ArtistDetail = {
 
 /* ─────────────────── Setup ─────────────────── */
 const playerHeight = 104
+const sidebarOpen = ref(false)
+
 
 const { playlist, fetchPlaylist } = usePlaylists()
 const route  = useRoute()
@@ -320,11 +322,11 @@ async function onPlayUri(uri: string) {
 </script>
 
 <template>
-  <div class="h-screen flex flex-col">
+  <div class="h-screen overflow-hidden flex flex-col">
     <div class="flex flex-1 min-h-0 overflow-hidden">
 
-      <!-- SIDEBAR -->
-      <aside class="w-72 shrink-0 h-full">
+      <!-- SIDEBAR desktop (md+) -->
+      <aside class="hidden md:block w-72 shrink-0 h-full">
         <LibrarySidebar
           :player-height="playerHeight"
           @select-playlist="selectPlaylist"
@@ -334,9 +336,32 @@ async function onPlayUri(uri: string) {
         />
       </aside>
 
+      <!-- SIDEBAR mobile : drawer + backdrop -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div
+            v-if="sidebarOpen"
+            class="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            @click="sidebarOpen = false"
+          />
+        </Transition>
+        <div
+          class="md:hidden fixed left-0 top-0 bottom-0 z-50 w-72 transition-transform duration-200"
+          :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+        >
+          <LibrarySidebar
+            :player-height="playerHeight"
+            @select-playlist="(id: string) => { selectPlaylist(id); sidebarOpen = false }"
+            @select-album="(id: string) => { selectAlbum(id); sidebarOpen = false }"
+            @select-artist="(id: string) => { selectArtist(id); sidebarOpen = false }"
+            @open-liked="openLiked(); sidebarOpen = false"
+          />
+        </div>
+      </Teleport>
+
       <!-- CONTENU principal -->
       <main class="flex-1 min-w-0 min-h-0 overflow-hidden">
-        <div class="h-full overflow-y-auto w-full max-w-[1350px] mx-auto no-scrollbar">
+        <div class="h-full overflow-y-auto w-full no-scrollbar">
           <Transition name="fade" mode="out-in">
             <div :key="contentKey" class="h-full">
 
@@ -345,6 +370,7 @@ async function onPlayUri(uri: string) {
 
                 <!-- Breadcrumb sticky -->
                 <div class="sticky top-0 z-20 bg-elevated/60 backdrop-blur py-2 mb-3 flex items-center gap-2">
+                  <UButton class="md:hidden" icon="i-lucide-library" variant="ghost" size="sm" @click="sidebarOpen = true" />
                   <UButton icon="i-lucide-arrow-left" variant="ghost" size="sm" @click="clearSelection" />
 
                   <img
@@ -439,14 +465,23 @@ async function onPlayUri(uri: string) {
               </div>
 
               <!-- ── Accueil ── -->
-              <HomeView
-                v-else
-                @select-playlist="selectPlaylist"
-                @open-liked="openLiked"
-                @play-uri="onPlayUri"
-                @select-album="selectAlbum"
-                @select-artist="selectArtist"
-              />
+              <div v-else class="relative h-full">
+                <UButton
+                  class="md:hidden absolute top-3 left-3 z-10 shadow"
+                  icon="i-lucide-library"
+                  color="neutral"
+                  variant="soft"
+                  size="sm"
+                  @click="sidebarOpen = true"
+                />
+                <HomeView
+                  @select-playlist="selectPlaylist"
+                  @open-liked="openLiked"
+                  @play-uri="onPlayUri"
+                  @select-album="selectAlbum"
+                  @select-artist="selectArtist"
+                />
+              </div>
 
             </div>
           </Transition>

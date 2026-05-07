@@ -1,6 +1,12 @@
 @import "tailwindcss" theme(static);
 @import "@nuxt/ui";
 
+/* Empêche tout débordement horizontal sur l'ensemble du site */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 @theme static {
   --font-sans: 'Public Sans', sans-serif;
 

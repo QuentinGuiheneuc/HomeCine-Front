@@ -97,7 +97,7 @@ async function playAlbumFrom(offset = 0) {
     <!-- Header -->
     <div class="pb-3 shrink-0">
       <div class="flex items-end gap-5">
-        <img :src="cover" class="h-36 w-36 rounded-md object-cover shadow-lg shrink-0" alt="" />
+        <img :src="cover" class="h-24 w-24 sm:h-36 sm:w-36 rounded-md object-cover shadow-lg shrink-0" alt="" />
         <div class="min-w-0 pb-1">
           <p class="text-xs uppercase tracking-widest text-dimmed mb-1">{{ albumTypeLabel }}</p>
           <h1 class="text-2xl font-bold leading-tight truncate">{{ item?.name }}</h1>
@@ -123,7 +123,7 @@ async function playAlbumFrom(offset = 0) {
     <!-- Scrollable -->
     <div class="flex-1 min-h-0 overflow-y-auto" :style="{ paddingBottom: playerHeight + 'px' }">
 
-      <div class="grid grid-cols-[2rem_1fr_4rem] gap-x-3 px-2 py-1.5 text-[11px] uppercase tracking-wider text-dimmed border-b border-default sticky top-0 bg-background/80 backdrop-blur z-10">
+      <div class="grid grid-cols-[1.5rem_1fr_3.5rem] sm:grid-cols-[2rem_1fr_4rem] gap-x-2 sm:gap-x-3 px-2 py-1.5 text-[11px] uppercase tracking-wider text-dimmed border-b border-default sticky top-0 bg-background/80 backdrop-blur z-10">
         <span class="text-center">#</span>
         <span>Titre</span>
         <span class="text-right">Durée</span>
