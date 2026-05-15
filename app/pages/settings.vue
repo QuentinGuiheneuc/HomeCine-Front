@@ -4,7 +4,7 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 const links = [[
   { label: 'General',       icon: 'i-lucide-user',      to: '/settings', exact: true },
   { label: 'Spotify',       icon: 'logos:spotify-icon', to: '/settings/spotify' },
-  { label: 'Snap',          icon: 'cbi:snapcast',       to: '/settings/snap' },
+  { label: 'Members', to: '/settings/members', icon: 'i-lucide-users' },
   { label: 'Notifications', icon: 'i-lucide-bell',      to: '/settings/notifications' },
   { label: 'Security',      icon: 'i-lucide-shield',    to: '/settings/security' }
 ], [
@@ -31,9 +31,9 @@ const links = [[
     <!-- Corps (mêmes classes que :ui="{ body: 'p-0 min-h-0 flex-1' }") -->
     <div class="p-0 min-h-0 flex-1">
       <!-- ✅ Un seul conteneur qui scrolle -->
-      <div class="h-[calc(100dvh-var(--ui-header-height)-var(--ui-toolbar-height,49px))] overflow-y-auto overscroll-contain">
+      <div class="h-[calc(100dvh-var(--ui-header-height)-var(--ui-toolbar-height,50px))] overflow-y-auto overscroll-contain">
         <div class="px-4 sm:px-6 lg:px-8">
-          <div class="w-full lg:max-w-2xl mx-auto lg:py-12">
+          <div class="w-full lg:py-12">
             <NuxtPage />
           </div>
         </div>

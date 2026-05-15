@@ -25,7 +25,7 @@ const volume     = ref<number>(60)
 /* Override optimiste play/pause — effacé seulement quand Spotify confirme */
 const _playOverride = ref<boolean | null>(null)
 let   _playOverrideTimer: ReturnType<typeof setTimeout> | null = null
-const isPlaying = computed(() => _playOverride.value ?? playerState.value?.is_playing ?? false)
+const isPlaying = computed(() => playerState.value?.is_playing)
 
 function _setPlayOverride(v: boolean) {
   _playOverride.value = v
@@ -80,7 +80,7 @@ async function next() {
   await http.post('/spotify/devices/next')
 }
 async function toggleShuffle() {
-  shuffle.value = !shuffle.value      // optimiste
+  shuffle.value = !shuffle.value // optimiste
   await http.put('/spotify/devices/shuffle', { query: { state: String(shuffle.value) } })
 }
 async function cycleRepeat() {
@@ -88,8 +88,10 @@ async function cycleRepeat() {
   await http.put('/spotify/devices/repeat', { query: { state: repeat.value } })
 }
 
-const seekDebounced = useDebounceFn(async (ms: number) => {
-  await http.put('/spotify/devices/seek', { query: { position_ms: ms } })
+const seekDebounced = useDebounceFn(async (position_ms: number) => {
+  const d = device.value
+  if (!d) return
+  await http.put('/spotify/devices/seek', { position_ms, device_id: d.id })
 }, 250)
 function onSeek(ms: number) {
   positionMs.value = Math.max(0, Math.min(ms, duration.value))  // optimiste
@@ -166,7 +168,7 @@ function iconForDeviceType(type: string) {
             <UButton :color="shuffle ? 'primary' : 'neutral'" variant="ghost" icon="i-lucide-shuffle" size="sm" square @click="toggleShuffle" />
             <UButton variant="ghost" color="neutral" icon="i-lucide-skip-back" size="sm" square @click="prev" />
             <UButton size="xl" square class="rounded-full h-12 w-12 justify-center items-center" @click="togglePlay">
-              <UIcon :name="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'" class="w-6 h-6" />
+              <UIcon :name="!isPlaying ? 'i-lucide-pause' : 'i-lucide-play'" class="w-6 h-6" />
             </UButton>
             <UButton variant="ghost" color="neutral" icon="i-lucide-skip-forward" size="sm" square @click="next" />
             <UButton :color="repeat !== 'off' ? 'primary' : 'neutral'" variant="ghost" :icon="repeat === 'track' ? 'i-lucide-repeat-1' : 'i-lucide-repeat'" size="sm" square @click="cycleRepeat" />

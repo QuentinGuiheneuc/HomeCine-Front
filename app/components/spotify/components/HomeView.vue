@@ -192,7 +192,7 @@ async function fetchUser() {
 async function fetchRecentlyPlayed() {
   try {
     const { data } = await http.get<{ items: Array<{ played_at: string; context: any; track: any }> }>(
-      '/spotify/me/player/recently-played', { params: { limit: 20 } }
+      '/spotify/me/player/recently-played', { params: { limit: 25 } }
     )
     const seen = new Set<string>()
     const items: RecentItem[] = []
@@ -264,7 +264,7 @@ onMounted(async () => {
   await Promise.allSettled([
     fetchUser(),
     fetchRecentlyPlayed(),
-    fetchMadeForYou(),
+    fetchMadeForYou()
   ])
   featured.value      = MOCK_FEATURED
   newReleases.value   = MOCK_NEW_RELEASES
@@ -300,7 +300,6 @@ function handleShortcutClick(item: RecentItem) {
 
 <template>
   <div class="overflow-x-hidden overflow-y-hidden">
-
     <!-- ── Barre de recherche sticky ── -->
     <div class="sticky top-0 z-30 px-3 sm:px-6 pt-4 pb-3 bg-elevated/80 backdrop-blur border-b border-default">
       <UInput
@@ -316,7 +315,6 @@ function handleShortcutClick(item: RecentItem) {
 
     <!-- ── Résultats de recherche ── -->
     <div v-if="isSearching" class="px-3 sm:px-6 py-4 sm:py-6 space-y-8">
-
       <!-- Loader -->
       <div v-if="searchLoading" class="flex justify-center py-10">
         <UIcon name="i-lucide-loader-circle" class="size-8 text-dimmed animate-spin" />
@@ -417,228 +415,226 @@ function handleShortcutClick(item: RecentItem) {
 
     <!-- ── Vue Home (masquée pendant la recherche) ── -->
     <div v-else class="space-y-8">
-    <!-- Fond dégradé dynamique en haut -->
-    <div
-      class="relative"
-      :style="{ background: `linear-gradient(to bottom, var(${gradientColor}) 0%, transparent 340px)` }"
-    >
-      <div class="px-3 sm:px-6 pt-4 sm:pt-8 pb-4 sm:pb-6 space-y-4">
+      <!-- Fond dégradé dynamique en haut -->
+      <div
+        class="relative"
+        :style="{ background: `linear-gradient(to bottom, var(${gradientColor}) 0%, transparent 340px)` }"
+      >
+        <div class="px-3 sm:px-6 pt-4 sm:pt-8 pb-4 sm:pb-6 space-y-4">
+          <!-- ── Greeting ── -->
+          <div class="flex items-center justify-between">
+            <h1 class="text-xl sm:text-3xl font-bold">{{ greeting }}</h1>
+            <USkeleton v-if="loading" class="h-8 w-32" />
+            <span v-else-if="user?.display_name" class="text-sm text-dimmed">{{ user.display_name }}</span>
+          </div>
 
-        <!-- ── Greeting ── -->
-        <div class="flex items-center justify-between">
-          <h1 class="text-xl sm:text-3xl font-bold">{{ greeting }}</h1>
-          <USkeleton v-if="loading" class="h-8 w-32" />
-          <span v-else-if="user?.display_name" class="text-sm text-dimmed">{{ user.display_name }}</span>
-        </div>
-
-        <!-- ── Shortcuts (6 tuiles compactes en haut) ── -->
-        <div v-if="loading" class="grid grid-cols-2 lg:grid-cols-4 gap-2">
-          <USkeleton v-for="i in 8" :key="i" class="h-16 rounded" />
-        </div>
-        <div v-else class="grid grid-cols-2 lg:grid-cols-4 gap-2">
-          <button
-            v-for="item in recentlyPlayed.slice(0, 8)"
-            :key="item.id"
-            class="group flex items-center h-16 w-full bg-white/[0.07] hover:bg-white/[0.14] rounded overflow-hidden transition-colors text-left relative"
-            @click="handleShortcutClick(item)"
-          >
-            <!-- image ou gradient "liked" -->
-            <div
-              v-if="item.image === '__liked__'"
-              class="h-16 w-16 shrink-0 bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"
+          <!-- ── Shortcuts (6 tuiles compactes en haut) ── -->
+          <div v-if="loading" class="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            <USkeleton v-for="i in 8" :key="i" class="h-16 rounded" />
+          </div>
+          <div v-else class="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            <button
+              v-for="item in recentlyPlayed.slice(0, 8)"
+              :key="item.id"
+              class="group flex items-center h-16 w-full bg-white/[0.07] hover:bg-white/[0.14] rounded overflow-hidden transition-colors text-left relative"
+              @click="handleShortcutClick(item)"
             >
-              <UIcon name="i-lucide-heart" class="text-white size-6" />
-            </div>
-            <img
-              v-else
-              :src="item.image"
-              class="h-16 w-16 object-cover shrink-0"
-              alt=""
-              loading="lazy"
-            />
-            <span class="px-3 text-sm font-semibold leading-tight truncate">{{ item.name }}</span>
-
-            <!-- bouton play au hover -->
-            <div class="absolute right-2 opacity-0 group-hover:opacity-100 transition-all translate-y-1 group-hover:translate-y-0">
-              <button
-                class="h-8 w-8 rounded-full bg-[#1DB954] flex items-center justify-center shadow-lg"
-                @click.stop="item.uri && playUri(item.uri)"
-              >
-                <UIcon name="i-lucide-play" class="text-black size-4 ml-0.5" />
-              </button>
-            </div>
-          </button>
-        </div>
-
-        <!-- ── Section réutilisable ── -->
-        <template v-if="!loading">
-
-          <!-- Récemment joués -->
-          <section>
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-xl font-bold">Récemment joués</h2>
-              <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
-            </div>
-            <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
+              <!-- image ou gradient "liked" -->
               <div
-                v-for="item in recentlyPlayed"
-                :key="item.id"
-                class="group shrink-0 w-24 cursor-pointer"
-                @click="handleCardClick({ id: item.id, playlist_id: item.playlist_id, uri: item.uri })"
+                v-if="item.image === '__liked__'"
+                class="h-16 w-16 shrink-0 bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"
               >
-                <div class="relative rounded-md overflow-hidden mb-3">
-                  <div
-                    v-if="item.image === '__liked__'"
-                    class="h-24 w-24 bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"
-                  >
-                    <UIcon name="i-lucide-heart" class="text-white size-16" />
+                <UIcon name="i-lucide-heart" class="text-white size-6" />
+              </div>
+              <img
+                v-else
+                :src="item.image"
+                class="h-16 w-16 object-cover shrink-0"
+                alt=""
+                loading="lazy"
+              />
+              <span class="px-3 text-sm font-semibold leading-tight truncate">{{ item.name }}</span>
+
+              <!-- bouton play au hover -->
+              <div class="absolute right-2 opacity-0 group-hover:opacity-100 transition-all translate-y-1 group-hover:translate-y-0">
+                <button
+                  class="h-8 w-8 rounded-full bg-[#1DB954] flex items-center justify-center shadow-lg"
+                  @click.stop="item.uri && playUri(item.uri)"
+                >
+                  <UIcon name="i-lucide-play" class="text-black size-4 ml-0.5" />
+                </button>
+              </div>
+            </button>
+          </div>
+
+          <!-- ── Section réutilisable ── -->
+          <template v-if="!loading">
+            <!-- Récemment joués -->
+            <section class="w-full flex flex-col">
+              <div class="flex items-center justify-between mb-3 col-1">
+                <h2 class="text-xl font-bold">Récemment joués</h2>
+                <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
+              </div>
+              <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth col-1">
+                <div
+                  v-for="item in recentlyPlayed"
+                  :key="item.id"
+                  class="group shrink-0 w-24 cursor-pointer"
+                  @click="handleCardClick({ id: item.id, playlist_id: item.playlist_id, uri: item.uri })"
+                >
+                  <div class="relative rounded-md overflow-hidden mb-3">
+                    <div
+                      v-if="item.image === '__liked__'"
+                      class="h-24 w-24 bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"
+                    >
+                      <UIcon name="i-lucide-heart" class="text-white size-16" />
+                    </div>
+                    <img
+                      v-else
+                      :src="item.image"
+                      class="h-24 w-24 object-cover"
+                      alt=""
+                      loading="lazy"
+                    />
+                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                    <button
+                      class="absolute bottom-2 right-2 h-10 w-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
+                      @click.stop="item.uri && playUri(item.uri)"
+                    >
+                      <UIcon name="i-lucide-play" class="text-black size-5 ml-0.5" />
+                    </button>
                   </div>
-                  <img
-                    v-else
-                    :src="item.image"
-                    class="h-24 w-24 object-cover"
-                    alt=""
-                    loading="lazy"
-                  />
-                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                  <button
-                    class="absolute bottom-2 right-2 h-10 w-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
-                    @click.stop="item.uri && playUri(item.uri)"
-                  >
-                    <UIcon name="i-lucide-play" class="text-black size-5 ml-0.5" />
-                  </button>
+                  <p class="text-sm font-semibold truncate">{{ item.name }}</p>
+                  <p class="text-xs text-dimmed truncate mt-0.5">{{ item.subtitle }}</p>
                 </div>
-                <p class="text-sm font-semibold truncate">{{ item.name }}</p>
-                <p class="text-xs text-dimmed truncate mt-0.5">{{ item.subtitle }}</p>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <!-- Faits pour vous -->
-          <section>
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-xl font-bold">Faits pour vous</h2>
-              <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
-            </div>
-            <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
-              <div
-                v-for="pl in madeForYou"
-                :key="pl.id"
-                class="group shrink-0 w-24 cursor-pointer"
-                @click="handleCardClick({ id: pl.id, type: 'playlist' })"
-              >
-                <div class="relative rounded-md overflow-hidden mb-3">
-                  <img
-                    :src="pl.images?.[0]?.url ?? 'https://via.placeholder.com/176x176?text=PL'"
-                    class="h-24 w-24 object-cover"
-                    alt=""
-                    loading="lazy"
-                  />
-                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                  <button
-                    class="absolute bottom-2 right-2 h-10 w-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
-                    @click.stop="playUri(pl.uri)"
-                  >
-                    <UIcon name="i-lucide-play" class="text-black size-5 ml-0.5" />
-                  </button>
+            <!-- Faits pour vous -->
+            <section>
+              <div class="flex items-center justify-between mb-3">
+                <h2 class="text-xl font-bold">Faits pour vous</h2>
+                <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
+              </div>
+              <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
+                <div
+                  v-for="pl in madeForYou"
+                  :key="pl.id"
+                  class="group shrink-0 w-24 cursor-pointer"
+                  @click="handleCardClick({ id: pl.id, type: 'playlist' })"
+                >
+                  <div class="relative rounded-md overflow-hidden mb-3">
+                    <img
+                      :src="pl.images?.[0]?.url ?? 'https://via.placeholder.com/176x176?text=PL'"
+                      class="h-24 w-24 object-cover"
+                      alt=""
+                      loading="lazy"
+                    />
+                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                    <button
+                      class="absolute bottom-2 right-2 h-10 w-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
+                      @click.stop="playUri(pl.uri)"
+                    >
+                      <UIcon name="i-lucide-play" class="text-black size-5 ml-0.5" />
+                    </button>
+                  </div>
+                  <p class="text-sm font-semibold truncate">{{ pl.name }}</p>
+                  <p class="text-xs text-dimmed truncate mt-0.5">{{ pl.description || 'Playlist' }}</p>
                 </div>
-                <p class="text-sm font-semibold truncate">{{ pl.name }}</p>
-                <p class="text-xs text-dimmed truncate mt-0.5">{{ pl.description || 'Playlist' }}</p>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <!-- Mis en avant -->
-          <section>
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-xl font-bold">Mis en avant</h2>
-              <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
-            </div>
-            <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
-              <div
-                v-for="pl in featured"
-                :key="pl.id"
-                class="group shrink-0 w-24 cursor-pointer"
-                @click="handleCardClick({ id: pl.id, type: 'playlist' })"
-              >
-                <div class="relative rounded-md overflow-hidden mb-3">
-                  <img
-                    :src="pl.images?.[0]?.url ?? 'https://via.placeholder.com/176x176?text=PL'"
-                    class="h-24 w-24 object-cover"
-                    alt=""
-                    loading="lazy"
-                  />
-                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                  <button
-                    class="absolute bottom-2 right-2 h-10 w-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
-                    @click.stop="playUri(pl.uri)"
-                  >
-                    <UIcon name="i-lucide-play" class="text-black size-5 ml-0.5" />
-                  </button>
+            <!-- Mis en avant -->
+            <section>
+              <div class="flex items-center justify-between mb-3">
+                <h2 class="text-xl font-bold">Mis en avant</h2>
+                <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
+              </div>
+              <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
+                <div
+                  v-for="pl in featured"
+                  :key="pl.id"
+                  class="group shrink-0 w-24 cursor-pointer"
+                  @click="handleCardClick({ id: pl.id, type: 'playlist' })"
+                >
+                  <div class="relative rounded-md overflow-hidden mb-3">
+                    <img
+                      :src="pl.images?.[0]?.url ?? 'https://via.placeholder.com/176x176?text=PL'"
+                      class="h-24 w-24 object-cover"
+                      alt=""
+                      loading="lazy"
+                    />
+                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                    <button
+                      class="absolute bottom-2 right-2 h-10 w-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
+                      @click.stop="playUri(pl.uri)"
+                    >
+                      <UIcon name="i-lucide-play" class="text-black size-5 ml-0.5" />
+                    </button>
+                  </div>
+                  <p class="text-sm font-semibold truncate">{{ pl.name }}</p>
+                  <p class="text-xs text-dimmed truncate mt-0.5">
+                    {{ pl.tracks?.total ? pl.tracks.total + ' titres' : pl.description || 'Playlist' }}
+                  </p>
                 </div>
-                <p class="text-sm font-semibold truncate">{{ pl.name }}</p>
-                <p class="text-xs text-dimmed truncate mt-0.5">
-                  {{ pl.tracks?.total ? pl.tracks.total + ' titres' : pl.description || 'Playlist' }}
-                </p>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <!-- Nouvelles sorties -->
-          <section class="pb-6">
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-xl font-bold">Nouvelles sorties</h2>
-              <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
-            </div>
-            <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
-              <div
-                v-for="album in newReleases"
-                :key="album.id"
-                class="group shrink-0 w-24 cursor-pointer"
-                @click="playUri(album.uri)"
-              >
-                <div class="relative rounded-md overflow-hidden mb-3">
-                  <img
-                    :src="album.images?.[0]?.url ?? 'https://via.placeholder.com/176x176?text=AL'"
-                    class="h-24 w-24 object-cover"
-                    alt=""
-                    loading="lazy"
-                  />
-                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                  <button
-                    class="absolute bottom-2 right-2 h-10 w-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
-                    @click.stop="playUri(album.uri)"
-                  >
-                    <UIcon name="i-lucide-play" class="text-black size-5 ml-0.5" />
-                  </button>
+            <!-- Nouvelles sorties -->
+            <section class="pb-6">
+              <div class="flex items-center justify-between mb-3">
+                <h2 class="text-xl font-bold">Nouvelles sorties</h2>
+                <button class="text-xs text-dimmed hover:text-foreground transition-colors uppercase tracking-wider">Tout afficher</button>
+              </div>
+              <div class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
+                <div
+                  v-for="album in newReleases"
+                  :key="album.id"
+                  class="group shrink-0 w-24 cursor-pointer"
+                  @click="playUri(album.uri)"
+                >
+                  <div class="relative rounded-md overflow-hidden mb-3">
+                    <img
+                      :src="album.images?.[0]?.url ?? 'https://via.placeholder.com/176x176?text=AL'"
+                      class="h-24 w-24 object-cover"
+                      alt=""
+                      loading="lazy"
+                    />
+                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                    <button
+                      class="absolute bottom-2 right-2 h-10 w-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
+                      @click.stop="playUri(album.uri)"
+                    >
+                      <UIcon name="i-lucide-play" class="text-black size-5 ml-0.5" />
+                    </button>
+                  </div>
+                  <p class="text-sm font-semibold truncate">{{ album.name }}</p>
+                  <p class="text-xs text-dimmed truncate mt-0.5">
+                    {{ album.album_type === 'single' ? 'Single' : 'Album' }}
+                    · {{ (album.artists ?? []).map(a => a.name).join(', ') }}
+                  </p>
                 </div>
-                <p class="text-sm font-semibold truncate">{{ album.name }}</p>
-                <p class="text-xs text-dimmed truncate mt-0.5">
-                  {{ album.album_type === 'single' ? 'Single' : 'Album' }}
-                  · {{ (album.artists ?? []).map(a => a.name).join(', ') }}
-                </p>
               </div>
-            </div>
-          </section>
+            </section>
 
-        </template>
+          </template>
 
-        <!-- Skeleton sections loading -->
-        <template v-else>
-          <section v-for="s in 3" :key="s">
-            <USkeleton class="h-6 w-40 mb-3" />
-            <div class="flex gap-4">
-              <div v-for="i in 5" :key="i" class="shrink-0 space-y-2">
-                <USkeleton class="h-44 w-44 rounded-md" />
-                <USkeleton class="h-4 w-36" />
-                <USkeleton class="h-3 w-28" />
+          <!-- Skeleton sections loading -->
+          <template v-else>
+            <section v-for="s in 3" :key="s">
+              <USkeleton class="h-6 w-40 mb-3" />
+              <div class="flex gap-4">
+                <div v-for="i in 5" :key="i" class="shrink-0 space-y-2">
+                  <USkeleton class="h-44 w-44 rounded-md" />
+                  <USkeleton class="h-4 w-36" />
+                  <USkeleton class="h-3 w-28" />
+                </div>
               </div>
-            </div>
-          </section>
-        </template>
+            </section>
+          </template>
 
+        </div>
       </div>
-    </div>
     </div> <!-- fin v-else home -->
   </div>
 </template>

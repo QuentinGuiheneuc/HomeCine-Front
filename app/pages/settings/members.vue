@@ -1,44 +1,130 @@
 <script setup lang="ts">
-import type { Member } from '~/types'
+import { h, resolveComponent, ref, computed } from 'vue'
 
-// const { data: members } = await useFetch<Member[]>('/api/members', { default: () => [] })
+const UBadge = resolveComponent('UBadge')
+const UButton = resolveComponent('UButton')
 
-// const q = ref('')
+const search = ref('')
 
-// const filteredMembers = computed(() => {
-//   return members.value.filter((member) => {
-//     return member.name.search(new RegExp(q.value, 'i')) !== -1 || member.username.search(new RegExp(q.value, 'i')) !== -1
-//   })
-// })
+const users = ref([
+  {
+    id: 1,
+    name: 'Quentin',
+    email: 'quentin@mail.com',
+    role: 'Admin',
+    status: 'Active'
+  },
+  {
+    id: 2,
+    name: 'Lucas',
+    email: 'lucas@mail.com',
+    role: 'User',
+    status: 'Inactive'
+  },
+  {
+    id: 3,
+    name: 'Emma',
+    email: 'emma@mail.com',
+    role: 'Moderator',
+    status: 'Active'
+  }
+])
+
+const filteredUsers = computed(() => {
+  return users.value.filter((user) => {
+    return (
+      user.name.toLowerCase().includes(search.value.toLowerCase()) ||
+      user.email.toLowerCase().includes(search.value.toLowerCase())
+    )
+  })
+})
+
+const columns = [
+  {
+    accessorKey: 'id',
+    header: '#'
+  },
+  {
+    accessorKey: 'name',
+    header: 'Name'
+  },
+  {
+    accessorKey: 'email',
+    header: 'Email'
+  },
+  {
+    accessorKey: 'role',
+    header: 'Role'
+  },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    cell: ({ row }: any) => {
+      const status = row.original.status
+
+      return h(
+        UBadge,
+        {
+          color: status === 'Active' ? 'success' : 'neutral',
+          variant: 'subtle'
+        },
+        () => status
+      )
+    }
+  },
+  {
+    id: 'actions',
+    header: '',
+    cell: () => {
+      return h(UButton, {
+        label: 'Edit',
+        color: 'neutral',
+        variant: 'ghost',
+        size: 'sm'
+      })
+    }
+  }
+]
 </script>
 
 <template>
   <div>
     <UPageCard
-      title="mmm"
-      description="Invite new members by email address."
+      title="Users"
+      description="Manage users and permissions."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
     >
       <UButton
-        label="Invite people"
-        color="neutral"
+        label="Add user"
+        color="primary"
         class="w-fit lg:ms-auto"
       />
     </UPageCard>
 
-    <UPageCard variant="subtle" :ui="{ container: 'p-0 sm:p-0 gap-y-0', wrapper: 'items-stretch', header: 'p-4 mb-0 border-b border-default' }">
+    <UPageCard
+      variant="subtle"
+      :ui="{
+        container: 'p-0 sm:p-0 gap-y-0',
+        wrapper: 'items-stretch',
+        header: 'p-4 mb-0 border-b border-default'
+      }"
+    >
       <template #header>
         <UInput
+          v-model="search"
           icon="i-lucide-search"
-          placeholder="Search members"
+          placeholder="Search users"
           autofocus
           class="w-full"
         />
       </template>
 
-      <!-- <SettingsMembersList :members="filteredMembers" /> -->
+      <UTable
+        :rows="filteredUsers"
+        :columns="columns"
+      />
     </UPageCard>
   </div>
 </template>

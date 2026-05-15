@@ -442,7 +442,7 @@ onUnmounted(() => {
     </UDashboardNavbar>
 
     <main class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8">
-      <div class="w-full lg:max-w-12xl py-6 sm:py-8 lg:py-12">
+      <div class="w-full lg:max-w-12xl py-6 sm:py-4 lg:py-6">
         <UCard v-if="!hasAnyData" class="border-dashed">
           <UEmpty
             icon="i-lucide-database"

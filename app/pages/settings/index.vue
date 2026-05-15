@@ -1,57 +1,99 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import type { FormSubmitEvent } from '@nuxt/ui'
+import { ref, reactive, onMounted } from 'vue'
+import { GetUserProfile } from '../../src/api/user'
 
 const fileRef = ref<HTMLInputElement>()
+
+type UserProfile = {
+  name?: string
+  email?: string
+  settings?: {
+    ui?: {
+      primary?: string
+      neutral?: string
+    }
+  }
+  appearance?: string
+}
 
 const profileSchema = z.object({
   name: z.string().min(2, 'Too short'),
   email: z.string().email('Invalid email'),
-  username: z.string().min(2, 'Too short'),
-  avatar: z.string().optional(),
-  bio: z.string().optional()
+  avatar: z.string().optional()
 })
 
 type ProfileSchema = z.output<typeof profileSchema>
 
-const profile = reactive<Partial<ProfileSchema>>({
+const profile = reactive<ProfileSchema>({
   name: '',
   email: '',
-  username: '',
-  avatar: undefined,
-  bio: undefined
+  avatar: ''
 })
+
+const user = ref<UserProfile | null>(null)
+
 const toast = useToast()
-async function onSubmit(event: FormSubmitEvent<ProfileSchema>) {
+
+async function onSubmit(event: { data: ProfileSchema }) {
+  console.log('SUBMIT =>', event.data)
+
   toast.add({
     title: 'Success',
     description: 'Your settings have been updated.',
     icon: 'i-lucide-check',
     color: 'success'
   })
-  console.log(event.data)
 }
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
 
-  if (!input.files?.length) {
-    return
-  }
+  if (!input.files?.length) return
 
-  profile.avatar = URL.createObjectURL(input.files[0]!)
+  const file = input.files[0]
+
+  profile.avatar = URL.createObjectURL(file)
+
+  toast.add({
+    title: 'Success',
+    description: 'Avatar updated.',
+    icon: 'i-lucide-check',
+    color: 'success'
+  })
 }
 
 function onFileClick() {
   fileRef.value?.click()
 }
+
+async function onUser() {
+  try {
+    const res = await GetUserProfile()
+
+    // si API retourne un tableau
+    const data = Array.isArray(res) ? res[0] : res
+
+    user.value = data
+
+    profile.name = data?.name || ''
+    profile.email = data?.email || ''
+  }
+  catch (error) {
+    console.error('Failed to load user profile:', error)
+  }
+}
+
+onMounted(() => {
+  onUser()
+})
 </script>
 
 <template>
   <UForm
-    id="settings"
     :schema="profileSchema"
     :state="profile"
+    class="space-y-4"
     @submit="onSubmit"
   >
     <UPageCard
@@ -62,7 +104,6 @@ function onFileClick() {
       class="mb-4"
     >
       <UButton
-        form="settings"
         label="Save changes"
         color="neutral"
         type="submit"
@@ -74,20 +115,23 @@ function onFileClick() {
       <UFormField
         name="name"
         label="Name"
-        description="Will appear on receipts, invoices, and other communication."
+        :description="`Will appear on receipts, invoices, and other communication.`"
         required
         class="flex max-sm:flex-col justify-between items-start gap-4"
       >
         <UInput
           v-model="profile.name"
           autocomplete="off"
+          placeholder="Your name"
         />
       </UFormField>
+
       <USeparator />
+
       <UFormField
         name="email"
         label="Email"
-        description="Used to sign in, for email receipts and product updates."
+        :description="`Used to sign in, for email receipts and product updates.`"
         required
         class="flex max-sm:flex-col justify-between items-start gap-4"
       >
@@ -95,23 +139,12 @@ function onFileClick() {
           v-model="profile.email"
           type="email"
           autocomplete="off"
+          placeholder="Your email"
         />
       </UFormField>
+
       <USeparator />
-      <UFormField
-        name="username"
-        label="Username"
-        description="Your unique username for logging in and your profile URL."
-        required
-        class="flex max-sm:flex-col justify-between items-start gap-4"
-      >
-        <UInput
-          v-model="profile.username"
-          type="username"
-          autocomplete="off"
-        />
-      </UFormField>
-      <USeparator />
+
       <UFormField
         name="avatar"
         label="Avatar"
@@ -124,35 +157,25 @@ function onFileClick() {
             :alt="profile.name"
             size="lg"
           />
+
           <UButton
             label="Choose"
             color="neutral"
+            type="button"
             @click="onFileClick"
           />
+
           <input
             ref="fileRef"
             type="file"
             class="hidden"
-            accept=".jpg, .jpeg, .png, .gif"
+            accept=".jpg,.jpeg,.png,.gif"
             @change="onFileChange"
           >
         </div>
       </UFormField>
+
       <USeparator />
-      <UFormField
-        name="bio"
-        label="Bio"
-        description="Brief description for your profile. URLs are hyperlinked."
-        class="flex max-sm:flex-col justify-between items-start gap-4"
-        :ui="{ container: 'w-full' }"
-      >
-        <UTextarea
-          v-model="profile.bio"
-          :rows="5"
-          autoresize
-          class="w-full"
-        />
-      </UFormField>
     </UPageCard>
   </UForm>
 </template>

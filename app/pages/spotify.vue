@@ -482,7 +482,6 @@ async function onPlayUri(uri: string) {
                   @select-artist="selectArtist"
                 />
               </div>
-
             </div>
           </Transition>
         </div>

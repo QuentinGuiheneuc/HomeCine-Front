@@ -14,7 +14,7 @@ const wsErrorMsg = ref<string | null>(null)
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-const wsUrl = computed(() => `ws://localhost:9086/Device`)
+// const wsUrl = computed(() => `${config.WS_URL}/Device`)
 
 /* Search results */
 type FoundDevice = {
@@ -64,7 +64,7 @@ function connectWs() {
   wsErrorMsg.value = null
 
   try {
-    ws = new WebSocket(wsUrl.value)
+    ws = new WebSocket(`${config.WS_URL_BROADCAST}/Device`)
   } catch (err: any) {
     console.error('[WS] create error', err)
     wsStatus.value = 'disconnected'
@@ -92,6 +92,7 @@ function connectWs() {
     let msg: any
     try {
       msg = JSON.parse(event.data)
+      console.log('[WS] message received', msg)
     } catch {
       console.error('[WS] invalid JSON', event.data)
       return
@@ -222,6 +223,7 @@ function sendWs(payload: any) {
     toast?.add?.({ title: 'WS non connecté', description: 'Impossible d’envoyer.', color: 'error' })
     return
   }
+  console.log('[WS] sending message', payload)
   ws.send(JSON.stringify(payload))
 }
 
@@ -331,7 +333,6 @@ const DeviceAddSlideoverToggle = () => {
           </UButton>
         </div>
       </div>
-
     </template>
 
     <template #body>

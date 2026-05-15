@@ -31,8 +31,8 @@ const links = [[
     label: 'Snap', to: '/snap', icon: 'mdi:cast-audio', defaultOpen: false, type: 'trigger',
     children: [
       { label: 'General', to: '/snap', exact: true, onSelect: () => { open.value = false } },
-      { label: 'Config', to: '/snapconfig', onSelect: () => { open.value = false } },
-      { label: 'Presset', to: '/eq/presset', onSelect: () => { open.value = false } }
+      { label: 'Config', to: '/snap/snapconfig', onSelect: () => { open.value = false } },
+      { label: 'Presset', to: '/snap/presset', onSelect: () => { open.value = false } }
     ]
   },
   {
@@ -41,7 +41,6 @@ const links = [[
       { label: 'General', to: '/settings', exact: true, onSelect: () => { open.value = false } },
       { label: 'Members', to: '/settings/members', onSelect: () => { open.value = false } },
       { icon: 'logos:spotify-icon', label: 'Spotify', to: '/settings/spotify', onSelect: () => { open.value = false } },
-      { icon: 'mdi:cast-audio', label: 'Snap', to: '/settings/snap', onSelect: () => { open.value = false } },
       { label: 'Notifications', to: '/settings/notifications', onSelect: () => { open.value = false } },
       { label: 'Security', to: '/settings/security', onSelect: () => { open.value = false } }
     ]
@@ -61,7 +60,7 @@ const groups = computed(() => [
       id: 'source',
       label: 'View page source',
       icon: 'i-simple-icons-github',
-      to: `https://github.com/nuxt-ui-templates/dashboard/blob/main/app/pages${route.path === '/' ? '/index' : route.path}.vue`,
+      to: `https://github.com/QuentinGuiheneuc/HomeCine-Front`,
       target: '_blank'
     }]
   }
