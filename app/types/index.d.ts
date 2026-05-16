@@ -52,6 +52,40 @@ export interface Notification {
   date: string
 }
 
+export type NotificationEventType =
+  | 'device_online'
+  | 'device_offline'
+  | 'error'
+  | 'unauthorized'
+  | 'update'
+  | 'track_change'
+
+export interface AppNotification {
+  id: string
+  type: NotificationEventType
+  title: string
+  body: string
+  date: string
+  read: boolean
+  url?: string
+}
+
+export interface NotificationPreferences {
+  channels: {
+    desktop: boolean
+    email: boolean
+    inApp: boolean
+  }
+  events: {
+    device_online: boolean
+    device_offline: boolean
+    error: boolean
+    unauthorized: boolean
+    update: boolean
+    track_change: boolean
+  }
+}
+
 export type Period = 'daily' | 'weekly' | 'monthly'
 
 export interface Range {

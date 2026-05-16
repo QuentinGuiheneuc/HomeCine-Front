@@ -6,7 +6,8 @@ const links = [[
   { label: 'Spotify',       icon: 'logos:spotify-icon', to: '/settings/spotify' },
   { label: 'Members', to: '/settings/members', icon: 'i-lucide-users' },
   { label: 'Notifications', icon: 'i-lucide-bell',      to: '/settings/notifications' },
-  { label: 'Security',      icon: 'i-lucide-shield',    to: '/settings/security' }
+  { label: 'Security',      icon: 'i-lucide-shield',    to: '/settings/security' },
+  { label: 'Navigateurs',   icon: 'i-lucide-monitor',   to: '/settings/browsers' }
 ], [
   /* { label: 'Documentation', icon: 'i-lucide-book-open', to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt', target: '_blank' } */
 ]] satisfies NavigationMenuItem[][]
@@ -33,7 +34,7 @@ const links = [[
       <!-- ✅ Un seul conteneur qui scrolle -->
       <div class="h-[calc(100dvh-var(--ui-header-height)-var(--ui-toolbar-height,50px))] overflow-y-auto overscroll-contain">
         <div class="px-4 sm:px-6 lg:px-8">
-          <div class="w-full lg:py-12">
+          <div class="w-full lg:py-6 lg:max-w-12xl mx-auto">
             <NuxtPage />
           </div>
         </div>

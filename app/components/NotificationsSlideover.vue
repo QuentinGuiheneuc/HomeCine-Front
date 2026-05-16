@@ -1,52 +1,58 @@
 <script setup lang="ts">
 import { formatTimeAgo } from '@vueuse/core'
-import type { Notification } from '~/types'
 
 const { isNotificationsSlideoverOpen } = useDashboard()
+const { history, unreadCount, loadHistory, markAllRead, EVENT_ICON } = useNotifications()
 
-const { data: notifications } = await useFetch<Notification[]>('/api/notifications')
+onMounted(() => loadHistory())
+
+async function onOpen(open: boolean) {
+  isNotificationsSlideoverOpen.value = open
+  if (!open) await markAllRead()
+}
 </script>
 
 <template>
   <USlideover
-    v-model:open="isNotificationsSlideoverOpen"
-    title="Notifications"
+    :open="isNotificationsSlideoverOpen"
+    @update:open="onOpen"
   >
+    <template #title>
+      <span class="flex items-center gap-2">
+        Notifications
+        <UBadge v-if="unreadCount > 0" :label="String(unreadCount)" color="error" variant="solid" size="sm" />
+      </span>
+    </template>
+
     <template #body>
-      <NuxtLink
-        v-for="notification in notifications"
-        :key="notification.id"
-        :to="`/inbox?id=${notification.id}`"
-        class="px-3 py-2.5 rounded-md hover:bg-elevated/50 flex items-center gap-3 relative -mx-3 first:-mt-3 last:-mb-3"
+      <p v-if="!history.length" class="text-sm text-muted text-center py-8">
+        Aucune notification
+      </p>
+
+      <div
+        v-for="notif in history"
+        :key="notif.id"
+        class="px-3 py-2.5 rounded-md hover:bg-elevated/50 flex items-start gap-3 relative -mx-3"
+        :class="{ 'opacity-60': notif.read }"
       >
-        <UChip
-          color="error"
-          :show="!!notification.unread"
-          inset
-        >
-          <UAvatar
-            v-bind="notification.sender.avatar"
-            :alt="notification.sender.name"
-            size="md"
-          />
+        <UChip color="error" :show="!notif.read" inset>
+          <div class="w-9 h-9 rounded-full bg-elevated flex items-center justify-center shrink-0">
+            <UIcon :name="EVENT_ICON[notif.type]" class="text-lg" />
+          </div>
         </UChip>
 
-        <div class="text-sm flex-1">
-          <p class="flex items-center justify-between">
-            <span class="text-highlighted font-medium">{{ notification.sender.name }}</span>
-
+        <div class="text-sm flex-1 min-w-0">
+          <p class="flex items-center justify-between gap-2">
+            <span class="text-highlighted font-medium truncate">{{ notif.title }}</span>
             <time
-              :datetime="notification.date"
-              class="text-muted text-xs"
-              v-text="formatTimeAgo(new Date(notification.date))"
+              :datetime="notif.date"
+              class="text-muted text-xs shrink-0"
+              v-text="formatTimeAgo(new Date(notif.date))"
             />
           </p>
-
-          <p class="text-dimmed">
-            {{ notification.body }}
-          </p>
+          <p class="text-dimmed truncate">{{ notif.body }}</p>
         </div>
-      </NuxtLink>
+      </div>
     </template>
   </USlideover>
 </template>

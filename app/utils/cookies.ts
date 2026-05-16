@@ -1,5 +1,6 @@
 export enum CookieName {
-  TOKEN = 'TOKEN'
+  TOKEN = 'TOKEN',
+  BROWSER = 'BROWSER'
 }
 
 export type CookieSetOptions = Partial<{

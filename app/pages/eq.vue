@@ -364,7 +364,7 @@ watch([eqCurve, dbRange], scheduleDraw)
     </UDashboardNavbar>
 
     <main class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-2 sm:px-6 lg:px-8">
-      <div class="w-full lg:max-w-12xl py-6 sm:py-8 lg:py-12 space-y-6">
+      <div class="w-full lg:max-w-12xl py-6 sm:py-2 lg:py-3 space-y-2">
         <UCard>
           <div class="flex flex-wrap gap-3 items-end">
             <div class="min-w-[160px]">
@@ -375,7 +375,6 @@ watch([eqCurve, dbRange], scheduleDraw)
               <div class="text-sm text-dimmed mb-1">dB range (±)</div>
               <UInput v-model.number="dbRange" type="number" :min="6" :max="36" />
             </div>
-
             <div class="ms-auto flex flex-wrap gap-2">
               <UButton size="sm" color="neutral" variant="soft" @click="addBand('highpass')">+ HPF</UButton>
               <UButton size="sm" color="neutral" variant="soft" @click="addBand('lowshelf')">+ LowShelf</UButton>
