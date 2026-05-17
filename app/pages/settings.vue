@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const links = [[
-  { label: 'General',       icon: 'i-lucide-user',      to: '/settings', exact: true },
-  { label: 'Spotify',       icon: 'logos:spotify-icon', to: '/settings/spotify' },
-  { label: 'Members', to: '/settings/members', icon: 'i-lucide-users' },
-  { label: 'Notifications', icon: 'i-lucide-bell',      to: '/settings/notifications' },
-  { label: 'Security',      icon: 'i-lucide-shield',    to: '/settings/security' },
-  { label: 'Navigateurs',   icon: 'i-lucide-monitor',   to: '/settings/browsers' }
-], [
-  /* { label: 'Documentation', icon: 'i-lucide-book-open', to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt', target: '_blank' } */
-]] satisfies NavigationMenuItem[][]
+const { isAdmin } = useCurrentUser()
+
+const baseLinks: NavigationMenuItem[] = [
+  { label: 'General',       icon: 'i-lucide-user',   to: '/settings', exact: true },
+  { label: 'Notifications', icon: 'i-lucide-bell',   to: '/settings/notifications' },
+  { label: 'Security',      icon: 'i-lucide-shield', to: '/settings/security' },
+]
+
+const adminLinks: NavigationMenuItem[] = [
+  { label: 'Members',     icon: 'i-lucide-users',   to: '/settings/members' },
+  { label: 'Spotify',     icon: 'logos:spotify-icon', to: '/settings/spotify' },
+  { label: 'Navigateurs', icon: 'i-lucide-monitor', to: '/settings/browsers' },
+]
+
+const links = computed<NavigationMenuItem[][]>(() => [
+  isAdmin.value ? [...baseLinks, ...adminLinks] : baseLinks,
+  []
+])
 </script>
 
 <template>

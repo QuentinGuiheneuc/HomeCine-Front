@@ -75,10 +75,7 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
   label: 'Profile',
   icon: 'i-lucide-user'
 }, {
-  label: 'Billing',
-  icon: 'i-lucide-credit-card'
-}, {
-  label: 'Settingsss',
+  label: 'Settings',
   icon: 'i-lucide-settings',
   to: '/settings'
 }], [{

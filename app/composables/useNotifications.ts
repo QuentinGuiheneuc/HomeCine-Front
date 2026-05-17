@@ -60,7 +60,11 @@ const _useNotifications = () => {
   async function loadPreferences() {
     loading.value = true
     try {
-      preferences.value = await getNotificationPreferences()
+      const data = await getNotificationPreferences()
+      preferences.value = {
+        channels: { ...DEFAULT_PREFERENCES.channels, ...(data?.channels ?? {}) },
+        events:   { ...DEFAULT_PREFERENCES.events,   ...(data?.events   ?? {}) }
+      }
     } catch {
       // Serveur ne supporte pas encore les préférences, on garde les défauts
     } finally {

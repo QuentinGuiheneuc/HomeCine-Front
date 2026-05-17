@@ -12,6 +12,16 @@ export default defineNuxtConfig({
       wsBase: process.env.WS_BASE ?? 'ws://192.168.1.40:8099'
     }
   },
+  
+  nitro: {
+    routeRules: {
+      // /refresh à la racine — REFRESH_TOKEN a path:/refresh côté serveur,
+      // la requête doit arriver sur /refresh pour que le cookie soit envoyé
+      '/refresh':  { proxy: 'http://192.168.1.40:3007/refresh' },
+      // Toutes les autres routes API (login, logout, user, etc.)
+      '/proxy/**': { proxy: 'http://192.168.1.40:3007/**' }
+    }
+  },
 
   routeRules: {
     '/api/**': {
@@ -24,7 +34,7 @@ export default defineNuxtConfig({
   // Expose les variables d'environnement au bundle client (baked au build)
   vite: {
     define: {
-      'process.env.API_URL': JSON.stringify(process.env.API_URL ?? 'http://192.168.1.40:3007'),
+      'process.env.API_URL': JSON.stringify(process.env.API_URL ?? '/proxy'),
       'process.env.WS_BASE': JSON.stringify(process.env.WS_BASE ?? 'ws://192.168.1.40:8099')
     }
   },

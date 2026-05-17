@@ -2,6 +2,8 @@
 import { h, resolveComponent, ref, computed, onMounted } from 'vue'
 import http from '@/src/lib/https'
 
+definePageMeta({ middleware: 'admin' })
+
 const UBadge = resolveComponent('UBadge')
 const UButton = resolveComponent('UButton')
 
@@ -14,6 +16,9 @@ const users = ref<any[]>([])
 
 const isOpen = ref(false)
 const isEditing = ref(false)
+
+const isRevokeOpen = ref(false)
+const revokeUser   = ref<any>(null)
 
 const form = ref({
   id: null,
@@ -105,7 +110,7 @@ async function saveUser() {
         color: 'success'
       })
     } else {
-      await http.post('/user/create', {
+      await http.post('/register', {
         name: form.value.name,
         email: form.value.email,
         type: form.value.type,
@@ -128,6 +133,30 @@ async function saveUser() {
       title: 'Failed to save user',
       color: 'error'
     })
+  } finally {
+    pending.value = false
+  }
+}
+
+function openRevoke(user: any) {
+  revokeUser.value  = user
+  isRevokeOpen.value = true
+}
+
+async function revokeToken() {
+  if (!revokeUser.value) return
+  try {
+    pending.value = true
+    await http.post(`/admin/users/${revokeUser.value.id}/revoke-token`)
+    toast.add({
+      title: `Sessions révoquées`,
+      description: `Toutes les sessions de ${revokeUser.value.email} ont été invalidées.`,
+      color: 'warning'
+    })
+    isRevokeOpen.value = false
+  } catch (err) {
+    console.error(err)
+    toast.add({ title: 'Failed to revoke token', color: 'error' })
   } finally {
     pending.value = false
   }
@@ -178,18 +207,15 @@ const columns = [
     accessorKey: 'type',
     header: 'Type',
     cell: ({ row }: any) => {
-      const type = row.original.type
-
-      return h(
-        UBadge,
-        {
-          color: type === 'admin'
-            ? 'error'
-            : 'neutral',
-          variant: 'subtle'
-        },
-        () => type
-      )
+      // Supporte type:'admin'/'user' et admin:1/0 selon l'API
+      const raw  = row.original.type
+      const adm  = row.original.admin
+      const type = raw ?? (adm === 1 || adm === true ? 'admin' : 'user')
+      return h(UBadge, {
+        label:   type,
+        color:   type === 'admin' ? 'error' : 'success',
+        variant: 'subtle'
+      })
     }
   },
   {
@@ -212,6 +238,15 @@ const columns = [
           color: 'neutral',
           variant: 'soft',
           onClick: () => openEdit(row.original)
+        }),
+
+        h(UButton, {
+          label: 'Révoquer',
+          size: 'xs',
+          color: 'warning',
+          variant: 'soft',
+          icon: 'i-lucide-shield-off',
+          onClick: () => openRevoke(row.original)
         }),
 
         h(UButton, {
@@ -498,4 +533,75 @@ const columns = [
       </template>
     </UModal>
   </div>
+
+  <!-- Modal révocation -->
+  <UModal v-model:open="isRevokeOpen">
+    <template #content>
+      <div class="p-6 space-y-6">
+
+        <!-- HEADER -->
+        <div class="flex items-start justify-between">
+          <div>
+            <h2 class="text-2xl font-bold">Révoquer les sessions</h2>
+            <p class="text-sm text-muted mt-1">
+              Toutes les sessions actives de cet utilisateur seront immédiatement invalidées.
+            </p>
+          </div>
+          <UBadge color="warning" variant="subtle" size="lg">
+            Révocation
+          </UBadge>
+        </div>
+
+        <!-- UTILISATEUR -->
+        <div class="space-y-4">
+          <div class="border-b border-default pb-2">
+            <h3 class="font-semibold text-base">Utilisateur concerné</h3>
+            <p class="text-sm text-muted">Le compte dont les sessions seront révoquées.</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <UFormGroup label="Nom">
+              <UInput :model-value="revokeUser?.name || '—'" icon="i-lucide-user" disabled />
+            </UFormGroup>
+            <UFormGroup label="Email">
+              <UInput :model-value="revokeUser?.email || '—'" icon="i-lucide-mail" disabled />
+            </UFormGroup>
+          </div>
+        </div>
+
+        <!-- AVERTISSEMENT -->
+        <UAlert
+          icon="i-lucide-shield-alert"
+          color="warning"
+          variant="subtle"
+          title="Déconnexion forcée"
+          description="L'utilisateur devra se reconnecter sur tous ses appareils. Les refresh tokens sont également invalidés."
+        />
+
+        <!-- FOOTER -->
+        <div class="flex justify-between items-center pt-4 border-t border-default">
+          <p class="text-sm text-muted">
+            Utilisateur #{{ revokeUser?.id }}
+          </p>
+          <div class="flex gap-2">
+            <UButton
+              label="Annuler"
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-x"
+              @click="isRevokeOpen = false"
+            />
+            <UButton
+              label="Révoquer les sessions"
+              color="warning"
+              icon="i-lucide-shield-off"
+              :loading="pending"
+              @click="revokeToken"
+            />
+          </div>
+        </div>
+
+      </div>
+    </template>
+  </UModal>
 </template>

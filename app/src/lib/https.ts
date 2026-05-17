@@ -15,10 +15,11 @@ function redirectToLoginOnce() {
   window.location.assign('/login')
 }
 
-// Instance séparée pour le /refresh — sans interceptors pour éviter la boucle infinie
+// Instance séparée pour le /refresh — baseURL vide pour que /refresh corresponde
+// exactement au path du cookie REFRESH_TOKEN (path:/refresh posé par le serveur)
 const authHttp = axios.create({
-  baseURL: appConfig.API_URL,
-  withCredentials: true,           // envoie REFRESH_TOKEN (httpOnly) automatiquement
+  baseURL: typeof window !== 'undefined' ? window.location.origin : '',
+  withCredentials: true,
   headers: { 'Content-Type': 'application/json' }
 })
 
@@ -41,7 +42,7 @@ http.interceptors.request.use((cfg: InternalAxiosRequestConfig) => {
     let browser = getCookie(CookieName.BROWSER)
     if (!browser) {
       browser = getBrowserToken()
-      setCookie(CookieName.BROWSER, browser, { 'max-age': 60 * 60 * 24 * 365 })
+      setCookie(CookieName.BROWSER, browser, { 'max-age': 60 * 60 * 24 * 365, path: '/' })
     }
     if (!cfg.headers) cfg.headers = new AxiosHeaders()
     cfg.headers.set('X-Browser', browser)

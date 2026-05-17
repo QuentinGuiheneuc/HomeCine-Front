@@ -6,52 +6,57 @@ import DeviceSpotifySlideover from '~/components/DeviceSpotifySlideover.vue'
 import DeviceAddSlideover from '~/components/DeviceAddSlideover.vue'
 
 const { menue } = useDashboard()
-
-const route = useRoute()
 const { isAuthenticated } = useAuth()
+const { isAdmin } = useCurrentUser()
 const open = menue
 
-const links = [[
-  { label: 'Maison', icon: 'i-lucide-house', to: '/', onSelect: () => { open.value = false } },
-  {
-    label: 'EQ', to: '/eq', icon: 'si:equalizer-fill', defaultOpen: false, type: 'trigger',
-    children: [
-      { label: 'General', to: '/eq', exact: true, onSelect: () => { open.value = false } },
-      { label: 'Config', to: '/eqconfig', onSelect: () => { open.value = false } },
-      { label: 'Presset', to: '/eq/presset', onSelect: () => { open.value = false } }
-    ]
-  },
-  { label: 'Lecteur', icon: 'simple-icons:gocd', to: '/lecteurs', onSelect: () => { open.value = false } },
+const links = computed<NavigationMenuItem[][]>(() => {
+  const settingsChildren: NavigationMenuItem[] = [
+    { label: 'General',       to: '/settings',               exact: true, onSelect: () => { open.value = false } },
+    { label: 'Notifications', to: '/settings/notifications',              onSelect: () => { open.value = false } },
+    { label: 'Security',      to: '/settings/security',                   onSelect: () => { open.value = false } },
+    ...(isAdmin.value ? [
+      { label: 'Members',     to: '/settings/members',                    onSelect: () => { open.value = false } },
+      { label: 'Spotify',     to: '/settings/spotify', icon: 'logos:spotify-icon', onSelect: () => { open.value = false } },
+      { label: 'Navigateurs', to: '/settings/browsers',                   onSelect: () => { open.value = false } },
+    ] : [])
+  ]
 
-  { label: 'Devices', icon: 'mdi:speaker', to: '/devices', onSelect: () => { open.value = false } },
-  { label: 'Spotify', icon: 'mdi:spotify', to: '/spotify', onSelect: () => { open.value = false } },
-  { label: 'Bluetooth', icon: 'i-lucide-bluetooth', to: '/bt', onSelect: () => { open.value = false } },
-  { label: 'Controle', icon: 'whh:controlpanelalt', to: '/control', onSelect: () => { open.value = false } },
-  {
-    label: 'Snap', to: '/snap', icon: 'mdi:cast-audio', defaultOpen: false, type: 'trigger',
-    children: [
-      { label: 'General', to: '/snap', exact: true, onSelect: () => { open.value = false } },
-      { label: 'Config', to: '/snap/snapconfig', onSelect: () => { open.value = false } },
-      { label: 'Presset', to: '/snap/presset', onSelect: () => { open.value = false } }
-    ]
-  },
-  {
-    label: 'Settings', to: '/settings', icon: 'i-lucide-settings', defaultOpen: false, type: 'trigger',
-    children: [
-      { label: 'General', to: '/settings', exact: true, onSelect: () => { open.value = false } },
-      { label: 'Members', to: '/settings/members', onSelect: () => { open.value = false } },
-      { icon: 'logos:spotify-icon', label: 'Spotify', to: '/settings/spotify', onSelect: () => { open.value = false } },
-      { label: 'Notifications', to: '/settings/notifications', onSelect: () => { open.value = false } },
-      { label: 'Security', to: '/settings/security', onSelect: () => { open.value = false } }
-    ]
-  }
-], []] satisfies NavigationMenuItem[][]
+  return [[
+    { label: 'Maison',    icon: 'i-lucide-house',        to: '/',        onSelect: () => { open.value = false } },
+    {
+      label: 'EQ', to: '/eq', icon: 'si:equalizer-fill', defaultOpen: false, type: 'trigger',
+      children: [
+        { label: 'General', to: '/eq',          exact: true, onSelect: () => { open.value = false } },
+        { label: 'Config',  to: '/eqconfig',               onSelect: () => { open.value = false } },
+        { label: 'Presset', to: '/eq/presset',             onSelect: () => { open.value = false } }
+      ]
+    },
+    { label: 'Lecteur',   icon: 'simple-icons:gocd',     to: '/lecteurs', onSelect: () => { open.value = false } },
+    { label: 'Devices',   icon: 'mdi:speaker',           to: '/devices',  onSelect: () => { open.value = false } },
+    { label: 'Spotify',   icon: 'mdi:spotify',           to: '/spotify',  onSelect: () => { open.value = false } },
+    { label: 'Bluetooth', icon: 'i-lucide-bluetooth',    to: '/bt',       onSelect: () => { open.value = false } },
+    { label: 'Controle',  icon: 'whh:controlpanelalt',   to: '/control',  onSelect: () => { open.value = false } },
+    {
+      label: 'Snap', to: '/snap', icon: 'mdi:cast-audio', defaultOpen: false, type: 'trigger',
+      children: [
+        { label: 'General', to: '/snap',               exact: true, onSelect: () => { open.value = false } },
+        { label: 'Config',  to: '/snap/snapconfig',               onSelect: () => { open.value = false } },
+        { label: 'Presset', to: '/snap/presset',                  onSelect: () => { open.value = false } }
+      ]
+    },
+    {
+      label: 'Settings', to: '/settings', icon: 'i-lucide-settings', defaultOpen: false, type: 'trigger',
+      children: settingsChildren
+    }
+  ], []]
+})
 
 const groups = computed(() => [
   {
     id: 'links',
     label: 'Go to',
-    items: links.flat()
+    items: links.value.flat()
   },
   {
     id: 'code',
@@ -60,7 +65,7 @@ const groups = computed(() => [
       id: 'source',
       label: 'View page source',
       icon: 'i-simple-icons-github',
-      to: `https://github.com/QuentinGuiheneuc/HomeCine-Front`,
+      to: 'https://github.com/QuentinGuiheneuc/HomeCine-Front',
       target: '_blank'
     }]
   }
