@@ -6,7 +6,10 @@ const _useDashboard = () => {
   const isNotificationsSlideoverOpen = ref(false)
   const isDevicSpotifyeSlideoverOpen = ref(false)
   const isDeviceSlideoverOpen = ref(false)
+  const isLecteurSlideoverOpen = ref(false)
+  const isQueueSlideoverOpen   = ref(false)
   const activeDeviceKey = ref<string | null>(null)
+  const activeLecteurId = ref<number | null>(null)
   const menue = ref(false)
   const saving = ref(false)
   const DeviceAddSlideover = ref(false)
@@ -16,11 +19,13 @@ const _useDashboard = () => {
     'g-i': () => router.push('/inbox'),
     'g-c': () => router.push('/customers'),
     'g-s': () => router.push('/settings'),
-    'n': () => isNotificationsSlideoverOpen.value = !isNotificationsSlideoverOpen.value,
-    's-d': () => isDevicSpotifyeSlideoverOpen.value = !isDevicSpotifyeSlideoverOpen.value,
-    'd': () => isDeviceSlideoverOpen.value = !isDeviceSlideoverOpen.value,
-    'm': () => menue.value = !menue.value,
-    'ctrl_d': () => DeviceAddSlideover.value = !DeviceAddSlideover.value
+    'n':      () => isNotificationsSlideoverOpen.value = !isNotificationsSlideoverOpen.value,
+    's-d':    () => isDevicSpotifyeSlideoverOpen.value = !isDevicSpotifyeSlideoverOpen.value,
+    'd':      () => isDeviceSlideoverOpen.value        = !isDeviceSlideoverOpen.value,
+    'l':      () => isLecteurSlideoverOpen.value       = !isLecteurSlideoverOpen.value,
+    'q':      () => isQueueSlideoverOpen.value         = !isQueueSlideoverOpen.value,
+    'm':      () => menue.value                        = !menue.value,
+    'ctrl_d': () => DeviceAddSlideover.value           = !DeviceAddSlideover.value
   })
 
   watch(() => route.fullPath, () => {
@@ -38,10 +43,19 @@ const _useDashboard = () => {
   watch(() => route.fullPath, () => {
     DeviceAddSlideover.value = false
   })
+  watch(() => route.fullPath, () => {
+    isLecteurSlideoverOpen.value = false
+  })
+  watch(() => route.fullPath, () => {
+    isQueueSlideoverOpen.value = false
+  })
   return {
     isNotificationsSlideoverOpen,
     isDevicSpotifyeSlideoverOpen,
     isDeviceSlideoverOpen,
+    isLecteurSlideoverOpen,
+    isQueueSlideoverOpen,
+    activeLecteurId,
     menue,
     activeDeviceKey,
     saving,

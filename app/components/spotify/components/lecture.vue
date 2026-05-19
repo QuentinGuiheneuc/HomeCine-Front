@@ -1,207 +1,268 @@
 <script setup lang="ts">
 import { useDebounceFn } from '@vueuse/core'
-import http from '@/src/lib/https'
-import { useSpotifyPlayerWs } from '@/composables/useSpotifyPlayerWs'
+import { useLecteursWs } from '@/composables/useLecteursWs'
 
-const { isDevicSpotifyeSlideoverOpen } = useDashboard()
+const { isLecteurSlideoverOpen, isQueueSlideoverOpen, activeLecteurId } = useDashboard()
 
-/* ===== WebSocket player ===== */
-const { playerState, connect, wsStatus } = useSpotifyPlayerWs()
-onMounted(connect)
+/* ── WebSocket lecteurs ─────────────────────────────────────────────────── */
 
-/* ===== State dérivé du WS ===== */
-const track    = computed(() => playerState.value?.item ?? null)
-const cover    = computed(() => track.value?.album?.images?.[1]?.url || track.value?.album?.images?.[0]?.url || 'https://via.placeholder.com/96x96.png?text=♪')
-const title    = computed(() => track.value?.name ?? 'No track')
-const artists  = computed(() => (track.value?.artists ?? []).map(a => a.name).join(', '))
-const duration = computed(() => track.value?.duration_ms ?? 0)
-const device   = computed(() => playerState.value?.device ?? null)
+const ws = useLecteursWs()
 
-const shuffle    = ref(false)
-const repeat     = ref<'off'|'context'|'track'>('off')
-const positionMs = ref(0)
-const volume     = ref<number>(60)
-
-/* Override optimiste play/pause — effacé seulement quand Spotify confirme */
-const _playOverride = ref<boolean | null>(null)
-let   _playOverrideTimer: ReturnType<typeof setTimeout> | null = null
-const isPlaying = computed(() => playerState.value?.is_playing)
-
-function _setPlayOverride(v: boolean) {
-  _playOverride.value = v
-  if (_playOverrideTimer) clearTimeout(_playOverrideTimer)
-  // Sécurité : efface l'override au bout de 4 s si Spotify ne confirme jamais
-  _playOverrideTimer = setTimeout(() => { _playOverride.value = null; _playOverrideTimer = null }, 4000)
-}
-
-/* Synchronise les champs locaux chaque fois que le WS pousse un update */
-watch(playerState, (data) => {
-  if (!data) return
-  // Efface l'override seulement quand Spotify confirme l'état attendu
-  if (_playOverride.value !== null && data.is_playing === _playOverride.value) {
-    _playOverride.value = null
-    if (_playOverrideTimer) { clearTimeout(_playOverrideTimer); _playOverrideTimer = null }
+/* Lecteur actif :
+ *  1. Sélection manuelle via LecteurSlideover (activeLecteurId)
+ *  2. Premier en lecture
+ *  3. Premier alive
+ *  4. Premier de la liste
+ */
+const activeLecteur = computed(() => {
+  const list = ws.lecteurs.value
+  if (activeLecteurId.value != null) {
+    const selected = list.find(l => l.id === activeLecteurId.value)
+    if (selected) return selected
   }
-  shuffle.value    = !!data.shuffle_state
-  repeat.value     = data.repeat_state
-  positionMs.value = data.progress_ms ?? 0
-  volume.value     = clamp(data.device?.volume_percent ?? 0, 0, 100)
+  return (
+    list.find(l => l.playing && !l.paused) ??
+    list.find(l => l.alive)               ??
+    list[0]                               ??
+    null
+  )
 })
 
-/** Helpers temps mm:ss */
+/* ── Dérivés piste ──────────────────────────────────────────────────────── */
+
+const track   = computed(() => activeLecteur.value?.track ?? null)
+const cover   = computed(() =>
+  track.value?.cover_url || 'https://via.placeholder.com/96x96.png?text=♪'
+)
+const title   = computed(() => track.value?.title ?? 'No track')
+const artists = computed(() => (track.value?.artists ?? []).join(', '))
+const duration = computed(() =>
+  track.value?.duration_ms ??
+  activeLecteur.value?.temp?.duration_ms ??
+  0
+)
+
+/* ── Override optimiste play / pause ────────────────────────────────────── */
+
+const _playOverride = ref<boolean | null>(null)
+
+/* Efface l'override dès que le heartbeat confirme l'état attendu (~1 s) */
+watch(
+  () => activeLecteur.value?.playing,
+  (playing) => {
+    if (_playOverride.value !== null && playing === _playOverride.value)
+      _playOverride.value = null
+  }
+)
+
+const isPlaying = computed(() => {
+  if (_playOverride.value !== null) return _playOverride.value
+  const l = activeLecteur.value
+  return l ? (l.playing && !l.paused) : false
+})
+
+/* ── Position (mise à jour par Heartbeat) ───────────────────────────────── */
+
+const positionMs = ref(0)
+
+watch(
+  () => activeLecteur.value?.temp?.position_ms,
+  (ms) => { if (ms != null) positionMs.value = ms },
+  { immediate: true }
+)
+
 const toTime = (ms: number) => {
-  const s = Math.max(0, Math.floor(ms / 1000))
-  const m = Math.floor(s / 60)
+  const s  = Math.max(0, Math.floor(ms / 1000))
+  const m  = Math.floor(s / 60)
   const ss = s % 60
   return `${m}:${ss.toString().padStart(2, '0')}`
 }
 
-const progress = computed({
-  get: () => duration.value ? Math.min(100, Math.max(0, (positionMs.value / duration.value) * 100)) : 0,
-  set: (pct: number) => { positionMs.value = Math.round((pct / 100) * (duration.value || 0)) }
-})
+/* ── Volume (local) ─────────────────────────────────────────────────────── */
 
-/* Le serveur envoie progress_ms interpolé toutes les 1 s → pas de tick local */
+const volume = ref(60)
+const clamp  = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n))
 
-/** ===== Actions Spotify ===== */
-/* État optimiste immédiat + sync WS dans les ~3 s qui suivent */
-
-async function togglePlay() {
-  if (!track.value) return
-  const wasPlaying = isPlaying.value
-  _setPlayOverride(!wasPlaying)               // icône bascule immédiatement
-  if (wasPlaying) await http.put('/spotify/devices/pause')
-  else            await http.put('/spotify/devices/play')
-}
-async function prev() {
-  await http.post('/spotify/devices/previous')
-}
-async function next() {
-  await http.post('/spotify/devices/next')
-}
-async function toggleShuffle() {
-  shuffle.value = !shuffle.value // optimiste
-  await http.put('/spotify/devices/shuffle', { query: { state: String(shuffle.value) } })
-}
-async function cycleRepeat() {
-  repeat.value = repeat.value === 'off' ? 'context' : repeat.value === 'context' ? 'track' : 'off'  // optimiste
-  await http.put('/spotify/devices/repeat', { query: { state: repeat.value } })
-}
-
-const seekDebounced = useDebounceFn(async (position_ms: number) => {
-  const d = device.value
-  if (!d) return
-  await http.put('/spotify/devices/seek', { position_ms, device_id: d.id })
-}, 250)
-function onSeek(ms: number) {
-  positionMs.value = Math.max(0, Math.min(ms, duration.value))  // optimiste
-  seekDebounced(positionMs.value)
-}
-
-const setVolumeDebounced = useDebounceFn(async (pct: number) => {
-  const d = device.value
-  if (!d || !d.supports_volume) return
-  await http.put('/spotify/devices/volume', { device_id: d.id, volume_percent: clamp(pct, 0, 100) })
+const _setVolumeDebounced = useDebounceFn((value: number) => {
+  ws.setVolume(activeLecteur.value?.id, clamp(value))
 }, 200)
+
 function setVolume(pct: number) {
-  if (!device.value?.supports_volume) return
-  volume.value = clamp(pct, 0, 100)   // optimiste
-  setVolumeDebounced(volume.value)
+  volume.value = clamp(pct)
+  _setVolumeDebounced(volume.value)
 }
 
-/** Wheel volume (optionnel) */
-const clamp = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n))
 function onWheelMaster(e: WheelEvent) {
-  const step = e.shiftKey ? 10 : 5
+  const step  = e.shiftKey ? 10 : 5
   const delta = e.deltaY > 0 ? -step : step
-  const nv = clamp(volume.value + delta)
+  const nv    = clamp(volume.value + delta)
   if (nv !== volume.value) setVolume(nv)
   e.preventDefault()
 }
-function iconForDeviceType(type: string) {
-  const t = (type || '').toUpperCase()
 
-  switch (t) {
-    case 'AVR': return 'material-symbols:audio-video-receiver-outline'
-    case 'TV': return 'material-symbols:tv-outline'
-    case 'STB': return 'material-symbols:set-top-box-outline'
-    case 'COMPUTER': return 'material-symbols:computer'
-    case 'SMARTPHONE': return 'material-symbols:smartphone'
-    case 'TABLET': return 'material-symbols:tablet-mac'
-    case 'SPEAKER': return 'material-symbols:speaker'
-    case 'GAMECONSOLE': return 'material-symbols:sports-esports'
-    case 'CASTAUDIO': return 'material-symbols:cast-audio'
-    case 'CASTVIDEO': return 'material-symbols:cast-connected'
-    case 'AUTOMOBILE': return 'material-symbols:directions-car'
-    case 'SMARTWATCH': return 'material-symbols:watch'
-    case 'CHROMEBOOK': return 'material-symbols:laptop-chromebook'
-    case 'CARTHING': return 'material-symbols:smart-display-outline'
-    case 'AUDIODONGLE': return 'material-symbols:usb'
-    default: return 'i-lucide-monitor-speaker'
+/* ── Shuffle / Repeat (local — protocole à venir) ───────────────────────── */
+
+const shuffle = ref(false)
+const repeat  = ref<'off' | 'context' | 'track'>('off')
+
+// TODO: brancher sur Lecteur.SetShuffle / Lecteur.SetRepeat quand le protocole le supporte
+function toggleShuffle() {
+  shuffle.value = !shuffle.value
+}
+function cycleRepeat() {
+  repeat.value = repeat.value === 'off' ? 'context' : repeat.value === 'context' ? 'track' : 'off'
+}
+
+/* ── Actions ────────────────────────────────────────────────────────────── */
+
+function togglePlay() {
+  const l = activeLecteur.value
+  if (!l) return
+  _playOverride.value = !(l.playing && !l.paused)
+  ws.togglePlayPause(l.id)
+}
+
+function prev() { ws.prev(activeLecteur.value?.id) }
+function next() { ws.next(activeLecteur.value?.id) }
+
+const _seekDebounced = useDebounceFn((position_ms: number) => {
+  ws.seek(activeLecteur.value?.id, position_ms)
+}, 250)
+
+function onSeek(ms: number) {
+  positionMs.value = Math.max(0, Math.min(ms, duration.value))
+  _seekDebounced(positionMs.value)
+}
+
+/* ── Icône par type ─────────────────────────────────────────────────────── */
+
+/** Couvre les types de lecteur ET les types de device Spotify (AVR, TV, SPEAKER…) */
+function iconForType(type: string) {
+  switch ((type ?? '').toUpperCase()) {
+    // ── Lecteurs ──
+    case 'SPOTIFY':       return 'mdi:spotify'
+    case 'FILEPLAYER':    return 'mdi:file-music'
+    case 'CONTROLINPUT':  return 'mdi:audio-input-rca'
+
+    // ── Devices physiques (Spotify / future use) ──
+    case 'AVR':           return 'material-symbols:audio-video-receiver-outline'
+    case 'TV':            return 'material-symbols:tv-outline'
+    case 'STB':           return 'material-symbols:set-top-box-outline'
+    case 'COMPUTER':      return 'material-symbols:computer'
+    case 'SMARTPHONE':    return 'material-symbols:smartphone'
+    case 'TABLET':        return 'material-symbols:tablet-mac'
+    case 'SPEAKER':       return 'material-symbols:speaker'
+    case 'GAMECONSOLE':   return 'material-symbols:sports-esports'
+    case 'CASTAUDIO':     return 'material-symbols:cast-audio'
+    case 'CASTVIDEO':     return 'material-symbols:cast-connected'
+    case 'AUTOMOBILE':    return 'material-symbols:directions-car'
+    case 'SMARTWATCH':    return 'material-symbols:watch'
+    case 'CHROMEBOOK':    return 'material-symbols:laptop-chromebook'
+    case 'CARTHING':      return 'material-symbols:smart-display-outline'
+    case 'AUDIODONGLE':   return 'material-symbols:usb'
+
+    default:              return 'i-lucide-monitor-speaker'
   }
 }
 </script>
 
 <template>
   <footer class="sticky bottom-0 z-40 border-t border-default bg-elevated/80 backdrop-blur supports-[backdrop-filter]:bg-elevated/60">
-    <!-- Desktop : 3 colonnes -->
+
+    <!-- ── Desktop : 3 colonnes ─────────────────────────────────────────── -->
     <div class="hidden md:block w-full px-4">
       <div class="w-full grid grid-cols-12 items-center gap-2 p-2">
-        <!-- LEFT -->
+
+        <!-- LEFT : info piste -->
         <div class="flex items-center gap-3 min-w-0 col-span-3">
           <img :src="cover" :alt="title" class="h-16 w-16 md:h-20 md:w-20 rounded object-cover shrink-0" />
           <div class="min-w-0">
             <p class="truncate text-sm font-medium">{{ title }}</p>
             <p class="truncate text-xs text-dimmed">{{ artists || '—' }}</p>
-            <p v-if="device" class="text-[11px] text-muted/70">
+            <p v-if="activeLecteur" class="text-[11px] text-muted/70 mt-0.5">
               <span class="inline-flex items-center gap-1">
-                <UIcon :name="iconForDeviceType(device.type || '')" class="w-4 h-4" />
-                <span class="truncate">{{ device.name }} {{ device.is_private_session ? '🔒' : '' }}</span>
+                <UIcon :name="iconForType(activeLecteur.type)" class="w-3.5 h-3.5" />
+                <span class="truncate">{{ activeLecteur.name }}</span>
+                <UBadge v-if="!activeLecteur.alive" size="xs" color="error" variant="subtle">off</UBadge>
               </span>
             </p>
           </div>
-          <UButton icon="i-lucide-heart" variant="ghost" color="neutral" square />
         </div>
-        <!-- CENTER -->
+
+        <!-- CENTER : boutons + barre de progression -->
         <div class="col-span-6 flex flex-col items-center gap-1">
           <div class="flex items-center gap-4">
-            <UButton :color="shuffle ? 'primary' : 'neutral'" variant="ghost" icon="i-lucide-shuffle" size="sm" square @click="toggleShuffle" />
-            <UButton variant="ghost" color="neutral" icon="i-lucide-skip-back" size="sm" square @click="prev" />
-            <UButton size="xl" square class="rounded-full h-12 w-12 justify-center items-center" @click="togglePlay">
-              <UIcon :name="!isPlaying ? 'i-lucide-pause' : 'i-lucide-play'" class="w-6 h-6" />
+            <UButton
+              :color="shuffle ? 'primary' : 'neutral'" variant="ghost" icon="i-lucide-shuffle" size="sm" square
+              @click="toggleShuffle"
+            />
+            <UButton
+              variant="ghost" color="neutral" icon="i-lucide-skip-back" size="sm" square
+              :disabled="!activeLecteur?.alive"
+              @click="prev"
+            />
+            <UButton
+              size="xl" square class="rounded-full h-12 w-12 justify-center items-center"
+              :disabled="!activeLecteur?.alive"
+              @click="togglePlay"
+            >
+              <UIcon :name="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'" class="w-6 h-6" />
             </UButton>
-            <UButton variant="ghost" color="neutral" icon="i-lucide-skip-forward" size="sm" square @click="next" />
-            <UButton :color="repeat !== 'off' ? 'primary' : 'neutral'" variant="ghost" :icon="repeat === 'track' ? 'i-lucide-repeat-1' : 'i-lucide-repeat'" size="sm" square @click="cycleRepeat" />
+            <UButton
+              variant="ghost" color="neutral" icon="i-lucide-skip-forward" size="sm" square
+              :disabled="!activeLecteur?.alive"
+              @click="next"
+            />
+            <UButton
+              :color="repeat !== 'off' ? 'primary' : 'neutral'" variant="ghost"
+              :icon="repeat === 'track' ? 'i-lucide-repeat-1' : 'i-lucide-repeat'"
+              size="sm" square
+              @click="cycleRepeat"
+            />
           </div>
+
           <div class="flex items-center gap-3 w-full">
             <span class="text-xs tabular-nums text-dimmed w-10 text-right">{{ toTime(positionMs) }}</span>
             <div class="flex-1">
-              <input type="range" min="0" :max="duration" :value="positionMs"
+              <input
+                type="range" min="0" :max="duration" :value="positionMs"
                 class="w-full accent-current h-1.5 range-primary-0"
-                @input="onSeek(($event.target as HTMLInputElement).valueAsNumber)" />
+                @input="onSeek(($event.target as HTMLInputElement).valueAsNumber)"
+              />
             </div>
             <span class="text-xs tabular-nums text-dimmed w-10">{{ toTime(duration) }}</span>
           </div>
         </div>
-        <!-- RIGHT -->
+
+        <!-- RIGHT : queue + type + volume -->
         <div class="col-span-3 flex items-center justify-end gap-2">
-          <UButton variant="ghost" color="neutral" icon="material-symbols:event-list-sharp" style="rotate: 180deg;" size="lg" square />
-          <UButton variant="ghost" color="neutral" icon="i-lucide-list-music" size="lg" square />
-          <UButton variant="ghost" :color="device?.type ? 'primary' : 'neutral'" :icon="iconForDeviceType(device?.type || 'i-lucide-monitor-speaker')" size="lg" square @click="isDevicSpotifyeSlideoverOpen = true" />
+          <UButton variant="ghost" color="neutral" icon="i-lucide-list-music" size="lg" square @click="isQueueSlideoverOpen = true" />
+          <UButton
+            variant="ghost"
+            :color="activeLecteur ? 'primary' : 'neutral'"
+            :icon="iconForType(activeLecteur?.type ?? '')"
+            size="lg" square
+            @click="isLecteurSlideoverOpen = true"
+          />
           <div class="flex items-center gap-2" @wheel.prevent="onWheelMaster">
-            <UButton variant="ghost" color="neutral"
+            <UButton
+              variant="ghost" color="neutral"
               :icon="volume === 0 ? 'i-lucide-volume-x' : volume < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2'"
-              size="lg" square @click="setVolume(volume === 0 ? 60 : 0)" :disabled="!device?.supports_volume" />
-            <input type="range" min="0" max="100" :value="volume"
+              size="lg" square
+              @click="setVolume(volume === 0 ? 60 : 0)"
+            />
+            <input
+              type="range" min="0" max="100" :value="volume"
               class="w-24 xl:w-32 accent-current h-2 range-primary-0"
               @input="setVolume(($event.target as HTMLInputElement).valueAsNumber)"
-              :disabled="!device?.supports_volume" />
+            />
           </div>
         </div>
+
       </div>
     </div>
 
-    <!-- Mobile : track info + play button -->
+    <!-- ── Mobile : compact ─────────────────────────────────────────────── -->
     <div class="md:hidden w-full px-3 py-2">
       <div class="flex items-center gap-3">
         <img :src="cover" :alt="title" class="h-12 w-12 rounded object-cover shrink-0" />
@@ -210,17 +271,19 @@ function iconForDeviceType(type: string) {
           <p class="truncate text-xs text-dimmed">{{ artists || '—' }}</p>
         </div>
         <div class="flex items-center gap-1 shrink-0">
-          <UButton variant="ghost" color="neutral" icon="i-lucide-skip-back" size="sm" square @click="prev" />
+          <UButton variant="ghost" color="neutral" icon="i-lucide-skip-back"    size="sm" square @click="prev" />
           <UButton size="lg" square class="rounded-full h-11 w-11 justify-center items-center" @click="togglePlay">
             <UIcon :name="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'" class="w-5 h-5" />
           </UButton>
           <UButton variant="ghost" color="neutral" icon="i-lucide-skip-forward" size="sm" square @click="next" />
         </div>
       </div>
-      <!-- Progress bar mobile -->
-      <input type="range" min="0" :max="duration" :value="positionMs"
+      <input
+        type="range" min="0" :max="duration" :value="positionMs"
         class="w-full accent-current h-1 range-primary-0 mt-2"
-        @input="onSeek(($event.target as HTMLInputElement).valueAsNumber)" />
+        @input="onSeek(($event.target as HTMLInputElement).valueAsNumber)"
+      />
     </div>
+
   </footer>
 </template>

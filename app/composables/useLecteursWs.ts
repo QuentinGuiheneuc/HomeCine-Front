@@ -1,50 +1,138 @@
-import type { LecteurState } from '@/types/lecteur'
+import type { LecteurState, HeartbeatEntry, QueueItem } from '@/types/lecteur'
 import appConfig from '@/src/config'
+
 /**
  * useLecteursWs — états temps réel des lecteurs via WebSocket
  *
- * Endpoint : ws://.../lecteur
- * Protocol : JSON { method, id?, data?, error? }
+ * Endpoint : ws://.../lecteur-live
  *
- * Usage :
- *   const { wsStatus, wsError, stateById, start, stop, restart } = useLecteursWs()
- *   // stateById est mis à jour automatiquement par les messages Lecteur.State
+ * Messages reçus :
+ *   Lecteur.Init      → { lecteurs: LecteurState[] }
+ *   Lecteur.Update    → { id, data: LecteurState }
+ *   Lecteur.Heartbeat → { lecteurs: HeartbeatEntry[] }   (chaque seconde)
+ *   Lecteur.Queue     → { id, queue: QueueItem[] }
+ *   Lecteur.Error     → { id?, error }
+ *
+ * Commandes envoyées :
+ *   Lecteur.GetState | Lecteur.GetQueue | Lecteur.Play | Lecteur.Pause
+ *   Lecteur.Resume   | Lecteur.Next     | Lecteur.Prev | Lecteur.SetVolume
+ *   Lecteur.Seek
  */
 export function useLecteursWs() {
   const toast = useToast()
-  const stateById = ref<Record<number, LecteurState>>({})
+
+  const lecteursById = ref<Record<number, LecteurState>>({})
+  const queuesById   = ref<Record<number, QueueItem[]>>({})
 
   const { status: wsStatus, error: wsError, connect, send, on } = useWs(
-    `${appConfig.WS_URL}/lecteur`,
+    `${appConfig.WS_URL}/lecteur-live`,
     {
       reconnect: true,
       reconnectDelay: 2000,
       onOpen: (ws) => {
-        ws.send(JSON.stringify({ method: 'Gui.Lecteur.RequestAllState' }))
+        ws.send(JSON.stringify({ method: 'Lecteur.GetState' }))
       }
     }
   )
 
   on((msg) => {
-    if (msg?.method === 'Lecteur.State' && typeof msg.id === 'number' && msg.data) {
-      stateById.value = { ...stateById.value, [msg.id]: { id: msg.id, ...msg.data } }
-      return
-    }
-    if (msg?.method === 'Error') {
-      toast.add({ title: 'Erreur lecteur', description: msg.error || 'Erreur inconnue', color: 'error' })
+    switch (msg?.method) {
+
+      case 'Lecteur.Init': {
+        if (!Array.isArray(msg.lecteurs)) break
+        const map: Record<number, LecteurState> = {}
+        for (const l of msg.lecteurs) map[l.id] = l
+        lecteursById.value = map
+        break
+      }
+
+      case 'Lecteur.Update': {
+        if (typeof msg.id !== 'number' || !msg.data) break
+        lecteursById.value = { ...lecteursById.value, [msg.id]: msg.data as LecteurState }
+        break
+      }
+
+      case 'Lecteur.Heartbeat': {
+        if (!Array.isArray(msg.lecteurs)) break
+        const updated = { ...lecteursById.value }
+        for (const entry of msg.lecteurs as HeartbeatEntry[]) {
+          if (updated[entry.id]) {
+            updated[entry.id] = {
+              ...updated[entry.id],
+              alive:   entry.alive,
+              playing: entry.playing,
+              temp:    entry.temp,
+            }
+          }
+        }
+        lecteursById.value = updated
+        break
+      }
+
+      case 'Lecteur.Queue': {
+        if (typeof msg.id !== 'number' || !Array.isArray(msg.queue)) break
+        queuesById.value = { ...queuesById.value, [msg.id]: msg.queue as QueueItem[] }
+        break
+      }
+
+      case 'Lecteur.Error': {
+        toast.add({
+          title: `Erreur lecteur${msg.id != null ? ` #${msg.id}` : ''}`,
+          description: msg.error || 'Erreur inconnue',
+          color: 'error'
+        })
+        break
+      }
     }
   })
 
-  function sendCmd(method: string, params: object = {}) {
+  /* ── Helpers commandes ──────────────────────────────────────────────────── */
+
+  function cmd(method: string, params: object = {}) {
     const ok = send({ method, ...params })
     if (!ok) toast.add({ title: 'WebSocket non connecté', description: 'Commande non envoyée', color: 'error' })
+    return ok
   }
 
-  const start   = (id: number) => sendCmd('Lecteur.Start',   { id })
-  const stop    = (id: number) => sendCmd('Lecteur.Stop',    { id })
-  const restart = (id: number) => sendCmd('Lecteur.Restart', { id })
+  function withId(method: string, id: number | null | undefined, extra: object = {}) {
+    if (id == null) {
+      toast.add({ title: 'Aucun lecteur sélectionné', description: 'Choisissez un lecteur principal', color: 'warning' })
+      return false
+    }
+    return cmd(method, { id, ...extra })
+  }
+
+  const lecteurs = computed(() => Object.values(lecteursById.value))
 
   onMounted(connect)
 
-  return { wsStatus, wsError, stateById, connect, start, stop, restart }
+  return {
+    wsStatus,
+    wsError,
+    lecteursById,
+    queuesById,
+    lecteurs,
+    connect,
+    cmd,
+
+    getState:  ()                                              => cmd('Lecteur.GetState'),
+    getQueue:  (id: number | null | undefined)                 => withId('Lecteur.GetQueue',  id),
+    play:      (id: number | null | undefined, uri?: string)   => withId('Lecteur.Play',       id, uri ? { uri } : {}),
+    pause:     (id: number | null | undefined)                 => withId('Lecteur.Pause',      id),
+    resume:    (id: number | null | undefined)                 => withId('Lecteur.Resume',     id),
+    next:      (id: number | null | undefined)                 => withId('Lecteur.Next',       id),
+    prev:      (id: number | null | undefined)                 => withId('Lecteur.Prev',       id),
+    setVolume: (id: number | null | undefined, value = 50)     => withId('Lecteur.SetVolume',  id, { value }),
+    seek:      (id: number | null | undefined, position_ms = 0) => withId('Lecteur.Seek',     id, { position_ms }),
+
+    /** Bascule play ↔ pause/resume selon l'état actuel du lecteur */
+    togglePlayPause(id: number | null | undefined) {
+      if (id == null) {
+        toast.add({ title: 'Aucun lecteur sélectionné', color: 'warning' })
+        return false
+      }
+      withId('Lecteur.TogglePlayPause', id)
+      return cmd('Lecteur.Play', { id })
+    }
+  }
 }

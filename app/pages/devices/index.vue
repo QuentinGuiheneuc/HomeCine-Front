@@ -146,14 +146,36 @@ const rows = computed(() => {
   return list.map(d => {
     const key   = deviceKey(d)
     const audio = audioByKey.value[key] ?? null
+
     const outVals = audio?.output?.volume ? Object.values(audio.output.volume).map(Number).filter(v => !isNaN(v)) : []
     const inVals  = audio?.input?.volume  ? Object.values(audio.input.volume) .map(Number).filter(v => !isNaN(v)) : []
+    const outLevel = outVals.length ? Math.round(outVals.reduce((a, b) => a + b) / outVals.length) : 0
+    const inLevel  = inVals.length  ? Math.round(inVals.reduce( (a, b) => a + b) / inVals.length)  : 0
+
+    // ── Canaux sortie : fusionner les données WS + compléter jusqu'à vban.channels ──
+    const targetOutCh = d.vban?.channels ?? 0
+    const outEntries: Array<{ ch: string; val: number }> =
+      Object.entries(audio?.output?.volume ?? {}).map(([ch, val]) => ({ ch, val: Number(val) }))
+    for (let i = outEntries.length; i < targetOutCh; i++) {
+      outEntries.push({ ch: `HP ${i + 1}`, val: outLevel })
+    }
+
+    // ── Canaux entrée ──
+    const targetInCh = d.vban?.channels ?? 0
+    const inEntries: Array<{ ch: string; val: number }> =
+      Object.entries(audio?.input?.volume ?? {}).map(([ch, val]) => ({ ch, val: Number(val) }))
+    for (let i = inEntries.length; i < targetInCh; i++) {
+      inEntries.push({ ch: `HP ${i + 1}`, val: inLevel })
+    }
+
     return {
       ...d,
       key,
       audio,
-      outLevel: outVals.length ? Math.round(outVals.reduce((a, b) => a + b) / outVals.length) : 0,
-      inLevel:  inVals.length  ? Math.round(inVals.reduce( (a, b) => a + b) / inVals.length)  : 0,
+      outLevel,
+      inLevel,
+      outChannels: outEntries,
+      inChannels:  inEntries,
     }
   })
 })
@@ -235,7 +257,6 @@ function openSlideover(key: string) {
 
 /* ─── Polling devices ────────────────────────────────────────────────────── */
 
-let pollTimer: ReturnType<typeof setInterval> | null = null
 let pollTimerAudio: ReturnType<typeof setInterval> | null = null
 
 function requestData() {
@@ -246,11 +267,9 @@ function requestData() {
 onMounted(() => {
   // Si le WS singleton est déjà connecté, le watch ne se déclenche pas → envoi immédiat
   if (wsStatus.value === 'connected') requestData()
-  pollTimer      = setInterval(() => wsSend('Get.Device'), 5_000)
   pollTimerAudio = setInterval(() => wsSend('Get.audio'),  10_000)
 })
 onUnmounted(() => {
-  if (pollTimer)      clearInterval(pollTimer)
   if (pollTimerAudio) clearInterval(pollTimerAudio)
   offWs()
 })
@@ -432,18 +451,18 @@ function refresh() {
                   <UButton size="2xs" variant="ghost" color="warning" @click="send(d.key, 'Toggle.output.mute')">Mute</UButton>
                 </div>
                 <!-- Canaux repliables -->
-                <details v-if="d.audio.output.volume && Object.keys(d.audio.output.volume).length" class="text-[10px]">
+                <details v-if="d.outChannels.length" class="text-[10px]">
                   <summary class="cursor-pointer text-dimmed select-none hover:text-foreground transition-colors">
-                    {{ Object.keys(d.audio.output.volume).length }} canaux…
+                    {{ d.outChannels.length }} canaux…
                   </summary>
-                  <div class="mt-2 space-y-1.5 max-h-28 overflow-y-auto pr-1">
-                    <div v-for="(val, ch) in d.audio.output.volume" :key="ch" class="flex items-center gap-2">
+                  <div class="mt-2 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    <div v-for="{ ch, val } in d.outChannels" :key="ch" class="flex items-center gap-2">
                       <span class="text-dimmed w-14 truncate">{{ ch }}</span>
                       <div class="flex-1 h-1.5 rounded overflow-hidden">
-                        <div class="h-full rounded" :style="{ width: outChVal(d.key, ch, Number(val)) + '%', background: 'linear-gradient(to right,#059669,#34d399 60%,#fbbf24 90%,#ef4444)' }" />
+                        <div class="h-full rounded" :style="{ width: outChVal(d.key, ch, val) + '%', background: 'linear-gradient(to right,#059669,#34d399 60%,#fbbf24 90%,#ef4444)' }" />
                       </div>
-                      <input type="range" min="0" max="100" :value="outChVal(d.key, ch, Number(val))" class="range-primary-0 w-16 cursor-pointer" @input="onOutChannelSlider(d.key, ch, +($event.target as HTMLInputElement).value)" />
-                      <span class="font-mono w-7 text-right">{{ outChVal(d.key, ch, Number(val)) }}</span>
+                      <input type="range" min="0" max="100" :value="outChVal(d.key, ch, val)" class="range-primary-0 w-16 cursor-pointer" @input="onOutChannelSlider(d.key, ch, +($event.target as HTMLInputElement).value)" />
+                      <span class="font-mono w-7 text-right">{{ outChVal(d.key, ch, val) }}</span>
                     </div>
                   </div>
                 </details>
@@ -488,18 +507,18 @@ function refresh() {
                   <UButton size="2xs" variant="ghost" color="warning" @click="send(d.key, 'Toggle.input.mute')">Mute</UButton>
                 </div>
                 <!-- Canaux repliables -->
-                <details v-if="d.audio.input.volume && Object.keys(d.audio.input.volume).length" class="text-[10px]">
+                <details v-if="d.inChannels.length" class="text-[10px]">
                   <summary class="cursor-pointer text-dimmed select-none hover:text-foreground transition-colors">
-                    {{ Object.keys(d.audio.input.volume).length }} canaux…
+                    {{ d.inChannels.length }} canaux…
                   </summary>
-                  <div class="mt-2 space-y-1.5 max-h-28 overflow-y-auto pr-1">
-                    <div v-for="(val, ch) in d.audio.input.volume" :key="ch" class="flex items-center gap-2">
+                  <div class="mt-2 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    <div v-for="{ ch, val } in d.inChannels" :key="ch" class="flex items-center gap-2">
                       <span class="text-dimmed w-14 truncate">{{ ch }}</span>
                       <div class="flex-1 h-1.5 rounded overflow-hidden">
-                        <div class="h-full rounded" :style="{ width: inChVal(d.key, ch, Number(val)) + '%', background: 'linear-gradient(to right,#059669,#a78bfa 60%,#f59e0b 80%,#ef4444)' }" />
+                        <div class="h-full rounded" :style="{ width: inChVal(d.key, ch, val) + '%', background: 'linear-gradient(to right,#059669,#a78bfa 60%,#f59e0b 80%,#ef4444)' }" />
                       </div>
-                      <input type="range" min="0" max="100" :value="inChVal(d.key, ch, Number(val))" class="range-purple-0 w-16 cursor-pointer" @input="onInChannelSlider(d.key, ch, +($event.target as HTMLInputElement).value)" />
-                      <span class="font-mono w-7 text-right">{{ inChVal(d.key, ch, Number(val)) }}</span>
+                      <input type="range" min="0" max="100" :value="inChVal(d.key, ch, val)" class="range-purple-0 w-16 cursor-pointer" @input="onInChannelSlider(d.key, ch, +($event.target as HTMLInputElement).value)" />
+                      <span class="font-mono w-7 text-right">{{ inChVal(d.key, ch, val) }}</span>
                     </div>
                   </div>
                 </details>

@@ -1,4 +1,6 @@
-export type LecteurType = 'spotify' | 'deezer' | 'radio' | 'local' | 'localInput' | string
+/* ── Config / DB ─────────────────────────────────────────────────────────── */
+
+export type LecteurType = 'spotify' | 'fileplayer' | 'controlinput' | 'deezer' | 'radio' | 'local' | 'localInput' | string
 
 export type ConfEq = {
   rate: number
@@ -19,22 +21,55 @@ export type Lecteur = {
 }
 
 export const typeItems = [
-  { label: 'Spotify', value: 'spotify' },
-  { label: 'Deezer', value: 'deezer' },
-  { label: 'Local', value: 'local' },
-  { label: 'Radio', value: 'radio' },
+  { label: 'Spotify',    value: 'spotify' },
+  { label: 'FilePlayer', value: 'fileplayer' },
+  { label: 'Deezer',     value: 'deezer' },
+  { label: 'Local',      value: 'local' },
+  { label: 'Radio',      value: 'radio' },
   { label: 'Local Input', value: 'localInput' }
 ]
 
-export type LecteurState = {
-  id: number
-  status: 'stopped' | 'starting' | 'running' | 'error'
-  message?: string
-  track?: {
-    title?: string
-    artist?: string
-    album?: string
-    cover?: string
-  }
-  volume?: { percent: number; muted: boolean }
+/* ── WS temps réel ───────────────────────────────────────────────────────── */
+
+export interface TrackInfo {
+  title:       string | null
+  artists:     string[]
+  album:       string | null
+  cover_url:   string | null
+  duration_ms: number | null
+  uri?:        string | null
+}
+
+export interface TempInfo {
+  position_ms: number | null
+  duration_ms: number | null
+  updated_at:  number
+}
+
+export interface QueueItem {
+  title:       string
+  artists:     string[]
+  album:       string | null
+  cover_url:   string | null
+  duration_ms: number
+  uri:         string
+}
+
+export interface LecteurState {
+  id:      number
+  name:    string
+  type:    LecteurType
+  alive:   boolean
+  playing: boolean
+  paused:  boolean
+  track:   TrackInfo | null
+  temp:    TempInfo  | null
+  queue:   QueueItem[] | null
+}
+
+export interface HeartbeatEntry {
+  id:      number
+  alive:   boolean
+  playing: boolean
+  temp:    TempInfo | null
 }

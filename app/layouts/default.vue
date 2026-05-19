@@ -4,6 +4,8 @@ import { useAuth } from '@/composables/useAuth'
 import DeviceSlideover from '~/components/DeviceSlideover.vue'
 import DeviceSpotifySlideover from '~/components/DeviceSpotifySlideover.vue'
 import DeviceAddSlideover from '~/components/DeviceAddSlideover.vue'
+import LecteurSlideover from '~/components/LecteurSlideover.vue'
+import LecteurQueueSlideover from '~/components/LecteurQueueSlideover.vue'
 
 const { menue } = useDashboard()
 const { isAuthenticated } = useAuth()
@@ -134,5 +136,7 @@ const groups = computed(() => [
     <DeviceSlideover />
     <DeviceSpotifySlideover />
     <DeviceAddSlideover />
+    <LecteurSlideover />
+    <LecteurQueueSlideover />
   </UDashboardGroup>
 </template>
