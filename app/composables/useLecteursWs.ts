@@ -37,7 +37,6 @@ export function useLecteursWs() {
 
   on((msg) => {
     switch (msg?.method) {
-
       case 'Lecteur.Init': {
         if (!Array.isArray(msg.lecteurs)) break
         const map: Record<number, LecteurState> = {}
@@ -62,6 +61,7 @@ export function useLecteursWs() {
               alive:   entry.alive,
               playing: entry.playing,
               temp:    entry.temp,
+              volume: entry.volume // mise à jour du volume depuis le heartbeat si présent, sinon conservation de l'ancien volume ou 60 par défaut
             }
           }
         }
@@ -123,6 +123,7 @@ export function useLecteursWs() {
     next:      (id: number | null | undefined)                 => withId('Lecteur.Next',       id),
     prev:      (id: number | null | undefined)                 => withId('Lecteur.Prev',       id),
     setVolume: (id: number | null | undefined, value = 50)     => withId('Lecteur.SetVolume',  id, { value }),
+    getVolume: (id: number | null | undefined)                 => lecteursById.value[id]?.volume ?? null,
     seek:      (id: number | null | undefined, position_ms = 0) => withId('Lecteur.Seek',     id, { position_ms }),
 
     /** Bascule play ↔ pause/resume selon l'état actuel du lecteur */

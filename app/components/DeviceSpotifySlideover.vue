@@ -11,6 +11,7 @@ type Device = {
   supports_volume: boolean
   type: 'Computer' | 'Smartphone' | 'Speaker' | string
   volume_percent: number
+  volume?: number // pour affichage rapide, à synchroniser avec volume_percent après setVolumeDebounced
 }
 type DevicesResponse = { devices: Device[] }
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
@@ -102,7 +103,7 @@ function onWheelVolume(device: Device, e: WheelEvent) {
 async function setVolume(device: Device, pct: number) {
   if (!device.supports_volume) return
   // UI optimiste + debounce côté API
-  device.volume_percent = pct
+  device.volume = pct
   await setVolumeDebounced(device, pct)
 }
 
@@ -156,24 +157,24 @@ watch(isDevicSpotifyeSlideoverOpen, (open) => {
               <UBadge v-else color="neutral" variant="soft" size="xs">Idle</UBadge>
             </div>
             <p class="text-xs text-dimmed">
-              {{ d.type }} · {{ d.supports_volume ? `Vol ${d.volume_percent}%` : 'No volume control' }}
+              {{ d.type }} · {{ d.volume ? `Vol ${d.volume}%` : 'No volume control' }}
               <span v-if="d.is_private_session"> · Private</span>
               <span v-if="d.is_restricted"> · Restricted</span>
             </p>
 
-            <div v-if="d.supports_volume" class="mt-2 flex items-center gap-2 max-w-sm">
-              <UIcon :name="d.volume_percent === 0 ? 'i-lucide-volume-x' : (d.volume_percent < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2')" />
+            <div v-if="d.volume !== undefined" class="mt-2 flex items-center gap-2 max-w-sm">
+              <UIcon :name="d.volume === 0 ? 'i-lucide-volume-x' : (d.volume < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2')" />
               <input
                 type="range"
                 min="0"
                 max="100"
-                :value="d.volume_percent"
+                :value="d.volume"
                 class="w-full accent-current h-1.5 range-primary-0"
                 :disabled="settingVolume === d.id"
                 @input="setVolume(d, ($event.target as HTMLInputElement).valueAsNumber)"
                 @wheel.prevent="onWheelVolume(d, $event)"
               />
-              <span class="text-xs tabular-nums w-10 text-right">{{ d.volume_percent }}%</span>
+              <span class="text-xs tabular-nums w-10 text-right">{{ d.volume }}%</span>
             </div>
           </div>
 

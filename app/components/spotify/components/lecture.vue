@@ -41,7 +41,14 @@ const duration = computed(() =>
   activeLecteur.value?.temp?.duration_ms ??
   0
 )
+const volumeValue = computed(() => activeLecteur.value?.volume ?? 0)
+const volume = ref(0)
 
+watch(
+  () => volumeValue.value,
+  (v) => { volume.value = v },
+  { immediate: true }
+)
 /* ── Override optimiste play / pause ────────────────────────────────────── */
 
 const _playOverride = ref<boolean | null>(null)
@@ -80,7 +87,7 @@ const toTime = (ms: number) => {
 
 /* ── Volume (local) ─────────────────────────────────────────────────────── */
 
-const volume = ref(60)
+
 const clamp  = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n))
 
 const _setVolumeDebounced = useDebounceFn((value: number) => {
@@ -91,12 +98,15 @@ function setVolume(pct: number) {
   volume.value = clamp(pct)
   _setVolumeDebounced(volume.value)
 }
-
-function onWheelMaster(e: WheelEvent) {
+function getVolume() {
+  return activeLecteur.value?.volume ?? 0
+}
+function onWheelVolume(e: WheelEvent) {
   const step  = e.shiftKey ? 10 : 5
   const delta = e.deltaY > 0 ? -step : step
-  const nv    = clamp(volume.value + delta)
-  if (nv !== volume.value) setVolume(nv)
+  console.log('delta:', delta, volume.value, clamp(volume.value + delta))
+  const next  = clamp(volume.value + delta)
+  if (next !== volume.value) setVolume(next)
   e.preventDefault()
 }
 
@@ -244,7 +254,7 @@ function iconForType(type: string) {
             size="lg" square
             @click="isLecteurSlideoverOpen = true"
           />
-          <div class="flex items-center gap-2" @wheel.prevent="onWheelMaster">
+          <div class="flex items-center gap-2" @wheel.prevent="onWheelVolume">
             <UButton
               variant="ghost" color="neutral"
               :icon="volume === 0 ? 'i-lucide-volume-x' : volume < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2'"

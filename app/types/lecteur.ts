@@ -65,6 +65,7 @@ export interface LecteurState {
   track:   TrackInfo | null
   temp:    TempInfo  | null
   queue:   QueueItem[] | null
+  volume:  number | null
 }
 
 export interface HeartbeatEntry {
@@ -72,4 +73,5 @@ export interface HeartbeatEntry {
   alive:   boolean
   playing: boolean
   temp:    TempInfo | null
+  volume:  number | null
 }

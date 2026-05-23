@@ -10,7 +10,7 @@ const clamp = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n))
 const volumeById = ref<Record<number, number>>({})
 
 function getVolume(id: number) {
-  return volumeById.value[id] ?? 60
+  return ws.lecteurs.value.find(l => l.id === id)?.volume
 }
 
 const _setVolumeDebounced = useDebounceFn((id: number, value: number) => {
@@ -32,7 +32,9 @@ function onWheelVolume(id: number, e: WheelEvent) {
 
 /* ── Sélection du lecteur principal ────────────────────────────────────── */
 function selectLecteur(id: number) {
-  activeLecteurId.value = activeLecteurId.value === id ? null : id
+  const next = activeLecteurId.value === id ? null : id
+  activeLecteurId.value = next
+  if (next !== null) ws.cmd('Set.select', { id: next })
 }
 
 /* ── Icône par type ─────────────────────────────────────────────────────── */
