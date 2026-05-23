@@ -96,7 +96,7 @@ function iconForType(type: string) {
           :class="{ 'ring-1 ring-primary/40 bg-primary/5': activeLecteurId === l.id }"
         >
           <!-- Icône -->
-          <UAvatar :icon="iconForType(l.type)" size="xl" class="shrink-0" />
+          <UAvatar :icon="iconForType(l.device_type ?? l.type)" size="xl" class="shrink-0" />
 
           <!-- Infos -->
           <div class="flex-1 min-w-0">

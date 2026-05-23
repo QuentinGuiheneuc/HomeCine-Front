@@ -40,14 +40,21 @@ export function useLecteursWs() {
       case 'Lecteur.Init': {
         if (!Array.isArray(msg.lecteurs)) break
         const map: Record<number, LecteurState> = {}
-        for (const l of msg.lecteurs) map[l.id] = l
+        const queues: Record<number, QueueItem[]> = { ...queuesById.value }
+        for (const l of msg.lecteurs) {
+          map[l.id] = l
+          if (Array.isArray(l.queue)) queues[l.id] = l.queue
+        }
         lecteursById.value = map
+        queuesById.value   = queues
         break
       }
 
       case 'Lecteur.Update': {
         if (typeof msg.id !== 'number' || !msg.data) break
-        lecteursById.value = { ...lecteursById.value, [msg.id]: msg.data as LecteurState }
+        const data = msg.data as LecteurState
+        lecteursById.value = { ...lecteursById.value, [msg.id]: data }
+        if (Array.isArray(data.queue)) queuesById.value = { ...queuesById.value, [msg.id]: data.queue }
         break
       }
 
@@ -58,10 +65,12 @@ export function useLecteursWs() {
           if (updated[entry.id]) {
             updated[entry.id] = {
               ...updated[entry.id],
-              alive:   entry.alive,
-              playing: entry.playing,
-              temp:    entry.temp,
-              volume: entry.volume // mise à jour du volume depuis le heartbeat si présent, sinon conservation de l'ancien volume ou 60 par défaut
+              alive:           entry.alive,
+              playing:         entry.playing,
+              temp:            entry.temp,
+              volume:          entry.volume          ?? updated[entry.id].volume,
+              device_type:     entry.device_type     ?? updated[entry.id].device_type,
+              supports_volume: entry.supports_volume ?? updated[entry.id].supports_volume,
             }
           }
         }

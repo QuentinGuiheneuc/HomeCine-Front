@@ -205,7 +205,7 @@ function iconForType(type: string) {
             <p class="truncate text-xs text-dimmed">{{ artists || '—' }}</p>
             <p v-if="activeLecteur" class="text-[11px] text-muted/70 mt-0.5">
               <span class="inline-flex items-center gap-1">
-                <UIcon :name="iconForType(activeLecteur.type)" class="w-3.5 h-3.5" />
+                <UIcon :name="iconForType(activeLecteur.device_type ?? activeLecteur.type)" class="w-3.5 h-3.5" />
                 <span class="truncate">{{ activeLecteur.name }}</span>
                 <UBadge v-if="!activeLecteur.alive" size="xs" color="error" variant="subtle">off</UBadge>
               </span>
@@ -264,7 +264,7 @@ function iconForType(type: string) {
           <UButton
             variant="ghost"
             :color="activeLecteur ? 'primary' : 'neutral'"
-            :icon="iconForType(activeLecteur?.type ?? '')"
+            :icon="iconForType(activeLecteur?.device_type ?? activeLecteur?.type ?? '')"
             size="lg" square
             @click="isLecteurSlideoverOpen = true"
           />

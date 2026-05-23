@@ -28,14 +28,16 @@ async function fetchQueue() {
   if (id == null) return
   loading.value = true
   ws.getQueue(id)
-  // La réponse Lecteur.Queue met à jour queuesById automatiquement
-  // On attend un court délai pour que le WS réponde
   await new Promise(r => setTimeout(r, 600))
   loading.value = false
 }
 
 watch(isQueueSlideoverOpen, open => {
-  if (open) fetchQueue()
+  if (!open) return
+  const id = activeLecteur.value?.id
+  // Si la queue est déjà présente (venue du Init), pas besoin de refetch
+  if (id != null && ws.queuesById.value[id]) return
+  fetchQueue()
 })
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */

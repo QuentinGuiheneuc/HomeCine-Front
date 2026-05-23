@@ -58,24 +58,28 @@ export interface QueueItem {
 export type RepeatMode = 'off' | 'context' | 'track'
 
 export interface LecteurState {
-  id:      number
-  name:    string
-  type:    LecteurType
-  alive:   boolean
-  playing: boolean
-  paused:  boolean
-  shuffle: boolean
-  repeat:  RepeatMode
-  track:   TrackInfo | null
-  temp:    TempInfo  | null
-  queue:   QueueItem[] | null
-  volume:  number | null
+  id:              number
+  name:            string
+  type:            LecteurType
+  alive:           boolean
+  playing:         boolean
+  paused:          boolean
+  shuffle:         boolean
+  repeat:          RepeatMode
+  track:           TrackInfo | null
+  temp:            TempInfo  | null
+  queue:           QueueItem[] | null
+  volume:          number | null
+  device_type:     string | null
+  supports_volume: boolean
 }
 
 export interface HeartbeatEntry {
-  id:      number
-  alive:   boolean
-  playing: boolean
-  temp:    TempInfo | null
-  volume:  number | null
+  id:              number
+  alive:           boolean
+  playing:         boolean
+  temp:            TempInfo | null
+  volume:          number | null
+  device_type:     string | null
+  supports_volume: boolean
 }
