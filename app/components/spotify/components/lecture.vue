@@ -41,14 +41,13 @@ const duration = computed(() =>
   activeLecteur.value?.temp?.duration_ms ??
   0
 )
-const volumeValue = computed(() => activeLecteur.value?.volume ?? 0)
-const volume = ref(0)
+/** Volume brut du serveur — peut être null si non renseigné */
+const serverVolume = computed(() => activeLecteur.value?.volume ?? null)
+const volume = ref(60)
 
-watch(
-  () => volumeValue.value,
-  (v) => { volume.value = v },
-  { immediate: true }
-)
+watch(serverVolume, (v) => {
+  if (v !== null) volume.value = v
+}, { immediate: true })
 /* ── Override optimiste play / pause ────────────────────────────────────── */
 
 const _playOverride = ref<boolean | null>(null)
@@ -114,11 +113,12 @@ function toggleMute() {
 }
 
 const volumeIcon = computed(() => {
-  if (isMuted.value)        return 'i-lucide-volume-x'
-  if (volume.value === 0)   return 'i-lucide-volume-x'
-  if (volume.value < 30)    return 'i-lucide-volume'
-  if (volume.value < 70)    return 'i-lucide-volume-1'
-  return                           'i-lucide-volume-2'
+  if (isMuted.value)                      return 'i-lucide-volume-x'
+  if (serverVolume.value === null)        return 'i-lucide-volume-1'   // inconnu → neutre
+  if (volume.value === 0)                 return 'i-lucide-volume-x'
+  if (volume.value < 30)                  return 'i-lucide-volume'
+  if (volume.value < 70)                  return 'i-lucide-volume-1'
+  return                                         'i-lucide-volume-2'
 })
 function onWheelVolume(e: WheelEvent) {
   const step  = e.shiftKey ? 10 : 5
