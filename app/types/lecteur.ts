@@ -55,6 +55,8 @@ export interface QueueItem {
   uri:         string
 }
 
+export type RepeatMode = 'off' | 'context' | 'track'
+
 export interface LecteurState {
   id:      number
   name:    string
@@ -62,6 +64,8 @@ export interface LecteurState {
   alive:   boolean
   playing: boolean
   paused:  boolean
+  shuffle: boolean
+  repeat:  RepeatMode
   track:   TrackInfo | null
   temp:    TempInfo  | null
   queue:   QueueItem[] | null

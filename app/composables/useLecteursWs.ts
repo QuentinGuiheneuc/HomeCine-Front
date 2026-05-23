@@ -1,4 +1,4 @@
-import type { LecteurState, HeartbeatEntry, QueueItem } from '@/types/lecteur'
+import type { LecteurState, HeartbeatEntry, QueueItem, RepeatMode } from '@/types/lecteur'
 import appConfig from '@/src/config'
 
 /**
@@ -115,7 +115,7 @@ export function useLecteursWs() {
     connect,
     cmd,
 
-    getState:  ()                                              => cmd('Lecteur.GetState'),
+    getState:       ()                                              => cmd('Lecteur.GetState'),
     getQueue:  (id: number | null | undefined)                 => withId('Lecteur.GetQueue',  id),
     play:      (id: number | null | undefined, uri?: string)   => withId('Lecteur.Play',       id, uri ? { uri } : {}),
     pause:     (id: number | null | undefined)                 => withId('Lecteur.Pause',      id),
@@ -125,6 +125,27 @@ export function useLecteursWs() {
     setVolume: (id: number | null | undefined, value = 50)     => withId('Lecteur.SetVolume',  id, { value }),
     getVolume: (id: number | null | undefined)                 => lecteursById.value[id]?.volume ?? null,
     seek:      (id: number | null | undefined, position_ms = 0) => withId('Lecteur.Seek',     id, { position_ms }),
+
+    /** Active/désactive le shuffle */
+    toggleShuffle(id: number | null | undefined) {
+      if (id == null) {
+        toast.add({ title: 'Aucun lecteur sélectionné', color: 'warning' })
+        return false
+      }
+      const current = lecteursById.value[id]?.shuffle ?? false
+      return cmd('Lecteur.SetShuffle', { id, value: !current })
+    },
+
+    /** Cycle repeat : off → context → track → off */
+    cycleRepeat(id: number | null | undefined) {
+      if (id == null) {
+        toast.add({ title: 'Aucun lecteur sélectionné', color: 'warning' })
+        return false
+      }
+      const current: RepeatMode = lecteursById.value[id]?.repeat ?? 'off'
+      const next: RepeatMode    = current === 'off' ? 'context' : current === 'context' ? 'track' : 'off'
+      return cmd('Lecteur.SetRepeat', { id, value: next })
+    },
 
     /** Bascule play ↔ pause/resume selon l'état actuel du lecteur */
     togglePlayPause(id: number | null | undefined) {

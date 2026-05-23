@@ -98,9 +98,28 @@ function setVolume(pct: number) {
   volume.value = clamp(pct)
   _setVolumeDebounced(volume.value)
 }
-function getVolume() {
-  return activeLecteur.value?.volume ?? 0
+
+const _savedVolume = ref<number>(60)
+const isMuted      = ref<boolean>(false)
+
+function toggleMute() {
+  if (isMuted.value) {
+    isMuted.value = false
+    setVolume(_savedVolume.value)
+  } else {
+    _savedVolume.value = volume.value
+    isMuted.value = true
+    setVolume(0)
+  }
 }
+
+const volumeIcon = computed(() => {
+  if (isMuted.value)        return 'i-lucide-volume-x'
+  if (volume.value === 0)   return 'i-lucide-volume-x'
+  if (volume.value < 30)    return 'i-lucide-volume'
+  if (volume.value < 70)    return 'i-lucide-volume-1'
+  return                           'i-lucide-volume-2'
+})
 function onWheelVolume(e: WheelEvent) {
   const step  = e.shiftKey ? 10 : 5
   const delta = e.deltaY > 0 ? -step : step
@@ -110,18 +129,13 @@ function onWheelVolume(e: WheelEvent) {
   e.preventDefault()
 }
 
-/* ── Shuffle / Repeat (local — protocole à venir) ───────────────────────── */
+/* ── Shuffle / Repeat (valeurs serveur via LecteurState) ────────────────── */
 
-const shuffle = ref(false)
-const repeat  = ref<'off' | 'context' | 'track'>('off')
+const shuffle = computed(() => activeLecteur.value?.shuffle ?? false)
+const repeat  = computed(() => activeLecteur.value?.repeat  ?? 'off')
 
-// TODO: brancher sur Lecteur.SetShuffle / Lecteur.SetRepeat quand le protocole le supporte
-function toggleShuffle() {
-  shuffle.value = !shuffle.value
-}
-function cycleRepeat() {
-  repeat.value = repeat.value === 'off' ? 'context' : repeat.value === 'context' ? 'track' : 'off'
-}
+function toggleShuffle() { ws.toggleShuffle(activeLecteur.value?.id) }
+function cycleRepeat()   { ws.cycleRepeat(activeLecteur.value?.id) }
 
 /* ── Actions ────────────────────────────────────────────────────────────── */
 
@@ -257,9 +271,9 @@ function iconForType(type: string) {
           <div class="flex items-center gap-2" @wheel.prevent="onWheelVolume">
             <UButton
               variant="ghost" color="neutral"
-              :icon="volume === 0 ? 'i-lucide-volume-x' : volume < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2'"
+              :icon="volumeIcon"
               size="lg" square
-              @click="setVolume(volume === 0 ? 60 : 0)"
+              @click="toggleMute"
             />
             <input
               type="range" min="0" max="100" :value="volume"
