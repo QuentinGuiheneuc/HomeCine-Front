@@ -21,7 +21,7 @@ const activeLecteur = computed(() => {
     if (selected) return selected
   }
   return (
-    list.find(l => l.playing && !l.paused) ??
+    list.find(l => l.playing) ??
     list.find(l => l.alive)               ??
     list[0]                               ??
     null
@@ -41,13 +41,13 @@ const duration = computed(() =>
   activeLecteur.value?.temp?.duration_ms ??
   0
 )
-/** Volume brut du serveur — peut être null si non renseigné */
-const serverVolume = computed(() => activeLecteur.value?.volume ?? null)
 const volume = ref(60)
 
-watch(serverVolume, (v) => {
-  if (v !== null) volume.value = v
-}, { immediate: true })
+watch(
+  () => activeLecteur.value?.volume,
+  (v) => { if (v != null && !isMuted.value) volume.value = v },
+  { immediate: true }
+)
 /* ── Override optimiste play / pause ────────────────────────────────────── */
 
 const _playOverride = ref<boolean | null>(null)
@@ -64,7 +64,7 @@ watch(
 const isPlaying = computed(() => {
   if (_playOverride.value !== null) return _playOverride.value
   const l = activeLecteur.value
-  return l ? (l.playing && !l.paused) : false
+  return l ? l.playing : false
 })
 
 /* ── Position (mise à jour par Heartbeat) ───────────────────────────────── */
@@ -112,13 +112,12 @@ function toggleMute() {
   }
 }
 
-const volumeIcon = computed(() => {
-  if (isMuted.value)                      return 'i-lucide-volume-x'
-  if (serverVolume.value === null)        return 'i-lucide-volume-1'   // inconnu → neutre
-  if (volume.value === 0)                 return 'i-lucide-volume-x'
-  if (volume.value < 30)                  return 'i-lucide-volume'
-  if (volume.value < 70)                  return 'i-lucide-volume-1'
-  return                                         'i-lucide-volume-2'
+const volumeIcon = computed((): string => {
+  if (isMuted.value || volume.value === 0) return 'f7:speaker-slash-fill'
+  if (volume.value < 10)                   return 'f7:speaker-fill'
+  if (volume.value < 30)                   return 'f7:speaker-1-fill'
+  if (volume.value < 70)                   return 'f7:speaker-2-fill'
+  return                                          'f7:speaker-3-fill'
 })
 function onWheelVolume(e: WheelEvent) {
   const step  = e.shiftKey ? 10 : 5
@@ -142,7 +141,7 @@ function cycleRepeat()   { ws.cycleRepeat(activeLecteur.value?.id) }
 function togglePlay() {
   const l = activeLecteur.value
   if (!l) return
-  _playOverride.value = !(l.playing && !l.paused)
+  _playOverride.value = !l.playing
   ws.togglePlayPause(l.id)
 }
 
@@ -230,7 +229,7 @@ function iconForType(type: string) {
               :disabled="!activeLecteur?.alive"
               @click="togglePlay"
             >
-              <UIcon :name="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'" class="w-6 h-6" />
+              <UIcon :name="activeLecteur?.playing ? 'i-lucide-pause' : 'i-lucide-play'" class="w-6 h-6" />
             </UButton>
             <UButton
               variant="ghost" color="neutral" icon="i-lucide-skip-forward" size="sm" square

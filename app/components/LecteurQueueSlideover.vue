@@ -13,7 +13,7 @@ const activeLecteur = computed(() => {
     const sel = list.find(l => l.id === activeLecteurId.value)
     if (sel) return sel
   }
-  return list.find(l => l.playing && !l.paused) ?? list[0] ?? null
+  return list.find(l => l.playing) ?? list[0] ?? null
 })
 
 /* ── File d'attente ─────────────────────────────────────────────────────── */
@@ -64,7 +64,7 @@ function playItem(item: QueueItem) {
       <div class="px-6 py-3 border-b border-default flex items-center justify-between">
         <div class="text-sm text-dimmed">
           <span v-if="activeLecteur">
-            <UIcon :name="activeLecteur.playing && !activeLecteur.paused ? 'i-lucide-music' : 'i-lucide-pause'" class="inline w-3.5 h-3.5 mr-1" />
+            <UIcon :name="activeLecteur.playing ? 'i-lucide-music' : 'i-lucide-pause'" class="inline w-3.5 h-3.5 mr-1" />
             {{ activeLecteur.name }}
           </span>
           <span v-else class="italic">Aucun lecteur</span>

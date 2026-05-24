@@ -162,8 +162,8 @@ export function useLecteursWs() {
         toast.add({ title: 'Aucun lecteur sélectionné', color: 'warning' })
         return false
       }
-      withId('Lecteur.TogglePlayPause', id)
-      return cmd('Lecteur.Play', { id })
+      // withId('Lecteur.TogglePlayPause', id)
+      return cmd('Lecteur.TogglePlayPause', { id })
     }
   }
 }

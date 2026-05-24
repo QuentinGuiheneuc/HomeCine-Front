@@ -63,7 +63,6 @@ export interface LecteurState {
   type:            LecteurType
   alive:           boolean
   playing:         boolean
-  paused:          boolean
   shuffle:         boolean
   repeat:          RepeatMode
   track:           TrackInfo | null

@@ -104,8 +104,8 @@ function iconForType(type: string) {
               <p class="truncate text-base font-medium">{{ l.name }}</p>
 
               <UBadge v-if="activeLecteurId === l.id" color="primary"  variant="subtle" size="xs">Principal</UBadge>
-              <UBadge v-if="l.playing && !l.paused"   color="success"  variant="subtle" size="xs">Lecture</UBadge>
-              <UBadge v-else-if="l.paused"             color="warning"  variant="subtle" size="xs">En pause</UBadge>
+              <UBadge v-if="l.playing"  color="success" variant="subtle" size="xs">Lecture</UBadge>
+              <UBadge v-else            color="neutral" variant="subtle" size="xs">Arrêté</UBadge>
               <UBadge v-if="!l.alive"                  color="error"    variant="subtle" size="xs">Hors ligne</UBadge>
             </div>
 
