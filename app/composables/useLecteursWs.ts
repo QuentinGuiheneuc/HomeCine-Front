@@ -135,6 +135,16 @@ export function useLecteursWs() {
     getVolume: (id: number | null | undefined)                 => lecteursById.value[id]?.volume ?? null,
     seek:      (id: number | null | undefined, position_ms = 0) => withId('Lecteur.Seek',     id, { position_ms }),
 
+    // ── Gestion de queue FilePlayer (cf. API.md FilePlayer) ──────────────────
+    /** Remplace toute la queue et démarre la lecture */
+    setQueue:        (id: number | null | undefined, files: string[]) => withId('Lecteur.SetQueue',        id, { files }),
+    /** Ajoute des fichiers en fin de queue (démarre si arrêté) */
+    addToQueue:      (id: number | null | undefined, files: string[]) => withId('Lecteur.AddToQueue',      id, { files }),
+    /** Retire l'élément à l'index donné */
+    removeFromQueue: (id: number | null | undefined, index: number)   => withId('Lecteur.RemoveFromQueue', id, { index }),
+    /** Déplace un élément de la queue (from → to) sans couper la lecture */
+    moveInQueue:     (id: number | null | undefined, from: number, to: number) => withId('Lecteur.MoveInQueue', id, { from, to }),
+
     /** Active/désactive le shuffle */
     toggleShuffle(id: number | null | undefined) {
       if (id == null) {

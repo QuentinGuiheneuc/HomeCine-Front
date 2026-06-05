@@ -267,6 +267,13 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- Contrôle live FilePlayer -->
+      <FilePlayerControl
+        v-if="lecteur.type === 'fileplayer'"
+        :lecteur-id="id"
+        :alive="!!lecteur.isStart?.alive"
+      />
+
       <UPageCard variant="subtle" :ui="{ container: 'p-4 space-y-4' }">
         <h3 class="font-semibold">Informations</h3>
 
