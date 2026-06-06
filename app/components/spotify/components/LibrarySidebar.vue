@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDebounceFn } from '@vueuse/core'
 import {
-  getProviders, getPlaylists, getAlbums, getArtists, reindex, resolveCoverUrl,
+  getProviders, getPlaylists, getAlbums, getArtists, reindex, resolveCoverUrl, resolveId,
   type LibrarySource, type LibraryProvider,
   type LibraryPlaylist, type LibraryAlbum, type LibraryArtist
 } from '@/src/api/library'
@@ -17,8 +17,13 @@ const emit = defineEmits<{
   (e: 'select-playlist', payload: LibraryPlaylist): void
   (e: 'select-album',    payload: LibraryAlbum): void
   (e: 'select-artist',   payload: LibraryArtist): void
+  (e: 'play-context',    payload: { source: LibrarySource; type: 'playlist' | 'album' | 'artist'; id: string; title?: string }): void
   (e: 'refresh'): void
 }>()
+
+function playCtx(item: any, type: 'playlist' | 'album' | 'artist') {
+  emit('play-context', { source: item.source, type, id: resolveId(item), title: item.name })
+}
 
 /* ── Sources ─────────────────────────────────────────────────────────────── */
 const providers       = ref<LibraryProvider[]>([])
@@ -150,9 +155,9 @@ onMounted(async () => {
       <!-- PLAYLISTS -->
       <template v-if="active === 'playlists'">
         <div v-if="!loading && !playlists.length" class="px-2 py-1.5 text-sm text-dimmed">Aucune playlist.</div>
-        <button
+        <div
           v-for="p in playlists" :key="p.source + p.id"
-          class="w-full flex items-center gap-3 px-2 py-1.5 rounded hover:bg-elevated/40 text-left"
+          class="group w-full flex items-center gap-3 px-2 py-1.5 rounded hover:bg-elevated/40 text-left cursor-pointer"
           @click="emit('select-playlist', p)"
         >
           <img :src="cover(p)" class="h-10 w-10 rounded object-cover shrink-0" alt="" />
@@ -161,15 +166,16 @@ onMounted(async () => {
             <p class="truncate text-xs text-dimmed">{{ trackCount(p) ? trackCount(p) + ' titres' : p.source }}</p>
           </div>
           <UIcon :name="sourceIcon(p.source)" class="size-3.5 text-dimmed shrink-0" />
-        </button>
+          <UButton icon="i-lucide-play" size="2xs" color="primary" square class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop="playCtx(p, 'playlist')" />
+        </div>
       </template>
 
       <!-- ALBUMS -->
       <template v-else-if="active === 'albums'">
         <div v-if="!loading && !albums.length" class="px-2 py-1.5 text-sm text-dimmed">Aucun album.</div>
-        <button
+        <div
           v-for="a in albums" :key="a.source + a.id"
-          class="w-full flex items-center gap-3 px-2 py-1.5 rounded hover:bg-elevated/40 text-left"
+          class="group w-full flex items-center gap-3 px-2 py-1.5 rounded hover:bg-elevated/40 text-left cursor-pointer"
           @click="emit('select-album', a)"
         >
           <img :src="cover(a)" class="h-10 w-10 rounded object-cover shrink-0" alt="" />
@@ -178,15 +184,16 @@ onMounted(async () => {
             <p class="truncate text-xs text-dimmed">{{ a.artists?.join(', ') }}<span v-if="a.year"> · {{ a.year }}</span></p>
           </div>
           <UIcon :name="sourceIcon(a.source)" class="size-3.5 text-dimmed shrink-0" />
-        </button>
+          <UButton icon="i-lucide-play" size="2xs" color="primary" square class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop="playCtx(a, 'album')" />
+        </div>
       </template>
 
       <!-- ARTISTES -->
       <template v-else-if="active === 'artists'">
         <div v-if="!loading && !artists.length" class="px-2 py-1.5 text-sm text-dimmed">Aucun artiste.</div>
-        <button
+        <div
           v-for="ar in artists" :key="ar.source + ar.id"
-          class="w-full flex items-center gap-3 px-2 py-1.5 rounded hover:bg-elevated/40 text-left"
+          class="group w-full flex items-center gap-3 px-2 py-1.5 rounded hover:bg-elevated/40 text-left cursor-pointer"
           @click="emit('select-artist', ar)"
         >
           <img :src="cover(ar)" class="h-10 w-10 rounded-full object-cover shrink-0" alt="" />
@@ -195,7 +202,8 @@ onMounted(async () => {
             <p class="truncate text-xs text-dimmed">{{ ar.source }}</p>
           </div>
           <UIcon :name="sourceIcon(ar.source)" class="size-3.5 text-dimmed shrink-0" />
-        </button>
+          <UButton icon="i-lucide-play" size="2xs" color="primary" square class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop="playCtx(ar, 'artist')" />
+        </div>
       </template>
 
       <div v-if="loading" class="flex justify-center py-4">

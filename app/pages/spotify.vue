@@ -226,6 +226,7 @@ onMounted(loadLecteurs)
           @select-playlist="openPlaylist"
           @select-album="openAlbum"
           @select-artist="openArtist"
+          @play-context="(p) => requestPlay({ source: p.source, type: p.type, id: p.id, title: p.title })"
         />
       </aside>
 
@@ -240,6 +241,7 @@ onMounted(loadLecteurs)
             @select-playlist="(p) => { openPlaylist(p); sidebarOpen = false }"
             @select-album="(a) => { openAlbum(a); sidebarOpen = false }"
             @select-artist="(ar) => { openArtist(ar); sidebarOpen = false }"
+            @play-context="(p) => requestPlay({ source: p.source, type: p.type, id: p.id, title: p.title })"
           />
         </div>
       </Teleport>
@@ -308,6 +310,8 @@ onMounted(loadLecteurs)
                   @select-album="openAlbum"
                   @select-artist="openArtist"
                   @enqueue-track="doEnqueueTrack"
+                  @play-track="(t) => requestPlay({ source: t.source, type: 'track', uri: t.uri ?? '', title: t.title })"
+                  @play-context="(p) => requestPlay({ source: p.source, type: p.type, id: p.id, title: p.title })"
                 />
               </div>
             </div>

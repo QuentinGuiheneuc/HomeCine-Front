@@ -16,7 +16,14 @@ const emit = defineEmits<{
   (e: 'select-album',    payload: LibraryAlbum): void
   (e: 'select-artist',   payload: LibraryArtist): void
   (e: 'enqueue-track',   track: LibraryTrack): void
+  (e: 'play-track',      track: LibraryTrack): void
+  (e: 'play-context',    payload: { source: LibrarySource; type: 'playlist' | 'album' | 'artist'; id: string; title?: string }): void
 }>()
+
+/** Émet une demande de lecture de contexte (playlist/album/artiste) */
+function playCtx(item: any, type: 'playlist' | 'album' | 'artist') {
+  emit('play-context', { source: item.source, type, id: resolveId(item), title: item.name })
+}
 
 const sourceLabel = (p: LibraryProvider) => p.name ?? p.id
 const sourceIcon = (s?: LibrarySource) =>
@@ -137,9 +144,15 @@ onMounted(async () => {
       <UInput
         v-model="searchQuery" icon="i-lucide-search"
         placeholder="Titres, albums, artistes…" size="lg" class="w-full"
-        :trailing-icon="searchQuery ? 'i-lucide-x' : undefined"
-        @click:trailing="searchQuery = ''"
-      />
+      >
+        <template v-if="searchQuery" #trailing>
+          <UButton
+            icon="i-lucide-x" color="neutral" variant="link" size="sm" square
+            aria-label="Effacer la recherche"
+            @click="searchQuery = ''"
+          />
+        </template>
+      </UInput>
       <!-- Chips de source -->
       <div v-if="sourceChips.length" class="flex items-center gap-1.5 flex-wrap">
         <span class="text-xs text-dimmed">Sources</span>
@@ -180,7 +193,8 @@ onMounted(async () => {
                 <p class="text-sm font-medium truncate">{{ t.title }}</p>
                 <p class="text-xs text-dimmed truncate">{{ t.artists?.join(', ') }}</p>
               </div>
-              <UButton icon="i-lucide-list-plus" size="xs" color="primary" variant="soft" square class="shrink-0" @click="emit('enqueue-track', t)" />
+              <UButton icon="i-lucide-play" size="xs" color="primary" variant="solid" square class="shrink-0" @click="emit('play-track', t)" />
+              <UButton icon="i-lucide-list-plus" size="xs" color="neutral" variant="soft" square class="shrink-0" @click="emit('enqueue-track', t)" />
             </div>
           </div>
         </section>
@@ -190,9 +204,10 @@ onMounted(async () => {
           <h2 class="text-lg font-bold mb-3">Albums</h2>
           <HScroll>
             <div v-for="a in filteredResults.albums" :key="a.id" class="group shrink-0 w-28 sm:w-36 cursor-pointer" @click="emit('select-album', a)">
-              <div class="rounded-md overflow-hidden mb-2 h-28 w-28 sm:h-36 sm:w-36 bg-elevated">
+              <div class="relative rounded-md overflow-hidden mb-2 h-28 w-28 sm:h-36 sm:w-36 bg-elevated">
                 <img v-if="cover(a)" :src="cover(a)" class="h-full w-full object-cover" alt="" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-disc-3" class="size-8 text-dimmed" /></div>
+                <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(a, 'album')" />
               </div>
               <p class="text-xs font-semibold truncate">{{ a.name }}</p>
               <p class="text-xs text-dimmed truncate">{{ a.artists?.join(', ') }}</p>
@@ -205,9 +220,10 @@ onMounted(async () => {
           <h2 class="text-lg font-bold mb-3">Artistes</h2>
           <HScroll>
             <div v-for="ar in filteredResults.artists" :key="ar.id" class="group shrink-0 w-28 sm:w-36 cursor-pointer text-center" @click="emit('select-artist', ar)">
-              <div class="h-28 w-28 sm:h-36 sm:w-36 rounded-full overflow-hidden mb-2 mx-auto bg-elevated">
+              <div class="relative h-28 w-28 sm:h-36 sm:w-36 rounded-full overflow-hidden mb-2 mx-auto bg-elevated">
                 <img v-if="cover(ar)" :src="cover(ar)" class="h-full w-full object-cover" alt="" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-user-round" class="size-7 text-dimmed" /></div>
+                <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(ar, 'artist')" />
               </div>
               <p class="text-xs font-semibold truncate">{{ ar.name }}</p>
             </div>
@@ -219,9 +235,10 @@ onMounted(async () => {
           <h2 class="text-lg font-bold mb-3">Playlists</h2>
           <HScroll>
             <div v-for="p in filteredResults.playlists" :key="p.id" class="group shrink-0 w-28 sm:w-36 cursor-pointer" @click="emit('select-playlist', p)">
-              <div class="rounded-md overflow-hidden mb-2 h-28 w-28 sm:h-36 sm:w-36 bg-elevated">
+              <div class="relative rounded-md overflow-hidden mb-2 h-28 w-28 sm:h-36 sm:w-36 bg-elevated">
                 <img v-if="cover(p)" :src="cover(p)" class="h-full w-full object-cover" alt="" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-list-music" class="size-8 text-dimmed" /></div>
+                <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(p, 'playlist')" />
               </div>
               <p class="text-xs font-semibold truncate">{{ p.name }}</p>
               <p class="text-xs text-dimmed truncate">{{ p.source }}</p>
@@ -258,9 +275,10 @@ onMounted(async () => {
           <h2 class="text-xl font-bold mb-3">Playlists</h2>
           <HScroll>
             <div v-for="p in filteredPlaylists" :key="p.source + p.id" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-playlist', p)">
-              <div class="h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
+              <div class="relative h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
                 <img v-if="cover(p)" :src="cover(p)" class="h-full w-full object-cover" alt="" loading="lazy" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-list-music" class="size-8 text-dimmed" /></div>
+                <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(p, 'playlist')" />
               </div>
               <p class="text-sm font-semibold truncate">{{ p.name }}</p>
               <p class="text-xs text-dimmed truncate">{{ trackCount(p) ? trackCount(p) + ' titres' : p.source }}</p>
@@ -273,9 +291,10 @@ onMounted(async () => {
           <h2 class="text-xl font-bold mb-3">Albums</h2>
           <HScroll>
             <div v-for="a in filteredAlbums" :key="a.source + resolveId(a)" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-album', a)">
-              <div class="h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
+              <div class="relative h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
                 <img v-if="cover(a)" :src="cover(a)" class="h-full w-full object-cover" alt="" loading="lazy" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-disc-3" class="size-8 text-dimmed" /></div>
+                <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(a, 'album')" />
               </div>
               <p class="text-sm font-semibold truncate">{{ a.name }}</p>
               <p class="text-xs text-dimmed truncate">{{ a.artists?.join(', ') }}</p>
@@ -288,9 +307,10 @@ onMounted(async () => {
           <h2 class="text-xl font-bold mb-3">Artistes</h2>
           <HScroll>
             <div v-for="ar in filteredArtists" :key="ar.source + resolveId(ar)" class="group shrink-0 w-28 cursor-pointer text-center" @click="emit('select-artist', ar)">
-              <div class="h-28 w-28 rounded-full overflow-hidden mb-2 mx-auto bg-elevated">
+              <div class="relative h-28 w-28 rounded-full overflow-hidden mb-2 mx-auto bg-elevated">
                 <img v-if="cover(ar)" :src="cover(ar)" class="h-full w-full object-cover" alt="" loading="lazy" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-user-round" class="size-8 text-dimmed" /></div>
+                <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(ar, 'artist')" />
               </div>
               <p class="text-sm font-semibold truncate">{{ ar.name }}</p>
             </div>
