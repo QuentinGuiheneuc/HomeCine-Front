@@ -55,6 +55,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'load-more'): void
   (e: 'play-in-context', payload: { contextUri?: string; offset: number }): void
+  (e: 'enqueue-all'): void
 }>()
 
 /* ---------- Computed ---------- */
@@ -108,8 +109,8 @@ function onHeaderPlay() {
     // Titres likés -> collection
     return playLikedContext(0)
   }
-  // Playlist classique -> on laisse le parent gérer (context_uri + offset=0)
-  emit('play-in-context', { contextUri: props.item?.uri, offset: 0 })
+  // Playlist classique -> enfile toute la playlist (délégué au parent)
+  emit('enqueue-all')
 }
 
 function onRowPlay(idx: number) {

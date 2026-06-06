@@ -5,6 +5,7 @@ import { createLecteur } from '@/src/api/lecteur'
 import { getEqPresets, type EqPreset } from '@/src/api/eq'
 import { typeItems } from '@/types/lecteur'
 import SpotifyServiceConfig from '@/components/lecteur/services/SpotifyServiceConfig.vue'
+import FilePlayerServiceConfig from '@/components/lecteur/services/FilePlayerServiceConfig.vue'
 import DeezerServiceConfig from '@/components/lecteur/services/DeezerServiceConfig.vue'
 import LocalInputServiceConfig from '@/components/lecteur/services/LocalInputServiceConfig.vue'
 import LocalServiceConfig from '@/components/lecteur/services/LocalServiceConfig.vue'
@@ -39,6 +40,12 @@ function defaultCfg(type: string): any {
       input: { pcm_device: '', rate: 48000, channels: 2, periodsize: 256 },
       output: { layout: '7.1', rate: 48000, master_gain_db: -5, remap: [0, 1, 2, 3, 4, 5, 6, 7] },
       source_path: '', loop: false, input_device: '', sample_rate: 48000, ...t
+    }
+  }
+  if (type === 'fileplayer') {
+    return {
+      name: '', typeStream: 'StreamOutFifo',
+      queue: [], volume: 85, repeat: false, shuffle: false, ...t
     }
   }
   if (type === 'radio') return { url: '', typeStream: 'StreamOutFifo', ...t }
@@ -171,6 +178,7 @@ async function onCreate() {
 
       <!-- Configuration dynamique selon le type -->
       <SpotifyServiceConfig v-if="lecteur.type === 'spotify'" v-model:cfg="cfg" />
+      <FilePlayerServiceConfig v-else-if="lecteur.type === 'fileplayer'" v-model:cfg="cfg" />
       <DeezerServiceConfig v-else-if="lecteur.type === 'deezer'" v-model:cfg="cfg" />
       <LocalInputServiceConfig v-else-if="lecteur.type === 'localInput'" v-model:cfg="cfg" />
       <LocalServiceConfig v-else-if="lecteur.type === 'local'" v-model:cfg="cfg" />

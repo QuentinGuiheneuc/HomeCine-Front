@@ -1,323 +1,172 @@
 <script setup lang="ts">
-/* ─────────────────── Imports ─────────────────── */
-import Lecture       from '@/components/spotify/components/lecture.vue'
+import Lecture        from '@/components/spotify/components/lecture.vue'
 import LibrarySidebar from '@/components/spotify/components/LibrarySidebar.vue'
-import ItemPlaylist  from '@/components/spotify/components/ItemPlaylist.vue'
-import ItemAlbum     from '@/components/spotify/components/ItemAlbum.vue'
-import ItemArtist    from '@/components/spotify/components/ItemArtist.vue'
-import HomeView      from '@/components/spotify/components/HomeView.vue'
-import { usePlaylists } from '@/components/spotify/composable/usePlaylists'
+import HomeView       from '@/components/spotify/components/HomeView.vue'
+import ItemPlaylist   from '@/components/spotify/components/ItemPlaylist.vue'
+import ItemAlbum      from '@/components/spotify/components/ItemAlbum.vue'
+import ItemArtist     from '@/components/spotify/components/ItemArtist.vue'
 import { useEventListener } from '@vueuse/core'
-import http from '@/src/lib/https'
+import {
+  getPlaylistTracks, getAlbumTracks, getArtistTracks, getArtistAlbums,
+  enqueueTrack, play, type PlayType,
+  type LibrarySource, type LibraryTrack,
+  type LibraryPlaylist, type LibraryAlbum, type LibraryArtist
+} from '@/src/api/library'
+import {
+  mapPlaylistDetail, mapAlbumDetail, mapArtistDetail
+} from '@/components/spotify/composable/useLibraryMappers'
 
-/* ─────────────────── Types ─────────────────── */
-type SavedTrack = {
-  track: {
-    id: string; name: string; uri: string; duration_ms?: number
-    artists?: { name: string }[]
-    album?: { images?: { url: string }[] }
-  } | null
-}
-type Paging<T> = { items: T[]; limit: number; offset: number; total: number; next: string | null }
-
-type PlaylistDetail = {
-  id: string; name: string; description?: string | null
-  images?: { url: string }[]; uri?: string
-  tracks: { limit: number; total: number; offset: number; items: { track: any }[] }
-}
-
-type AlbumDetail = {
-  id: string; name: string; album_type?: string; release_date?: string
-  total_tracks?: number; images?: { url: string }[]; uri?: string; label?: string
-  artists?: { id: string; name: string }[]
-  tracks?: { items: any[]; total: number; limit: number; offset: number; next?: string | null }
-}
-
-type ArtistDetail = {
-  id: string; name: string; genres?: string[]; images?: { url: string }[]
-  uri?: string; followers?: { total: number }; popularity?: number
-  topTracks?: any[]; albums?: any[]
-}
-
-/* ─────────────────── Setup ─────────────────── */
+const toast = useToast()
+const { activeLecteurId } = useDashboard()
 const playerHeight = 104
-const sidebarOpen = ref(false)
+const sidebarOpen  = ref(false)
 
-
-const { playlist, fetchPlaylist } = usePlaylists()
-const route  = useRoute()
-const router = useRouter()
-
-// ── Sélections ──
-const selectedId       = ref<string | null>(null)   // playlist / liked
-const selectedAlbumId  = ref<string | null>(null)
-const selectedArtistId = ref<string | null>(null)
+/* ─── Sélection courante ─────────────────────────────────────────────────── */
+type ViewType = 'home' | 'playlist' | 'album' | 'artist'
+const viewType = ref<ViewType>('home')
 
 const loading = ref(false)
 const error   = ref<string | null>(null)
 
-// ── Données ──
-const likedDetail   = ref<PlaylistDetail | null>(null)
-const likedUris     = ref<string[]>([])
-const albumDetail   = ref<AlbumDetail | null>(null)
-const artistDetail  = ref<ArtistDetail | null>(null)
+/* Détails mappés (forme Spotify pour les Item*) */
+const playlistDetail = ref<any>(null)
+const albumDetail    = ref<any>(null)
+const artistDetail   = ref<any>(null)
 
-// ── Type de vue ──
-type ViewType = 'home' | 'liked' | 'playlist' | 'album' | 'artist'
-const viewType = computed<ViewType>(() => {
-  if (selectedId.value === 'liked') return 'liked'
-  if (selectedId.value)       return 'playlist'
-  if (selectedAlbumId.value)  return 'album'
-  if (selectedArtistId.value) return 'artist'
-  return 'home'
-})
+/* Index uri → LibraryTrack original (pour l'enqueue depuis les Item*) */
+let trackByUri = new Map<string, LibraryTrack>()
+/* Contexte de la sélection courante (pour enqueuePlaylist) */
+const currentCtx = ref<{ source: LibrarySource; id: string; lecteurId?: number } | null>(null)
+
+/** Lecteur cible : sélection manuelle, sinon celui renvoyé par l'API */
+const targetLecteur = computed(() => activeLecteurId.value ?? currentCtx.value?.lecteurId ?? undefined)
 
 const contentKey = computed(() => {
-  if (viewType.value === 'liked')    return 'liked'
-  if (viewType.value === 'playlist') return `pl:${selectedId.value}`
-  if (viewType.value === 'album')    return `al:${selectedAlbumId.value}`
-  if (viewType.value === 'artist')   return `ar:${selectedArtistId.value}`
+  if (viewType.value === 'playlist') return `pl:${currentCtx.value?.id}`
+  if (viewType.value === 'album')    return `al:${currentCtx.value?.id}`
+  if (viewType.value === 'artist')   return `ar:${currentCtx.value?.id}`
   return 'home'
 })
+const currentName = computed(() =>
+  viewType.value === 'playlist' ? playlistDetail.value?.name :
+  viewType.value === 'album'    ? albumDetail.value?.name :
+  viewType.value === 'artist'   ? artistDetail.value?.name : ''
+)
+const currentCover = computed(() =>
+  viewType.value === 'playlist' ? playlistDetail.value?.images?.[0]?.url :
+  viewType.value === 'album'    ? albumDetail.value?.images?.[0]?.url :
+  viewType.value === 'artist'   ? artistDetail.value?.images?.[0]?.url : null
+)
 
-// ── Breadcrumb ──
-const currentName = computed(() => {
-  if (viewType.value === 'liked')    return likedDetail.value?.name ?? 'Titres likés'
-  if (viewType.value === 'playlist') return playlist.value?.name ?? ''
-  if (viewType.value === 'album')    return albumDetail.value?.name ?? ''
-  if (viewType.value === 'artist')   return artistDetail.value?.name ?? ''
-  return ''
-})
-
-const currentCover = computed(() => {
-  if (viewType.value === 'liked')    return likedDetail.value?.images?.[0]?.url ?? null
-  if (viewType.value === 'playlist') return playlist.value?.images?.[0]?.url ?? null
-  if (viewType.value === 'album')    return albumDetail.value?.images?.[0]?.url ?? null
-  if (viewType.value === 'artist')   return artistDetail.value?.images?.[0]?.url ?? null
-  return null
-})
-
-/* ─────────────────── Helpers ─────────────────── */
-const toRows = (data: Paging<SavedTrack>) =>
-  (data.items ?? []).map(it => it?.track).filter((t): t is NonNullable<SavedTrack['track']> => !!t)
-
-function clearAllState() {
-  selectedId.value       = null
-  selectedAlbumId.value  = null
-  selectedArtistId.value = null
-  likedDetail.value      = null
-  albumDetail.value      = null
-  artistDetail.value     = null
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+function clearAll() {
+  playlistDetail.value = null
+  albumDetail.value    = null
+  artistDetail.value   = null
+  currentCtx.value     = null
+  trackByUri = new Map()
 }
+function clearSelection() { clearAll(); viewType.value = 'home' }
 
-/* ─────────────────── Deep-link URL ─────────────────── */
-onMounted(async () => {
-  const pl = route.query.pl as string | undefined
-  const al = route.query.al as string | undefined
-  const ar = route.query.ar as string | undefined
-  if (pl === 'liked')  await openLiked()
-  else if (pl)         await selectPlaylist(pl)
-  else if (al)         await selectAlbum(al)
-  else if (ar)         await selectArtist(ar)
-})
-
-watch(() => route.query, async (q) => {
-  const pl = (q.pl as string | undefined) || null
-  const al = (q.al as string | undefined) || null
-  const ar = (q.ar as string | undefined) || null
-
-  if (!pl && !al && !ar) { clearAllState(); return }
-  if (pl === 'liked' && selectedId.value !== 'liked')         { await openLiked(); return }
-  if (pl && pl !== 'liked' && pl !== selectedId.value)        { await selectPlaylist(pl); return }
-  if (al && al !== selectedAlbumId.value)                     { await selectAlbum(al); return }
-  if (ar && ar !== selectedArtistId.value)                    { await selectArtist(ar); return }
-}, { deep: true })
+function indexTracks(tracks: LibraryTrack[]) {
+  for (const t of tracks) {
+    const uri = String(t.uri ?? t.id ?? '')
+    if (uri) trackByUri.set(uri, t)
+  }
+}
 
 useEventListener(window, 'keydown', (e: KeyboardEvent) => {
   if (e.key === 'Escape' && viewType.value !== 'home') clearSelection()
 })
 
-/* ─────────────────── Navigation ─────────────────── */
-function clearSelection() {
-  clearAllState()
-  const { pl: _pl, al: _al, ar: _ar, ...rest } = route.query
-  router.replace({ query: rest })
-}
-
-/* ─────────────────── Playlists ─────────────────── */
-async function selectPlaylist(id: string) {
-  clearAllState()
-  selectedId.value = id
-  loading.value    = true
-  error.value      = null
-  router.replace({ query: { ...route.query, pl: id, al: undefined, ar: undefined } })
+/* ─── Ouvertures ─────────────────────────────────────────────────────────── */
+async function openPlaylist(p: LibraryPlaylist) {
+  clearAll()
+  viewType.value = 'playlist'
+  currentCtx.value = { source: p.source, id: p.id, lecteurId: (p as any).lecteurId }
+  loading.value = true; error.value = null
+  // En-tête visible immédiatement (même si les pistes échouent)
+  playlistDetail.value = mapPlaylistDetail(p, [])
   try {
-    await fetchPlaylist(id)
+    const tracks = await getPlaylistTracks(p.source, p.id, 100)
+    indexTracks(tracks)
+    playlistDetail.value = mapPlaylistDetail(p, tracks)
   } catch (e: any) {
-    error.value = e?.message || 'Chargement impossible'
-  } finally {
-    loading.value = false
-    if (process.client) window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
+    const status = e?.response?.status
+    error.value = status === 403
+      ? 'Playlist non accessible via l\'API Spotify (playlist éditoriale ou algorithmique : Discover Weekly, Radar des sorties, Daily Mix…).'
+      : (e?.message || 'Chargement impossible')
+  } finally { loading.value = false }
 }
 
-async function onPlayInContext(payload: { contextUri?: string; offset: number }) {
+async function openAlbum(a: LibraryAlbum) {
+  clearAll()
+  viewType.value = 'album'
+  currentCtx.value = { source: a.source, id: a.id, lecteurId: (a as any).lecteurId }
+  loading.value = true; error.value = null
   try {
-    if (selectedId.value === 'liked') {
-      await onPlayLikedAt(payload.offset)
-    } else if (payload.contextUri) {
-      await http.put('/spotify/devices/play', {
-        context_uri: payload.contextUri,
-        offset: { position: payload.offset }
-      })
-    }
-  } catch (e) { console.error('[play ctx]', e) }
+    const tracks = await getAlbumTracks(a.source, a.id)
+    indexTracks(tracks)
+    albumDetail.value = mapAlbumDetail(a, tracks)
+  } catch (e: any) { error.value = e?.message || 'Chargement impossible' }
+  finally { loading.value = false }
 }
 
-/* ─────────────────── Titres likés ─────────────────── */
-async function fetchAllLikedTracks(pageSize = 50) {
-  const all: NonNullable<SavedTrack['track']>[] = []
-  let offset = 0, total = Infinity
-  const first = await http.get<Paging<SavedTrack>>('/spotify/me/tracks', { params: { limit: pageSize, offset } })
-  const fd = (first as any).data ?? first
-  all.push(...toRows(fd)); total = fd.total; offset = fd.offset + fd.limit
-  while (offset < total) {
-    const res = await http.get<Paging<SavedTrack>>('/spotify/me/tracks', { params: { limit: pageSize, offset } })
-    const d = (res as any).data ?? res
-    all.push(...toRows(d)); offset = d.offset + d.limit
-  }
-  return { all, total }
-}
-
-async function openLiked() {
-  clearAllState()
-  selectedId.value = 'liked'
-  loading.value    = true
-  error.value      = null
-  router.replace({ query: { ...route.query, pl: 'liked', al: undefined, ar: undefined } })
+async function openArtist(ar: LibraryArtist) {
+  clearAll()
+  viewType.value = 'artist'
+  currentCtx.value = { source: ar.source, id: ar.id, lecteurId: (ar as any).lecteurId }
+  loading.value = true; error.value = null
   try {
-    const { all, total } = await fetchAllLikedTracks(50)
-    likedUris.value  = all.map(t => t.uri)
-    likedDetail.value = {
-      id: 'liked', name: 'Titres likés', description: 'Vos titres favoris',
-      images: all[0]?.album?.images?.length ? [{ url: all[0].album!.images![0].url }] : [],
-      uri: '',
-      tracks: { limit: total, total, offset: 0, items: all.map(t => ({ track: t })) }
-    }
-  } catch (e: any) {
-    error.value = e?.message || 'Chargement impossible'
-  } finally {
-    loading.value = false
-    if (process.client) window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-}
-
-async function playQueueFromList(uris: string[], startIndex = 0) {
-  if (!uris.length) return
-  const i = Math.max(0, Math.min(startIndex, uris.length - 1))
-  await http.put('/spotify/devices/play', { uris: [...uris.slice(i), ...uris.slice(0, i)] })
-}
-
-async function onPlayLikedAt(offset: number) {
-  try { await playQueueFromList(likedUris.value, offset) }
-  catch (e) { console.error('[play liked]', e) }
-}
-
-/* ─────────────────── Albums ─────────────────── */
-async function selectAlbum(id: string) {
-  clearAllState()
-  selectedAlbumId.value = id
-  loading.value         = true
-  error.value           = null
-  router.replace({ query: { ...route.query, al: id, pl: undefined, ar: undefined } })
-  try {
-    const res = await http.get(`/spotify/albums/${id}`, { params: { market: 'FR' } })
-    albumDetail.value = (res as any).data ?? res
-    console.log('[selectAlbum] data loaded:', albumDetail.value?.name)
-  } catch (e: any) {
-    error.value = e?.message || 'Chargement impossible'
-    console.error('[selectAlbum] error:', error.value)
-  } finally {
-    loading.value = false
-  }
-}
-
-const albumLoadingMore = ref(false)
-const albumHasMore = computed(() => {
-  if (!albumDetail.value?.tracks) return false
-  return albumDetail.value.tracks.items.length < albumDetail.value.tracks.total
-})
-
-async function albumLoadMore() {
-  if (!albumDetail.value || albumLoadingMore.value) return
-  albumLoadingMore.value = true
-  try {
-    const offset = albumDetail.value.tracks?.items.length ?? 0
-    const res = await http.get(`/spotify/albums/${albumDetail.value.id}/tracks`, {
-      params: { limit: 50, offset, market: 'FR' }
-    })
-    const data = (res as any).data ?? res
-    if (albumDetail.value.tracks) {
-      albumDetail.value = {
-        ...albumDetail.value,
-        tracks: { ...albumDetail.value.tracks, items: [...albumDetail.value.tracks.items, ...(data.items ?? [])] }
-      }
-    }
-  } finally {
-    albumLoadingMore.value = false
-  }
-}
-
-async function onAlbumPlayTrack(uri: string) {
-  try { await http.put('/spotify/devices/play', { uris: [uri] }) }
-  catch (e) { console.error('[play track]', e) }
-}
-
-/* ─────────────────── Artistes ─────────────────── */
-async function selectArtist(id: string) {
-  clearAllState()
-  selectedArtistId.value = id
-  loading.value          = true
-  error.value            = null
-  router.replace({ query: { ...route.query, ar: id, pl: undefined, al: undefined } })
-  try {
-    const [artistRes, topRes, albumsRes] = await Promise.allSettled([
-      http.get(`/spotify/artists/${id}`),
-      http.get(`/spotify/artists/${id}/top-tracks`, { params: { market: 'FR' } }),
-      http.get(`/spotify/artists/${id}/albums`, { params: { include_groups: 'album,single', market: 'FR', limit: 20 } }),
+    const [tracks, albums] = await Promise.all([
+      getArtistTracks(ar.source, ar.id).catch(() => []),
+      getArtistAlbums(ar.source, ar.id).catch(() => [])
     ])
-
-    if (artistRes.status === 'rejected') {
-      const status = (artistRes.reason as any)?.response?.status
-      console.error('[selectArtist] GET /artists/:id →', status, artistRes.reason)
-      throw new Error(`Artiste introuvable (${status ?? 'réseau'})`)
-    }
-
-    const a  = (artistRes.value  as any).data ?? artistRes.value
-    const tp = topRes.status    === 'fulfilled' ? ((topRes.value    as any).data ?? topRes.value)    : null
-    const al = albumsRes.status === 'fulfilled' ? ((albumsRes.value as any).data ?? albumsRes.value) : null
-
-    if (topRes.status    === 'rejected') console.warn('[selectArtist] top-tracks →', (topRes.reason    as any)?.response?.status)
-    if (albumsRes.status === 'rejected') console.warn('[selectArtist] albums →',     (albumsRes.reason as any)?.response?.status)
-
-    artistDetail.value = { ...a, topTracks: tp?.tracks ?? [], albums: al?.items ?? [] }
-    console.log('[selectArtist] data loaded:', artistDetail.value?.name, '| topTracks:', artistDetail.value?.topTracks?.length, '| albums:', artistDetail.value?.albums?.length)
-  } catch (e: any) {
-    error.value = e?.message || 'Chargement impossible'
-    console.error('[selectArtist] error:', error.value)
-  } finally {
-    loading.value = false
-  }
+    indexTracks(tracks)
+    artistDetail.value = mapArtistDetail(ar, tracks, albums)
+  } catch (e: any) { error.value = e?.message || 'Chargement impossible' }
+  finally { loading.value = false }
 }
 
-/* ─────────────────── Play URI (HomeView) ─────────────────── */
-async function onPlayUri(uri: string) {
-  if (!uri) return
-  const id = uri.split(':')[2] ?? ''
-  if (id.length < 15) return
+/* Navigation interne album↔artiste : on n'a que des id → reconstruire un objet minimal */
+function openAlbumById(source: LibrarySource, id: string) {
+  openAlbum({ source, id, name: '' } as LibraryAlbum)
+}
+function openArtistById(source: LibrarySource, id: string) {
+  openArtist({ source, id, name: '' } as LibraryArtist)
+}
+
+/* ─── ＋ Ajouter à la file (POST /library/enqueue { track }) ──────────────── */
+async function doEnqueueTrack(t: LibraryTrack) {
   try {
-    await http.put('/spotify/devices/play', { context_uri: uri, offset: { position: 0 } })
-  } catch (e) { console.error('[play-uri]', e) }
+    await enqueueTrack(t, targetLecteur.value)
+    toast.add({ title: 'Ajouté à la file', description: t.title, color: 'success', icon: 'i-lucide-list-plus' })
+  } catch { toast.add({ title: 'Ajout impossible', color: 'error' }) }
+}
+
+/* ─── ▶ Lire un contexte (POST /library/play { source, type, id|uri, lecteurId }) ─ */
+async function playContextCurrent(type: PlayType) {
+  if (!currentCtx.value) return
+  try {
+    await play({ source: currentCtx.value.source, type, id: currentCtx.value.id, lecteurId: targetLecteur.value })
+    toast.add({ title: 'Lecture lancée', description: currentName.value, color: 'success', icon: 'i-lucide-play' })
+  } catch { toast.add({ title: 'Lecture impossible', color: 'error' }) }
+}
+
+/** Lit une piste précise (uri émis par ItemAlbum/ItemArtist) */
+async function playTrackByUri(uri: string) {
+  const t = trackByUri.get(uri)
+  if (!t) return
+  try {
+    await play({ source: t.source, type: 'track', uri: t.uri ?? uri, lecteurId: targetLecteur.value })
+    toast.add({ title: 'Lecture lancée', description: t.title, color: 'success', icon: 'i-lucide-play' })
+  } catch { toast.add({ title: 'Lecture impossible', color: 'error' }) }
+}
+
+/** ItemPlaylist row → lit la piste à l'offset */
+function onPlaylistRow(payload: { offset: number }) {
+  const t = (playlistDetail.value?.tracks?.items?.[payload.offset]?.track)?.__src as LibraryTrack | undefined
+  if (t?.uri) playTrackByUri(t.uri)
 }
 </script>
 
@@ -325,161 +174,95 @@ async function onPlayUri(uri: string) {
   <div class="h-screen overflow-hidden flex flex-col">
     <div class="flex flex-1 min-h-0 overflow-hidden">
 
-      <!-- SIDEBAR desktop (md+) -->
+      <!-- SIDEBAR desktop -->
       <aside class="hidden md:block w-72 shrink-0 h-full">
         <LibrarySidebar
           :player-height="playerHeight"
-          @select-playlist="selectPlaylist"
-          @select-album="selectAlbum"
-          @select-artist="selectArtist"
-          @open-liked="openLiked"
+          @select-playlist="openPlaylist"
+          @select-album="openAlbum"
+          @select-artist="openArtist"
         />
       </aside>
 
-      <!-- SIDEBAR mobile : drawer + backdrop -->
+      <!-- SIDEBAR mobile -->
       <Teleport to="body">
         <Transition name="fade">
-          <div
-            v-if="sidebarOpen"
-            class="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-            @click="sidebarOpen = false"
-          />
+          <div v-if="sidebarOpen" class="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" @click="sidebarOpen = false" />
         </Transition>
-        <div
-          class="md:hidden fixed left-0 top-0 bottom-0 z-50 w-72 transition-transform duration-200"
-          :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
-        >
+        <div class="md:hidden fixed left-0 top-0 bottom-0 z-50 w-72 transition-transform duration-200" :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
           <LibrarySidebar
             :player-height="playerHeight"
-            @select-playlist="(id: string) => { selectPlaylist(id); sidebarOpen = false }"
-            @select-album="(id: string) => { selectAlbum(id); sidebarOpen = false }"
-            @select-artist="(id: string) => { selectArtist(id); sidebarOpen = false }"
-            @open-liked="openLiked(); sidebarOpen = false"
+            @select-playlist="(p) => { openPlaylist(p); sidebarOpen = false }"
+            @select-album="(a) => { openAlbum(a); sidebarOpen = false }"
+            @select-artist="(ar) => { openArtist(ar); sidebarOpen = false }"
           />
         </div>
       </Teleport>
 
-      <!-- CONTENU principal -->
+      <!-- CONTENU -->
       <main class="flex-1 min-w-0 min-h-0 overflow-hidden">
         <div class="h-full overflow-y-auto w-full no-scrollbar">
           <Transition name="fade" mode="out-in">
             <div :key="contentKey" class="h-full">
 
-              <!-- ── Détail (playlist / album / artiste) ── -->
+              <!-- Détail -->
               <div v-if="viewType !== 'home'" class="flex flex-col min-h-full px-2 pb-3">
-
-                <!-- Breadcrumb sticky -->
+                <!-- Breadcrumb -->
                 <div class="sticky top-0 z-20 bg-elevated/60 backdrop-blur py-2 mb-3 flex items-center gap-2">
                   <UButton class="md:hidden" icon="i-lucide-library" variant="ghost" size="sm" @click="sidebarOpen = true" />
                   <UButton icon="i-lucide-arrow-left" variant="ghost" size="sm" @click="clearSelection" />
-
-                  <img
-                    v-if="currentCover && viewType !== 'artist'"
-                    :src="currentCover"
-                    class="h-7 w-7 rounded object-cover"
-                    alt=""
-                  />
-                  <img
-                    v-else-if="currentCover && viewType === 'artist'"
-                    :src="currentCover"
-                    class="h-7 w-7 rounded-full object-cover"
-                    alt=""
-                  />
-                  <div
-                    v-else-if="viewType === 'liked'"
-                    class="h-7 w-7 rounded bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"
-                  >
-                    <UIcon name="i-lucide-heart" class="text-white size-3.5" />
-                  </div>
-
+                  <img v-if="currentCover && viewType !== 'artist'" :src="currentCover" class="h-7 w-7 rounded object-cover" alt="" />
+                  <img v-else-if="currentCover && viewType === 'artist'" :src="currentCover" class="h-7 w-7 rounded-full object-cover" alt="" />
                   <span class="text-sm font-medium truncate">{{ currentName }}</span>
                 </div>
 
-                <!-- Erreur -->
-                <UAlert v-if="error" color="red" class="mb-3" :title="error">
-                  <template #actions>
-                    <UButton
-                      size="xs" variant="soft" icon="i-lucide-rotate-ccw"
-                      @click="
-                        viewType === 'liked'    ? openLiked() :
-                        viewType === 'playlist' && selectedId ? selectPlaylist(selectedId) :
-                        viewType === 'album'    && selectedAlbumId ? selectAlbum(selectedAlbumId) :
-                        viewType === 'artist'   && selectedArtistId ? selectArtist(selectedArtistId) : null
-                      "
-                    >Réessayer</UButton>
-                  </template>
-                </UAlert>
+                <UAlert v-if="error" color="error" class="mb-3" :title="error" />
 
-                <!-- Skeleton -->
                 <div v-else-if="loading" class="space-y-3">
                   <USkeleton class="h-36 w-full rounded-md" />
                   <USkeleton class="h-8 w-1/3" />
                   <USkeleton v-for="i in 6" :key="i" class="h-10 w-full" />
                 </div>
 
-                <!-- Titres likés -->
                 <ItemPlaylist
-                  v-else-if="viewType === 'liked' && likedDetail"
-                  key="liked"
-                  :item="likedDetail"
-                  :user-id="11156740298"
+                  v-else-if="viewType === 'playlist' && playlistDetail"
+                  :key="`pl:${currentCtx?.id}`"
+                  :item="playlistDetail"
                   :player-height="playerHeight"
-                  @play-in-context="({ offset }) => onPlayLikedAt(offset)"
+                  @play-in-context="onPlaylistRow"
+                  @enqueue-all="() => playContextCurrent('playlist')"
                 />
 
-                <!-- Playlist classique -->
-                <ItemPlaylist
-                  v-else-if="viewType === 'playlist' && playlist"
-                  :key="`pl:${selectedId}`"
-                  :item="playlist"
-                  :player-height="playerHeight"
-                  @play-in-context="onPlayInContext"
-                />
-
-                <!-- Album -->
                 <ItemAlbum
                   v-else-if="viewType === 'album' && albumDetail"
-                  :key="`al:${selectedAlbumId}`"
+                  :key="`al:${currentCtx?.id}`"
                   :item="albumDetail"
                   :player-height="playerHeight"
-                  :has-more="albumHasMore"
-                  :loading-more="albumLoadingMore"
-                  @load-more="albumLoadMore"
-                  @play-track="onAlbumPlayTrack"
-                  @select-artist="selectArtist"
+                  @play-track="playTrackByUri"
+                  @enqueue-all="() => playContextCurrent('album')"
+                  @select-artist="(id) => currentCtx && openArtistById(currentCtx.source, id)"
                 />
 
-                <!-- Artiste -->
                 <ItemArtist
                   v-else-if="viewType === 'artist' && artistDetail"
-                  :key="`ar:${selectedArtistId}`"
-                  :item="(artistDetail as ArtistDetail)"
+                  :key="`ar:${currentCtx?.id}`"
+                  :item="artistDetail"
                   :player-height="playerHeight"
-                  @select-album="selectAlbum"
-                  @play-track="onAlbumPlayTrack"
+                  @play-track="playTrackByUri"
+                  @select-album="(id) => currentCtx && openAlbumById(currentCtx.source, id)"
                 />
 
-                <div v-else-if="!loading && !error" class="text-sm text-dimmed px-2">
-                  Aucune donnée disponible.
-                </div>
+                <div v-else-if="!loading && !error" class="text-sm text-dimmed px-2">Aucune donnée disponible.</div>
               </div>
 
-              <!-- ── Accueil ── -->
+              <!-- Accueil -->
               <div v-else class="relative h-full">
-                <UButton
-                  class="md:hidden absolute top-3 left-3 z-10 shadow"
-                  icon="i-lucide-library"
-                  color="neutral"
-                  variant="soft"
-                  size="sm"
-                  @click="sidebarOpen = true"
-                />
+                <UButton class="md:hidden absolute top-3 left-3 z-10 shadow" icon="i-lucide-library" color="neutral" variant="soft" size="sm" @click="sidebarOpen = true" />
                 <HomeView
-                  @select-playlist="selectPlaylist"
-                  @open-liked="openLiked"
-                  @play-uri="onPlayUri"
-                  @select-album="selectAlbum"
-                  @select-artist="selectArtist"
+                  @select-playlist="openPlaylist"
+                  @select-album="openAlbum"
+                  @select-artist="openArtist"
+                  @enqueue-track="doEnqueueTrack"
                 />
               </div>
             </div>
@@ -488,7 +271,7 @@ async function onPlayUri(uri: string) {
       </main>
     </div>
 
-    <!-- PLAYER fixe -->
+    <!-- PLAYER -->
     <ClientOnly><Lecture /></ClientOnly>
   </div>
 </template>

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import http from '@/src/lib/https'
-
 /* ---------- Types ---------- */
 type Image  = { url: string; width?: number | null; height?: number | null }
 type Artist = { id: string; name: string }
@@ -63,21 +61,14 @@ const ms = (v: number) => {
 const albumYear = (a: Album) => a.release_date?.split('-')[0] ?? ''
 
 /* ---------- Lecture ---------- */
-async function playTrack(uri: string) {
-  try {
-    await http.put('/spotify/devices/play', { uris: [uri] })
-  } catch (e) {
-    console.error('[ItemArtist] play track', e)
-  }
+function playTrack(uri: string) {
+  emit('play-track', uri)
 }
 
-async function playArtist() {
-  if (!props.item?.uri) return
-  try {
-    await http.put('/spotify/devices/play', { context_uri: props.item.uri })
-  } catch (e) {
-    console.error('[ItemArtist] play artist', e)
-  }
+function playArtist() {
+  // Enfile le premier top-titre de l'artiste
+  const first = props.item?.topTracks?.[0]?.uri
+  if (first) emit('play-track', first)
 }
 </script>
 
@@ -184,7 +175,7 @@ async function playArtist() {
                 />
                 <button
                   class="absolute bottom-2 right-2 h-9 w-9 rounded-full bg-[#1DB954] flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200"
-                  @click.stop="al.uri ? http.put('/spotify/devices/play', { context_uri: al.uri }).catch(() => {}) : null"
+                  @click.stop="$emit('select-album', al.id)"
                 >
                   <UIcon name="i-lucide-play" class="text-black size-4 ml-0.5" />
                 </button>

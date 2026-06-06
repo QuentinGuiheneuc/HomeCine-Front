@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import http from '@/src/lib/https'
-
 /* ---------- Types ---------- */
 type Image  = { url: string; width?: number | null; height?: number | null }
 type Artist = { id: string; name: string }
@@ -47,6 +45,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'load-more'): void
   (e: 'play-track', uri: string): void
+  (e: 'enqueue-all'): void
   (e: 'select-artist', id: string): void
 }>()
 
@@ -80,15 +79,9 @@ const albumTypeLabel = computed(() => {
 })
 
 /* ---------- Lecture ---------- */
-async function playAlbumFrom(offset = 0) {
-  try {
-    await http.put('/spotify/devices/play', {
-      context_uri: props.item?.uri,
-      offset: { position: offset }
-    })
-  } catch (e) {
-    console.error('[ItemAlbum] play error', e)
-  }
+/** Enfile tout l'album dans le lecteur relié (délégué au parent) */
+function playAlbumFrom(_offset = 0) {
+  emit('enqueue-all')
 }
 </script>
 
