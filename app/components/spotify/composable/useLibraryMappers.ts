@@ -1,4 +1,4 @@
-import type { LibraryTrack, LibraryAlbum, LibraryArtist, LibrarySource } from '@/src/api/library'
+import { resolveCoverUrl, type LibraryTrack, type LibraryAlbum, type LibraryArtist, type LibrarySource } from '@/src/api/library'
 
 /**
  * Convertit les objets `/library` (multi-source) vers les formes "Spotify-like"
@@ -24,10 +24,11 @@ function albumName(t: any): string {
 }
 
 function cover(o: any): string | undefined {
-  return pick<string>(
+  const raw = pick<string>(
     o.coverUrl, o.cover_url, o.image, o.images?.[0]?.url,
     o.album?.coverUrl, o.album?.cover_url, o.album?.images?.[0]?.url
   )
+  return resolveCoverUrl(raw) ?? undefined
 }
 
 /** LibraryTrack → Track (forme Spotify) avec __src conservé pour l'enqueue */

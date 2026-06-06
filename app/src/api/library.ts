@@ -1,4 +1,17 @@
 import http from '../lib/https'
+import appConfig from '../config'
+
+/**
+ * Résout une URL de cover :
+ * - null/undefined → null (le composant affiche un placeholder)
+ * - http(s) ou data: → telle quelle
+ * - chemin relatif (ex. /library/cover/...) → préfixé par API_URL (/proxy)
+ */
+export function resolveCoverUrl(url?: string | null): string | null {
+  if (!url) return null
+  if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url
+  return appConfig.API_URL + (url.startsWith('/') ? url : '/' + url)
+}
 
 /**
  * Client API Library — bibliothèque musicale multi-source (fileplayer, spotify…).
@@ -36,13 +49,23 @@ export interface LibraryPlaylist {
 
 export interface LibraryAlbum {
   source:       LibrarySource
-  id:           string
+  id?:          string
+  sourceId?:    string
   name:         string
   artists?:     string[]
+  date?:        string | null
+  coverUrl?:    string | null
   cover_url?:   string | null
   year?:        string | number | null
+  trackCount?:  number | null
   track_count?: number | null
+  lecteurId?:   number
   [k: string]:  any
+}
+
+/** Résout l'id d'un album (id ou sourceId selon la source) */
+export function resolveId(item: { id?: string; sourceId?: string }): string {
+  return item.id ?? item.sourceId ?? ''
 }
 
 export interface LibraryArtist {
@@ -62,9 +85,12 @@ export interface LibraryCategory {
 }
 
 export interface LibraryProvider {
-  id:       LibrarySource
-  name:     string
-  enabled?: boolean
+  id:          LibrarySource
+  name:        string
+  source?:     LibrarySource
+  lecteurId?:  number
+  canReindex?: boolean
+  enabled?:    boolean
   [k: string]: any
 }
 
@@ -86,7 +112,13 @@ const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
 /* ── Providers / index ─────────────────────────────────────────────────────── */
 
 export async function getProviders(): Promise<LibraryProvider[]> {
-  return unwrap(await http.get('/library/providers'))
+  const raw = unwrap<any[]>(await http.get('/library/providers')) ?? []
+  // Normalise : l'API renvoie { source, lecteurId, canReindex } → on expose id/name
+  return raw.map((p: any) => ({
+    ...p,
+    id:   p.id   ?? p.source,
+    name: p.name ?? p.source,
+  }))
 }
 
 export async function reindex(source?: LibrarySource) {
@@ -165,7 +197,7 @@ export async function getAlbums(opts: { q?: string; sources?: LibrarySource[]; l
 }
 
 export async function getAlbumTracks(source: LibrarySource, id: string): Promise<LibraryTrack[]> {
-  return unwrap(await http.get(`/library/albums/${source}/${id}/tracks`))
+  return unwrap(await http.get(`/library/albums/${source}/${encodeURIComponent(id)}/tracks`))
 }
 
 /* ── Artistes ──────────────────────────────────────────────────────────────── */

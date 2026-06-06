@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { useDebounceFn } from '@vueuse/core'
 import {
-  search, getPlaylists, getAlbums, getArtists,
+  search, getPlaylists, getAlbums, getArtists, getProviders,
+  resolveId, resolveCoverUrl,
   type LibrarySource, type LibraryTrack, type LibraryPlaylist,
-  type LibraryAlbum, type LibraryArtist, type SearchResult
+  type LibraryAlbum, type LibraryArtist, type SearchResult,
+  type LibraryProvider
 } from '@/src/api/library'
 import HScroll from '@/components/spotify/components/HScroll.vue'
 
@@ -16,10 +18,36 @@ const emit = defineEmits<{
   (e: 'enqueue-track',   track: LibraryTrack): void
 }>()
 
+const sourceLabel = (p: LibraryProvider) => p.name ?? p.id
 const sourceIcon = (s?: LibrarySource) =>
-  s === 'spotify' ? 'mdi:spotify' : s === 'fileplayer' ? 'mdi:file-music' : 'i-lucide-music'
-const cover = (o: any) => o?.coverUrl ?? o?.cover_url ?? o?.image ?? null
+  (s ?? '').toLowerCase() === 'spotify' ? 'mdi:spotify'
+    : (s ?? '').toLowerCase() === 'fileplayer' ? 'mdi:file-music'
+    : 'i-lucide-music'
+const cover = (o: any) => resolveCoverUrl(o?.coverUrl ?? o?.cover_url ?? o?.image)
 const trackCount = (o: any) => o?.trackCount ?? o?.track_count ?? null
+
+/* ── Providers & filtre source ───────────────────────────────────────────── */
+const providers      = ref<LibraryProvider[]>([])
+const activeSources  = ref<LibrarySource[]>([])
+
+/** Liste des sources à afficher en chips : providers de l'API, sinon dérivé des données */
+const sourceChips = computed<LibraryProvider[]>(() => {
+  if (providers.value.length) return providers.value
+  const ids = new Set<LibrarySource>()
+  for (const p of playlists.value) ids.add(p.source)
+  for (const a of albums.value)    ids.add(a.source)
+  for (const a of artists.value)   ids.add(a.source)
+  return [...ids].map(id => ({ id, name: id } as LibraryProvider))
+})
+
+function toggleSource(id: LibrarySource) {
+  const current = activeSources.value
+  // Toggle indépendant : on (dés)active uniquement cette source.
+  // Le filtrage est 100% client (computed) → instantané, pas de refetch.
+  activeSources.value = current.includes(id)
+    ? current.filter(s => s !== id)
+    : [...current, id]
+}
 
 /* ── Recherche ───────────────────────────────────────────────────────────── */
 const searchQuery   = ref('')
@@ -30,7 +58,7 @@ const isSearching   = computed(() => searchQuery.value.trim().length > 0)
 const doSearch = useDebounceFn(async (q: string) => {
   if (!q.trim()) { results.value = {}; return }
   searchLoading.value = true
-  try { results.value = await search(q, { sources: props.sources, limit: 20 }) }
+  try { results.value = await search(q, { limit: 20 }) }
   finally { searchLoading.value = false }
 }, 350)
 watch(searchQuery, q => doSearch(q))
@@ -40,6 +68,35 @@ const loading   = ref(true)
 const playlists = ref<LibraryPlaylist[]>([])
 const albums    = ref<LibraryAlbum[]>([])
 const artists   = ref<LibraryArtist[]>([])
+
+/** Compare les sources sans tenir compte de la casse, et passe si source absente */
+function matchSource(itemSource: string | undefined, active: LibrarySource[]) {
+  if (!active.length) return true
+  if (!itemSource)    return true   // pas de source → on affiche quand même
+  return active.some(s => s.toLowerCase() === itemSource.toLowerCase())
+}
+
+/* Filtre côté client uniquement */
+const filteredPlaylists = computed(() =>
+  playlists.value.filter(p => matchSource(p.source, activeSources.value))
+)
+const filteredAlbums = computed(() =>
+  albums.value.filter(a => matchSource(a.source, activeSources.value))
+)
+const filteredArtists = computed(() =>
+  artists.value.filter(a => matchSource(a.source, activeSources.value))
+)
+
+/* Filtre résultats de recherche côté client */
+const filteredResults = computed<SearchResult>(() => {
+  if (!activeSources.value.length) return results.value
+  return {
+    tracks:    results.value.tracks?.filter(t => activeSources.value.includes(t.source)),
+    albums:    results.value.albums?.filter(a => activeSources.value.includes(a.source)),
+    artists:   results.value.artists?.filter(a => activeSources.value.includes(a.source)),
+    playlists: results.value.playlists?.filter(p => activeSources.value.includes(p.source)),
+  }
+})
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -52,9 +109,9 @@ async function loadHome() {
   loading.value = true
   try {
     const [pl, al, ar] = await Promise.all([
-      getPlaylists({ sources: props.sources, limit: 20 }).catch(() => []),
-      getAlbums({ sources: props.sources, limit: 20 }).catch(() => []),
-      getArtists({ sources: props.sources, limit: 20 }).catch(() => []),
+      getPlaylists({ limit: 100 }).catch(() => []),
+      getAlbums({    limit: 100 }).catch(() => []),
+      getArtists({   limit: 100 }).catch(() => []),
     ])
     playlists.value = pl
     albums.value    = al
@@ -62,20 +119,48 @@ async function loadHome() {
   } finally { loading.value = false }
 }
 
-watch(() => props.sources, loadHome, { deep: true })
-onMounted(loadHome)
+onMounted(async () => {
+  // Charge d'abord les données sans filtre source
+  await loadHome()
+  // Puis charge les providers pour les chips (n'affecte pas le chargement)
+  try {
+    providers.value = await getProviders()
+    activeSources.value = providers.value.map(p => p.id)
+  } catch { /* chips indisponibles mais données déjà chargées */ }
+})
 </script>
 
 <template>
   <div class="overflow-x-hidden">
-    <!-- Barre de recherche sticky -->
-    <div class="sticky top-0 z-30 px-3 sm:px-6 pt-4 pb-3 bg-elevated/80 backdrop-blur border-b border-default">
+    <!-- Barre de recherche + filtres sources (sticky) -->
+    <div class="sticky top-0 z-30 px-3 sm:px-6 pt-3 pb-3 bg-elevated/80 backdrop-blur border-b border-default space-y-2">
       <UInput
         v-model="searchQuery" icon="i-lucide-search"
         placeholder="Titres, albums, artistes…" size="lg" class="w-full"
         :trailing-icon="searchQuery ? 'i-lucide-x' : undefined"
         @click:trailing="searchQuery = ''"
       />
+      <!-- Chips de source -->
+      <div v-if="sourceChips.length" class="flex items-center gap-1.5 flex-wrap">
+        <span class="text-xs text-dimmed">Sources</span>
+        <button
+          v-for="p in sourceChips"
+          :key="p.id"
+          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors"
+          :class="activeSources.includes(p.id)
+            ? 'bg-primary text-inverted border-primary shadow-sm'
+            : 'bg-transparent text-dimmed border-default hover:bg-elevated/60 opacity-60'"
+          @click="toggleSource(p.id)"
+        >
+          <!-- ✓ visible quand actif -->
+          <UIcon v-if="activeSources.includes(p.id)" name="i-lucide-check" class="size-3.5" />
+          <!-- icônes statiques détectées par UnoCSS -->
+          <UIcon v-else-if="p.id.toLowerCase() === 'spotify'"    name="mdi:spotify"     class="size-3.5" />
+          <UIcon v-else-if="p.id.toLowerCase() === 'fileplayer'" name="mdi:file-music"  class="size-3.5" />
+          <UIcon v-else                                          name="i-lucide-music"  class="size-3.5" />
+          {{ sourceLabel(p) }}
+        </button>
+      </div>
     </div>
 
     <!-- ── Résultats de recherche ── -->
@@ -85,10 +170,10 @@ onMounted(loadHome)
       </div>
       <template v-else>
         <!-- Titres -->
-        <section v-if="results.tracks?.length">
+        <section v-if="filteredResults.tracks?.length">
           <h2 class="text-lg font-bold mb-3">Titres</h2>
           <div class="space-y-1">
-            <div v-for="(t, i) in results.tracks" :key="t.sourceId ?? t.uri ?? i" class="w-full flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-accented transition-colors">
+            <div v-for="(t, i) in filteredResults.tracks" :key="t.sourceId ?? t.uri ?? i" class="w-full flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-accented transition-colors">
               <img v-if="cover(t)" :src="cover(t)" class="h-10 w-10 rounded object-cover shrink-0" alt="" />
               <div v-else class="h-10 w-10 rounded bg-elevated flex items-center justify-center shrink-0"><UIcon :name="sourceIcon(t.source)" class="size-4 text-dimmed" /></div>
               <div class="min-w-0 flex-1">
@@ -101,10 +186,10 @@ onMounted(loadHome)
         </section>
 
         <!-- Albums -->
-        <section v-if="results.albums?.length">
+        <section v-if="filteredResults.albums?.length">
           <h2 class="text-lg font-bold mb-3">Albums</h2>
           <HScroll>
-            <div v-for="a in results.albums" :key="a.id" class="group shrink-0 w-28 sm:w-36 cursor-pointer" @click="emit('select-album', a)">
+            <div v-for="a in filteredResults.albums" :key="a.id" class="group shrink-0 w-28 sm:w-36 cursor-pointer" @click="emit('select-album', a)">
               <div class="rounded-md overflow-hidden mb-2 h-28 w-28 sm:h-36 sm:w-36 bg-elevated">
                 <img v-if="cover(a)" :src="cover(a)" class="h-full w-full object-cover" alt="" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-disc-3" class="size-8 text-dimmed" /></div>
@@ -116,10 +201,10 @@ onMounted(loadHome)
         </section>
 
         <!-- Artistes -->
-        <section v-if="results.artists?.length">
+        <section v-if="filteredResults.artists?.length">
           <h2 class="text-lg font-bold mb-3">Artistes</h2>
           <HScroll>
-            <div v-for="ar in results.artists" :key="ar.id" class="group shrink-0 w-28 sm:w-36 cursor-pointer text-center" @click="emit('select-artist', ar)">
+            <div v-for="ar in filteredResults.artists" :key="ar.id" class="group shrink-0 w-28 sm:w-36 cursor-pointer text-center" @click="emit('select-artist', ar)">
               <div class="h-28 w-28 sm:h-36 sm:w-36 rounded-full overflow-hidden mb-2 mx-auto bg-elevated">
                 <img v-if="cover(ar)" :src="cover(ar)" class="h-full w-full object-cover" alt="" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-user-round" class="size-7 text-dimmed" /></div>
@@ -130,10 +215,10 @@ onMounted(loadHome)
         </section>
 
         <!-- Playlists -->
-        <section v-if="results.playlists?.length">
+        <section v-if="filteredResults.playlists?.length">
           <h2 class="text-lg font-bold mb-3">Playlists</h2>
           <HScroll>
-            <div v-for="p in results.playlists" :key="p.id" class="group shrink-0 w-28 sm:w-36 cursor-pointer" @click="emit('select-playlist', p)">
+            <div v-for="p in filteredResults.playlists" :key="p.id" class="group shrink-0 w-28 sm:w-36 cursor-pointer" @click="emit('select-playlist', p)">
               <div class="rounded-md overflow-hidden mb-2 h-28 w-28 sm:h-36 sm:w-36 bg-elevated">
                 <img v-if="cover(p)" :src="cover(p)" class="h-full w-full object-cover" alt="" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-list-music" class="size-8 text-dimmed" /></div>
@@ -144,7 +229,7 @@ onMounted(loadHome)
           </HScroll>
         </section>
 
-        <div v-if="!results.tracks?.length && !results.albums?.length && !results.artists?.length && !results.playlists?.length" class="text-center py-16 text-dimmed">
+        <div v-if="!filteredResults.tracks?.length && !filteredResults.albums?.length && !filteredResults.artists?.length && !filteredResults.playlists?.length" class="text-center py-16 text-dimmed">
           <UIcon name="i-lucide-search-x" class="size-12 mx-auto mb-3 opacity-40" />
           <p>Aucun résultat pour « {{ searchQuery }} »</p>
         </div>
@@ -169,10 +254,10 @@ onMounted(loadHome)
 
       <template v-else>
         <!-- Playlists -->
-        <section v-if="playlists.length">
+        <section v-if="filteredPlaylists.length">
           <h2 class="text-xl font-bold mb-3">Playlists</h2>
           <HScroll>
-            <div v-for="p in playlists" :key="p.source + p.id" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-playlist', p)">
+            <div v-for="p in filteredPlaylists" :key="p.source + p.id" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-playlist', p)">
               <div class="h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
                 <img v-if="cover(p)" :src="cover(p)" class="h-full w-full object-cover" alt="" loading="lazy" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-list-music" class="size-8 text-dimmed" /></div>
@@ -184,10 +269,10 @@ onMounted(loadHome)
         </section>
 
         <!-- Albums -->
-        <section v-if="albums.length">
+        <section v-if="filteredAlbums.length">
           <h2 class="text-xl font-bold mb-3">Albums</h2>
           <HScroll>
-            <div v-for="a in albums" :key="a.source + a.id" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-album', a)">
+            <div v-for="a in filteredAlbums" :key="a.source + resolveId(a)" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-album', a)">
               <div class="h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
                 <img v-if="cover(a)" :src="cover(a)" class="h-full w-full object-cover" alt="" loading="lazy" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-disc-3" class="size-8 text-dimmed" /></div>
@@ -199,10 +284,10 @@ onMounted(loadHome)
         </section>
 
         <!-- Artistes -->
-        <section v-if="artists.length">
+        <section v-if="filteredArtists.length">
           <h2 class="text-xl font-bold mb-3">Artistes</h2>
           <HScroll>
-            <div v-for="ar in artists" :key="ar.source + ar.id" class="group shrink-0 w-28 cursor-pointer text-center" @click="emit('select-artist', ar)">
+            <div v-for="ar in filteredArtists" :key="ar.source + resolveId(ar)" class="group shrink-0 w-28 cursor-pointer text-center" @click="emit('select-artist', ar)">
               <div class="h-28 w-28 rounded-full overflow-hidden mb-2 mx-auto bg-elevated">
                 <img v-if="cover(ar)" :src="cover(ar)" class="h-full w-full object-cover" alt="" loading="lazy" />
                 <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-user-round" class="size-8 text-dimmed" /></div>
@@ -212,7 +297,7 @@ onMounted(loadHome)
           </HScroll>
         </section>
 
-        <div v-if="!playlists.length && !albums.length && !artists.length" class="text-center py-16 text-dimmed">
+        <div v-if="!filteredPlaylists.length && !filteredAlbums.length && !filteredArtists.length" class="text-center py-16 text-dimmed">
           <UIcon name="i-lucide-music" class="size-12 mx-auto mb-3 opacity-40" />
           <p>Bibliothèque vide — lancez une réindexation.</p>
         </div>

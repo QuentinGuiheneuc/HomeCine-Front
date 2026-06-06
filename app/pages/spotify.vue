@@ -8,13 +8,14 @@ import ItemArtist     from '@/components/spotify/components/ItemArtist.vue'
 import { useEventListener } from '@vueuse/core'
 import {
   getPlaylistTracks, getAlbumTracks, getArtistTracks, getArtistAlbums,
-  enqueueTrack, play, type PlayType,
+  enqueueTrack, play, resolveId, type PlayType,
   type LibrarySource, type LibraryTrack,
   type LibraryPlaylist, type LibraryAlbum, type LibraryArtist
 } from '@/src/api/library'
 import {
   mapPlaylistDetail, mapAlbumDetail, mapArtistDetail
 } from '@/components/spotify/composable/useLibraryMappers'
+import { getLecteurs, type Lecteur } from '@/src/api/lecteur'
 
 const toast = useToast()
 const { activeLecteurId } = useDashboard()
@@ -100,27 +101,35 @@ async function openPlaylist(p: LibraryPlaylist) {
 }
 
 async function openAlbum(a: LibraryAlbum) {
+  const id = resolveId(a)
+  if (!id) { toast.add({ title: 'Album sans identifiant', color: 'error' }); return }
   clearAll()
   viewType.value = 'album'
-  currentCtx.value = { source: a.source, id: a.id, lecteurId: (a as any).lecteurId }
+  currentCtx.value = { source: a.source, id, lecteurId: (a as any).lecteurId }
   loading.value = true; error.value = null
+  // En-tête visible immédiatement
+  albumDetail.value = mapAlbumDetail({ ...a, id }, [])
   try {
-    const tracks = await getAlbumTracks(a.source, a.id)
+    const tracks = await getAlbumTracks(a.source, id)
     indexTracks(tracks)
-    albumDetail.value = mapAlbumDetail(a, tracks)
-  } catch (e: any) { error.value = e?.message || 'Chargement impossible' }
+    albumDetail.value = mapAlbumDetail({ ...a, id }, tracks ?? [])
+  } catch (e: any) { error.value = e?.message || 'Chargement des pistes impossible' }
   finally { loading.value = false }
 }
 
 async function openArtist(ar: LibraryArtist) {
+  const id = resolveId(ar)
+  if (!id) { toast.add({ title: 'Artiste sans identifiant', color: 'error' }); return }
   clearAll()
   viewType.value = 'artist'
-  currentCtx.value = { source: ar.source, id: ar.id, lecteurId: (ar as any).lecteurId }
+  currentCtx.value = { source: ar.source, id, lecteurId: (ar as any).lecteurId }
   loading.value = true; error.value = null
+  // En-tête visible immédiatement
+  artistDetail.value = mapArtistDetail(ar, [], [])
   try {
     const [tracks, albums] = await Promise.all([
-      getArtistTracks(ar.source, ar.id).catch(() => []),
-      getArtistAlbums(ar.source, ar.id).catch(() => [])
+      getArtistTracks(ar.source, id).catch(() => []),
+      getArtistAlbums(ar.source, id).catch(() => [])
     ])
     indexTracks(tracks)
     artistDetail.value = mapArtistDetail(ar, tracks, albums)
@@ -144,23 +153,54 @@ async function doEnqueueTrack(t: LibraryTrack) {
   } catch { toast.add({ title: 'Ajout impossible', color: 'error' }) }
 }
 
-/* ─── ▶ Lire un contexte (POST /library/play { source, type, id|uri, lecteurId }) ─ */
-async function playContextCurrent(type: PlayType) {
-  if (!currentCtx.value) return
+/* ─── ▶ Lire : sélection du lecteur selon le type de la source ────────────── */
+const lecteurs = ref<Lecteur[]>([])
+async function loadLecteurs() {
+  try { lecteurs.value = await getLecteurs() } catch { /* noop */ }
+}
+
+type PendingPlay = { source: LibrarySource; type: PlayType; id?: string; uri?: string; title?: string }
+const pendingPlay     = ref<PendingPlay | null>(null)
+const playChooserOpen = ref(false)
+
+/** Lecteurs dont le type correspond à la source du contenu */
+const compatibleLecteurs = computed(() =>
+  pendingPlay.value ? lecteurs.value.filter(l => l.type === pendingPlay.value!.source) : []
+)
+
+/** Point d'entrée : propose les lecteurs compatibles puis lance la lecture */
+function requestPlay(args: PendingPlay) {
+  const compat = lecteurs.value.filter(l => l.type === args.source)
+  if (!compat.length) {
+    toast.add({ title: `Aucun lecteur « ${args.source} »`, description: 'Créez un lecteur de ce type.', color: 'warning' })
+    return
+  }
+  pendingPlay.value = args
+  if (compat.length === 1) { confirmPlay(compat[0].id); return }  // un seul → direct
+  playChooserOpen.value = true
+}
+
+async function confirmPlay(lecteurId: number) {
+  const p = pendingPlay.value
+  if (!p) return
+  playChooserOpen.value = false
   try {
-    await play({ source: currentCtx.value.source, type, id: currentCtx.value.id, lecteurId: targetLecteur.value })
-    toast.add({ title: 'Lecture lancée', description: currentName.value, color: 'success', icon: 'i-lucide-play' })
+    await play({ source: p.source, type: p.type, id: p.id, uri: p.uri, lecteurId })
+    toast.add({ title: 'Lecture lancée', description: p.title, color: 'success', icon: 'i-lucide-play' })
   } catch { toast.add({ title: 'Lecture impossible', color: 'error' }) }
+  pendingPlay.value = null
+}
+
+function playContextCurrent(type: PlayType) {
+  if (!currentCtx.value) return
+  requestPlay({ source: currentCtx.value.source, type, id: currentCtx.value.id, title: currentName.value })
 }
 
 /** Lit une piste précise (uri émis par ItemAlbum/ItemArtist) */
-async function playTrackByUri(uri: string) {
+function playTrackByUri(uri: string) {
   const t = trackByUri.get(uri)
   if (!t) return
-  try {
-    await play({ source: t.source, type: 'track', uri: t.uri ?? uri, lecteurId: targetLecteur.value })
-    toast.add({ title: 'Lecture lancée', description: t.title, color: 'success', icon: 'i-lucide-play' })
-  } catch { toast.add({ title: 'Lecture impossible', color: 'error' }) }
+  requestPlay({ source: t.source, type: 'track', uri: t.uri ?? uri, title: t.title })
 }
 
 /** ItemPlaylist row → lit la piste à l'offset */
@@ -168,6 +208,11 @@ function onPlaylistRow(payload: { offset: number }) {
   const t = (playlistDetail.value?.tracks?.items?.[payload.offset]?.track)?.__src as LibraryTrack | undefined
   if (t?.uri) playTrackByUri(t.uri)
 }
+
+const lecteurIcon = (type?: string) =>
+  type === 'spotify' ? 'mdi:spotify' : type === 'fileplayer' ? 'mdi:file-music' : 'i-lucide-music'
+
+onMounted(loadLecteurs)
 </script>
 
 <template>
@@ -270,6 +315,40 @@ function onPlaylistRow(payload: { offset: number }) {
         </div>
       </main>
     </div>
+
+    <!-- Sélecteur de lecteur (type compatible) -->
+    <UModal v-model:open="playChooserOpen" :title="`Lire sur quel lecteur ?`">
+      <template #content>
+        <div class="p-4 space-y-3">
+          <p class="text-sm text-dimmed">
+            Lecteurs compatibles
+            <UBadge :label="pendingPlay?.source" color="neutral" variant="subtle" size="xs" class="ml-1" />
+          </p>
+          <div class="space-y-1">
+            <button
+              v-for="l in compatibleLecteurs"
+              :key="l.id"
+              class="w-full flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-elevated/60 text-left transition-colors"
+              @click="confirmPlay(l.id)"
+            >
+              <UIcon :name="lecteurIcon(l.type)" class="size-5 shrink-0" />
+              <div class="flex-1 min-w-0">
+                <p class="truncate text-sm font-medium">{{ l.name || 'Sans nom' }}</p>
+                <p class="text-xs text-dimmed">{{ l.type }}</p>
+              </div>
+              <UBadge
+                :color="(l as any).isStart?.alive ? 'success' : 'neutral'"
+                variant="subtle" size="xs"
+              >{{ (l as any).isStart?.alive ? 'Actif' : 'Arrêté' }}</UBadge>
+              <UIcon name="i-lucide-play" class="size-4 text-primary shrink-0" />
+            </button>
+          </div>
+          <div class="flex justify-end pt-2">
+            <UButton label="Annuler" color="neutral" variant="soft" @click="playChooserOpen = false" />
+          </div>
+        </div>
+      </template>
+    </UModal>
 
     <!-- PLAYER -->
     <ClientOnly><Lecture /></ClientOnly>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDebounceFn } from '@vueuse/core'
 import {
-  getProviders, getPlaylists, getAlbums, getArtists, reindex,
+  getProviders, getPlaylists, getAlbums, getArtists, reindex, resolveCoverUrl,
   type LibrarySource, type LibraryProvider,
   type LibraryPlaylist, type LibraryAlbum, type LibraryArtist
 } from '@/src/api/library'
@@ -88,7 +88,7 @@ watch(active, reload)
 
 function onRefresh() { emit('refresh'); reload() }
 
-const cover = (o: any) => o.coverUrl ?? o.cover_url ?? o.image ?? 'https://via.placeholder.com/64x64?text=♪'
+const cover = (o: any) => resolveCoverUrl(o.coverUrl ?? o.cover_url ?? o.image) ?? 'https://via.placeholder.com/64x64?text=♪'
 const trackCount = (o: any) => o.trackCount ?? o.track_count ?? null
 
 onMounted(async () => {
@@ -113,15 +113,19 @@ onMounted(async () => {
       </div>
 
       <!-- Sources -->
-      <div class="px-3 pt-2 flex items-center gap-1.5 flex-wrap">
+      <div class="px-3 pt-2 flex items-center gap-2 flex-wrap">
         <UButton
           v-for="p in providers" :key="p.id"
-          size="2xs"
+          size="xs"
+          square
+          class=""
+          style="padding: 3px"
           :color="selectedSources.includes(p.id) ? 'primary' : 'neutral'"
           :variant="selectedSources.includes(p.id) ? 'solid' : 'soft'"
           :icon="sourceIcon(p.id)"
+          :ui="{ leadingIcon: 'size-5' }"
           @click="toggleSource(p.id)"
-        >{{ p.name }}</UButton>
+        />
       </div>
 
       <!-- Onglets -->

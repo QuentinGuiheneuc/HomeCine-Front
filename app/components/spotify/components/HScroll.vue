@@ -25,9 +25,13 @@ function updateArrows() {
 function applyWidth() {
   const el = scroller.value
   if (!el) return
-  el.style.maxWidth = '0px'                        // reset pour mesurer la vraie position
-  const left = el.getBoundingClientRect().left
-  el.style.maxWidth = Math.max(0, window.innerWidth - left - 16) + 'px'
+  el.style.maxWidth = ''                           // retire le cap pour mesurer la vraie position
+  const rect = el.getBoundingClientRect()
+  // Élément pas encore en page (transition, détaché…) → on réessaiera plus tard
+  if (rect.width === 0 && rect.left === 0) { updateArrows(); return }
+  const avail = window.innerWidth - rect.left - 16
+  // Garde : ne JAMAIS appliquer une largeur nulle/négative (sinon section invisible)
+  if (avail > 60) el.style.maxWidth = avail + 'px'
   updateArrows()
 }
 
