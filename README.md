@@ -292,14 +292,17 @@ et conteneurs `.mkv .mka .dts .ac3 .eac3 .mp4 …`.
 
 ## Types de lecteurs & transports
 
-| Type | Description | Config notable |
-|---|---|---|
-| `spotify` | Client Spotify (librespot) | bitrate, device-type, typeStream |
-| `fileplayer` | Lecture de fichiers locaux | queue, repeat, shuffle, EQ, upmix |
-| `deezer` | Client Deezer | bitrate, device-type |
-| `radio` | Flux radio HTTP | URL du flux |
-| `local` | Fichier audio local | source_path, loop |
-| `localInput` | Capture audio ALSA | pcm_device, layout sortie, master_gain_db |
+| Type | Statut | Description | Config notable |
+|---|---|---|---|
+| `spotify` | ✅ | Client Spotify (librespot) | bitrate, device-type, typeStream |
+| `fileplayer` | ✅ | Lecture de fichiers locaux | queue, repeat, shuffle, EQ, upmix |
+| `deezer` | 🚧 **non implémenté** | Client Deezer — formulaire de config présent, intégration lecture/bibliothèque à faire | bitrate, device-type |
+| `radio` | ✅ | Flux radio HTTP | URL du flux |
+| `local` | ✅ | Fichier audio local | source_path, loop |
+| `localInput` | ✅ | Capture audio ALSA | pcm_device, layout sortie, master_gain_db |
+
+> **Deezer** : seul le formulaire de configuration (`DeezerServiceConfig`) existe. La source
+> n'est pas branchée à la bibliothèque `/library` ni au protocole de lecture — à compléter.
 
 | Transport | Description |
 |---|---|
