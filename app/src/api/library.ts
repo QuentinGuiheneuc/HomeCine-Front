@@ -88,8 +88,9 @@ export interface LibraryProvider {
   id:          LibrarySource
   name:        string
   source?:     LibrarySource
-  lecteurId?:  number
+  lecteurId?:  number | null
   canReindex?: boolean
+  active?:     boolean
   enabled?:    boolean
   [k: string]: any
 }

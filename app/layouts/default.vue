@@ -19,7 +19,8 @@ const links = computed<NavigationMenuItem[][]>(() => {
     { label: 'Security',      to: '/settings/security',                   onSelect: () => { open.value = false } },
     ...(isAdmin.value ? [
       { label: 'Members',     to: '/settings/members',                    onSelect: () => { open.value = false } },
-      { label: 'Spotify',     to: '/settings/spotify', icon: 'logos:spotify-icon', onSelect: () => { open.value = false } },
+      // { label: 'Spotify',     to: '/settings/spotify', icon: 'logos:spotify-icon', onSelect: () => { open.value = false } },
+      { label: 'Connexions', to: '/settings/credentials',                 onSelect: () => { open.value = false } },
       { label: 'Navigateurs', to: '/settings/browsers',                   onSelect: () => { open.value = false } },
     ] : [])
   ]
@@ -36,7 +37,7 @@ const links = computed<NavigationMenuItem[][]>(() => {
     },
     { label: 'Lecteur',   icon: 'simple-icons:gocd',     to: '/lecteurs', onSelect: () => { open.value = false } },
     { label: 'Devices',   icon: 'mdi:speaker',           to: '/devices',  onSelect: () => { open.value = false } },
-    { label: 'Spotify',   icon: 'mdi:spotify',           to: '/spotify',  onSelect: () => { open.value = false } },
+    { label: 'Musique',   icon: 'i-lucide-music',        to: '/musique',  onSelect: () => { open.value = false } },
     { label: 'Bluetooth', icon: 'i-lucide-bluetooth',    to: '/bt',       onSelect: () => { open.value = false } },
     { label: 'Controle',  icon: 'whh:controlpanelalt',   to: '/control',  onSelect: () => { open.value = false } },
     {

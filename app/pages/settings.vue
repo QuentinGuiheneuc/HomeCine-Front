@@ -11,8 +11,9 @@ const baseLinks: NavigationMenuItem[] = [
 
 const adminLinks: NavigationMenuItem[] = [
   { label: 'Members',     icon: 'i-lucide-users',   to: '/settings/members' },
-  { label: 'Spotify',     icon: 'logos:spotify-icon', to: '/settings/spotify' },
-  { label: 'Navigateurs', icon: 'i-lucide-monitor', to: '/settings/browsers' },
+  // { label: 'Spotify',     icon: 'logos:spotify-icon', to: '/settings/spotify' },
+  { label: 'Connexions', icon: 'i-lucide-key-round', to: '/settings/credentials' },
+  { label: 'Navigateurs', icon: 'i-lucide-monitor', to: '/settings/browsers' }
 ]
 
 const links = computed<NavigationMenuItem[][]>(() => [

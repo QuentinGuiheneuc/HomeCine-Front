@@ -32,7 +32,7 @@ const reindexing      = ref(false)
 
 async function loadProviders() {
   try {
-    providers.value = await getProviders()
+    providers.value = (await getProviders()).filter(p => p.active !== false)
     selectedSources.value = providers.value.map(p => p.id)
   } catch { /* noop */ }
 }

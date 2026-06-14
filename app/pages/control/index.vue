@@ -68,7 +68,7 @@ function prettyJson(v) {
   }
 }
 
-function toSelectItems(arr = []) {s
+function toSelectItems(arr = []) {
   return arr.map(v => ({ label: String(v), value: String(v) }))
 }
 

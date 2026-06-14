@@ -25,6 +25,11 @@ function playCtx(item: any, type: 'playlist' | 'album' | 'artist') {
   emit('play-context', { source: item.source, type, id: resolveId(item), title: item.name })
 }
 
+/** Sections dépliées (affichage grille complète) */
+const expanded = ref<Record<'playlists' | 'albums' | 'artists', boolean>>({
+  playlists: false, albums: false, artists: false,
+})
+
 const sourceLabel = (p: LibraryProvider) => p.name ?? p.id
 const sourceIcon = (s?: LibrarySource) =>
   (s ?? '').toLowerCase() === 'spotify' ? 'mdi:spotify'
@@ -129,9 +134,9 @@ async function loadHome() {
 onMounted(async () => {
   // Charge d'abord les données sans filtre source
   await loadHome()
-  // Puis charge les providers pour les chips (n'affecte pas le chargement)
+  // Puis charge les providers ACTIFS pour les chips (n'affecte pas le chargement)
   try {
-    providers.value = await getProviders()
+    providers.value = (await getProviders()).filter(p => p.active !== false)
     activeSources.value = providers.value.map(p => p.id)
   } catch { /* chips indisponibles mais données déjà chargées */ }
 })
@@ -165,10 +170,8 @@ onMounted(async () => {
             : 'bg-transparent text-dimmed border-default hover:bg-elevated/60 opacity-60'"
           @click="toggleSource(p.id)"
         >
-          <!-- ✓ visible quand actif -->
-          <UIcon v-if="activeSources.includes(p.id)" name="i-lucide-check" class="size-3.5" />
           <!-- icônes statiques détectées par UnoCSS -->
-          <UIcon v-else-if="p.id.toLowerCase() === 'spotify'"    name="mdi:spotify"     class="size-3.5" />
+          <UIcon v-if="p.id.toLowerCase() === 'spotify'"         name="mdi:spotify"     class="size-3.5" />
           <UIcon v-else-if="p.id.toLowerCase() === 'fileplayer'" name="mdi:file-music"  class="size-3.5" />
           <UIcon v-else                                          name="i-lucide-music"  class="size-3.5" />
           {{ sourceLabel(p) }}
@@ -272,8 +275,16 @@ onMounted(async () => {
       <template v-else>
         <!-- Playlists -->
         <section v-if="filteredPlaylists.length">
-          <h2 class="text-xl font-bold mb-3">Playlists</h2>
-          <HScroll>
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xl font-bold">Playlists</h2>
+            <UButton
+              v-if="filteredPlaylists.length > 6"
+              size="xs" variant="link" color="primary"
+              :trailing-icon="expanded.playlists ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+              @click="expanded.playlists = !expanded.playlists"
+            >{{ expanded.playlists ? 'Voir moins' : 'Voir plus' }}</UButton>
+          </div>
+          <component :is="expanded.playlists ? 'div' : HScroll" :class="expanded.playlists ? 'flex flex-wrap gap-3' : ''">
             <div v-for="p in filteredPlaylists" :key="p.source + p.id" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-playlist', p)">
               <div class="relative h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
                 <img v-if="cover(p)" :src="cover(p)" class="h-full w-full object-cover" alt="" loading="lazy" />
@@ -283,13 +294,21 @@ onMounted(async () => {
               <p class="text-sm font-semibold truncate">{{ p.name }}</p>
               <p class="text-xs text-dimmed truncate">{{ trackCount(p) ? trackCount(p) + ' titres' : p.source }}</p>
             </div>
-          </HScroll>
+          </component>
         </section>
 
         <!-- Albums -->
         <section v-if="filteredAlbums.length">
-          <h2 class="text-xl font-bold mb-3">Albums</h2>
-          <HScroll>
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xl font-bold">Albums</h2>
+            <UButton
+              v-if="filteredAlbums.length > 6"
+              size="xs" variant="link" color="primary"
+              :trailing-icon="expanded.albums ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+              @click="expanded.albums = !expanded.albums"
+            >{{ expanded.albums ? 'Voir moins' : 'Voir plus' }}</UButton>
+          </div>
+          <component :is="expanded.albums ? 'div' : HScroll" :class="expanded.albums ? 'flex flex-wrap gap-3' : ''">
             <div v-for="a in filteredAlbums" :key="a.source + resolveId(a)" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-album', a)">
               <div class="relative h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
                 <img v-if="cover(a)" :src="cover(a)" class="h-full w-full object-cover" alt="" loading="lazy" />
@@ -299,13 +318,21 @@ onMounted(async () => {
               <p class="text-sm font-semibold truncate">{{ a.name }}</p>
               <p class="text-xs text-dimmed truncate">{{ a.artists?.join(', ') }}</p>
             </div>
-          </HScroll>
+          </component>
         </section>
 
         <!-- Artistes -->
         <section v-if="filteredArtists.length">
-          <h2 class="text-xl font-bold mb-3">Artistes</h2>
-          <HScroll>
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xl font-bold">Artistes</h2>
+            <UButton
+              v-if="filteredArtists.length > 6"
+              size="xs" variant="link" color="primary"
+              :trailing-icon="expanded.artists ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+              @click="expanded.artists = !expanded.artists"
+            >{{ expanded.artists ? 'Voir moins' : 'Voir plus' }}</UButton>
+          </div>
+          <component :is="expanded.artists ? 'div' : HScroll" :class="expanded.artists ? 'flex flex-wrap gap-3 justify-items-center' : ''">
             <div v-for="ar in filteredArtists" :key="ar.source + resolveId(ar)" class="group shrink-0 w-28 cursor-pointer text-center" @click="emit('select-artist', ar)">
               <div class="relative h-28 w-28 rounded-full overflow-hidden mb-2 mx-auto bg-elevated">
                 <img v-if="cover(ar)" :src="cover(ar)" class="h-full w-full object-cover" alt="" loading="lazy" />
@@ -314,7 +341,7 @@ onMounted(async () => {
               </div>
               <p class="text-sm font-semibold truncate">{{ ar.name }}</p>
             </div>
-          </HScroll>
+          </component>
         </section>
 
         <div v-if="!filteredPlaylists.length && !filteredAlbums.length && !filteredArtists.length" class="text-center py-16 text-dimmed">
