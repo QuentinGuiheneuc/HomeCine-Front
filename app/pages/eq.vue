@@ -30,7 +30,7 @@ type ApiPreset = {
 
 const fs = ref(48000)
 const curvePoints = ref(1000)
-const dbRange = ref(20)
+const dbRange = ref(36)
 
 const selectedLayout = ref<string>("")
 const selectedPresetName = ref<string>("")

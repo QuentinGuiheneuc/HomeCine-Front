@@ -2,6 +2,8 @@
 import { useLecteursWs } from '@/composables/useLecteursWs'
 import type { QueueItem } from '@/types/lecteur'
 
+const toast = useToast()
+
 const { isQueueSlideoverOpen, activeLecteurId } = useDashboard()
 const ws = useLecteursWs()
 
@@ -50,6 +52,47 @@ function toTime(ms: number) {
 function playItem(item: QueueItem) {
   ws.play(activeLecteur.value?.id, item.uri)
 }
+
+/* ── Gestion de la file (WS Lecteur.RemoveFromQueue / MoveInQueue) ────────── */
+/** Seuls ces types gèrent une file modifiable */
+const QUEUE_TYPES = ['fileplayer', 'youtube', 'deezer']
+const canManageQueue = computed(() =>
+  QUEUE_TYPES.includes((activeLecteur.value?.type ?? '').toLowerCase())
+)
+const canDownload = computed(() => (activeLecteur.value?.type ?? '').toLowerCase() === 'youtube')
+const busy = ref(false)
+
+/** Télécharge l'élément de la file (YouTube) */
+function downloadItem(item: QueueItem) {
+  const id = activeLecteur.value?.id
+  if (id == null) return
+  if (!ws.download(id, youtubeVideoId(item))) { toast.add({ title: 'WS non connecté', color: 'error' }); return }
+  toast.add({ title: 'Téléchargement lancé', description: item.title, color: 'success', icon: 'i-lucide-download' })
+}
+
+function removeAt(index: number) {
+  const id = activeLecteur.value?.id
+  if (id == null) return
+  if (!ws.removeFromQueue(id, index)) { toast.add({ title: 'WS non connecté', color: 'error' }); return }
+  ws.getQueue(id)   // resync (au cas où pas de broadcast)
+}
+
+function moveAt(from: number, dir: -1 | 1) {
+  const id = activeLecteur.value?.id
+  const to = from + dir
+  if (id == null || to < 0 || to >= queue.value.length) return
+  if (!ws.moveInQueue(id, from, to)) { toast.add({ title: 'WS non connecté', color: 'error' }); return }
+  ws.getQueue(id)
+}
+
+/** Réinitialise le lecteur (Lecteur.ClearQueue) — vide la file ET stoppe la lecture */
+function clearQueue() {
+  const id = activeLecteur.value?.id
+  if (id == null || !queue.value.length) return
+  if (!confirm('Réinitialiser le lecteur ? La file est vidée et la lecture en cours s\'arrête.')) return
+  if (!ws.clearQueue(id)) { toast.add({ title: 'WS non connecté', color: 'error' }); return }
+  ws.getQueue(id)
+}
 </script>
 
 <template>
@@ -70,14 +113,25 @@ function playItem(item: QueueItem) {
           <span v-else class="italic">Aucun lecteur</span>
           <span class="ml-2">· {{ queue.length }} piste{{ queue.length > 1 ? 's' : '' }}</span>
         </div>
-        <UButton
-          size="xs" variant="ghost" color="neutral"
-          icon="i-lucide-refresh-ccw"
-          :loading="loading"
-          @click="fetchQueue"
-        >
-          Refresh
-        </UButton>
+        <div class="flex items-center gap-1">
+          <UButton
+            v-if="canManageQueue && queue.length"
+            size="xs" variant="ghost" color="error"
+            icon="i-lucide-rotate-ccw"
+            title="Vide la file et stoppe la lecture"
+            @click="clearQueue"
+          >
+            Réinitialiser
+          </UButton>
+          <UButton
+            size="xs" variant="ghost" color="neutral"
+            icon="i-lucide-refresh-ccw"
+            :loading="loading"
+            @click="fetchQueue"
+          >
+            Refresh
+          </UButton>
+        </div>
       </div>
 
       <!-- ── Piste en cours ─────────────────────────────────────────────── -->
@@ -155,6 +209,14 @@ function playItem(item: QueueItem) {
           <span class="text-xs tabular-nums text-dimmed shrink-0">
             {{ toTime(item.duration_ms) }}
           </span>
+
+          <!-- Actions file (au survol) — FilePlayer / YouTube / Deezer uniquement -->
+          <div v-if="canManageQueue" class="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <UButton v-if="canDownload" size="2xs" variant="ghost" color="neutral" icon="i-lucide-download" title="Télécharger" @click="downloadItem(item)" />
+            <UButton size="2xs" variant="ghost" color="neutral" icon="i-lucide-chevron-up"   :disabled="index === 0 || busy"               @click="moveAt(index, -1)" />
+            <UButton size="2xs" variant="ghost" color="neutral" icon="i-lucide-chevron-down" :disabled="index === queue.length - 1 || busy" @click="moveAt(index, 1)" />
+            <UButton size="2xs" variant="ghost" color="error"   icon="i-lucide-trash-2"        :disabled="busy"                              @click="removeAt(index)" />
+          </div>
         </div>
 
       </div>

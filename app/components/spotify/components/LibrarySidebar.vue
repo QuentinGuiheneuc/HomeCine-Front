@@ -5,6 +5,8 @@ import {
   type LibrarySource, type LibraryProvider,
   type LibraryPlaylist, type LibraryAlbum, type LibraryArtist
 } from '@/src/api/library'
+import { getDbPlaylists, createDbPlaylist, type DbPlaylist } from '@/src/api/dbPlaylists'
+import { useLibrarySources } from '@/composables/useLibrarySources'
 
 const { menue } = useDashboard()
 
@@ -17,37 +19,46 @@ const emit = defineEmits<{
   (e: 'select-playlist', payload: LibraryPlaylist): void
   (e: 'select-album',    payload: LibraryAlbum): void
   (e: 'select-artist',   payload: LibraryArtist): void
-  (e: 'play-context',    payload: { source: LibrarySource; type: 'playlist' | 'album' | 'artist'; id: string; title?: string }): void
+  (e: 'select-db-playlist', payload: DbPlaylist): void
+  (e: 'open-saved', kind: 'tracks' | 'artists'): void
+  (e: 'play-context',    payload: { source: LibrarySource; type: 'playlist' | 'album' | 'artist'; id: string; title?: string; kind?: string }): void
   (e: 'refresh'): void
 }>()
 
+/* Permet au parent de rafraîchir la liste perso (après changements) */
+defineExpose({ reloadDb: () => loadDb() })
+
 function playCtx(item: any, type: 'playlist' | 'album' | 'artist') {
-  emit('play-context', { source: item.source, type, id: resolveId(item), title: item.name })
+  emit('play-context', { source: item.source, type, id: resolveId(item), title: item.name, kind: item.kind })
 }
 
-/* ── Sources ─────────────────────────────────────────────────────────────── */
+/* ── Sources (persisté + partagé avec la home) ───────────────────────────── */
 const providers       = ref<LibraryProvider[]>([])
-const selectedSources = ref<LibrarySource[]>([])
+const { sources: selectedSources, toggle: toggleSrc, initIfEmpty } = useLibrarySources()
 const reindexing      = ref(false)
 
 async function loadProviders() {
   try {
-    providers.value = (await getProviders()).filter(p => p.active !== false)
-    selectedSources.value = providers.value.map(p => p.id)
+    providers.value = (await getProviders()).filter(p => p.active === true || p.public === true)
+    initIfEmpty(providers.value.map(p => p.id))
   } catch { /* noop */ }
 }
 function toggleSource(id: LibrarySource) {
-  selectedSources.value = selectedSources.value.includes(id)
-    ? selectedSources.value.filter(s => s !== id)
-    : [...selectedSources.value, id]
-  reload()
+  toggleSrc(id)   // le watcher sur selectedSources déclenche le reload
 }
 async function onReindex() {
   reindexing.value = true
   try { await reindex() } finally { reindexing.value = false; reload() }
 }
-const sourceIcon = (s?: LibrarySource) =>
-  s === 'spotify' ? 'mdi:spotify' : s === 'fileplayer' ? 'mdi:file-music' : 'i-lucide-music'
+const sourceIcon = (s?: LibrarySource) => {
+  switch ((s ?? '').toLowerCase()) {
+    case 'spotify':    return 'mdi:spotify'
+    case 'fileplayer': return 'mdi:file-music'
+    case 'youtube':    return 'mdi:youtube'
+    case 'deezer':     return 'i-simple-icons-deezer'
+    default:           return 'i-lucide-music'
+  }
+}
 
 /* ── Onglets ─────────────────────────────────────────────────────────────── */
 type Section = 'playlists' | 'albums' | 'artists'
@@ -58,6 +69,30 @@ const sections: { key: Section; label: string; icon: string }[] = [
 ]
 const active = ref<Section>('playlists')
 
+/* ── Mes playlists (DB) ─────────────────────────────────────────────────── */
+const dbPlaylists = ref<DbPlaylist[]>([])
+const newName     = ref('')
+const newSource   = ref<LibrarySource>('')
+const creating    = ref(false)
+
+const sourceItems = computed(() => providers.value.map(p => ({ label: p.name ?? p.id, value: p.id })))
+
+async function loadDb() {
+  try { dbPlaylists.value = await getDbPlaylists() } catch { /* noop */ }
+}
+async function createDb() {
+  const name = newName.value.trim()
+  if (!name) return
+  const source = newSource.value || providers.value[0]?.id
+  creating.value = true
+  try {
+    const pl = await createDbPlaylist(name, source)
+    newName.value = ''
+    await loadDb()
+    emit('select-db-playlist', pl)
+  } catch { /* noop */ } finally { creating.value = false }
+}
+
 /* ── State ───────────────────────────────────────────────────────────────── */
 const loading  = ref(false)
 const q        = ref('')
@@ -67,17 +102,17 @@ const artists   = ref<LibraryArtist[]>([])
 
 async function loadPlaylists() {
   loading.value = true
-  try { playlists.value = await getPlaylists({ q: q.value || undefined, sources: selectedSources.value, limit: 100 }) }
+  try { playlists.value = await getPlaylists({ q: q.value || undefined, sources: selectedSources.value }) }
   finally { loading.value = false }
 }
 async function loadAlbums() {
   loading.value = true
-  try { albums.value = await getAlbums({ q: q.value || undefined, sources: selectedSources.value, limit: 100 }) }
+  try { albums.value = await getAlbums({ q: q.value || undefined, sources: selectedSources.value }) }
   finally { loading.value = false }
 }
 async function loadArtists() {
   loading.value = true
-  try { artists.value = await getArtists({ q: q.value || undefined, sources: selectedSources.value, limit: 100 }) }
+  try { artists.value = await getArtists({ q: q.value || undefined, sources: selectedSources.value }) }
   finally { loading.value = false }
 }
 
@@ -90,6 +125,8 @@ function reload() {
 const _searchDebounced = useDebounceFn(reload, 300)
 watch(q, () => _searchDebounced())
 watch(active, reload)
+/* Refetch quand les sources changent (depuis la sidebar OU la home) */
+watch(selectedSources, () => reload(), { deep: true })
 
 function onRefresh() { emit('refresh'); reload() }
 
@@ -99,6 +136,7 @@ const trackCount = (o: any) => o.trackCount ?? o.track_count ?? null
 onMounted(async () => {
   await loadProviders()
   await loadPlaylists()
+  loadDb()
 })
 </script>
 

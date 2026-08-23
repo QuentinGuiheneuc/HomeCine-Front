@@ -36,6 +36,7 @@ const props = withDefaults(defineProps<{
   playerHeight?: number
   hasMore?: boolean
   loadingMore?: boolean
+  currentKey?: string
 }>(), {
   playerHeight: 104,
   hasMore: false,
@@ -47,6 +48,7 @@ const emit = defineEmits<{
   (e: 'play-track', uri: string): void
   (e: 'enqueue-all'): void
   (e: 'select-artist', id: string): void
+  (e: 'download-track', track: any): void
 }>()
 
 /* ---------- Computed ---------- */
@@ -83,6 +85,12 @@ const albumTypeLabel = computed(() => {
 function playAlbumFrom(_offset = 0) {
   emit('enqueue-all')
 }
+
+/* ---------- Scroll infini ---------- */
+const sentinel = ref<HTMLElement | null>(null)
+useIntersectionObserver(sentinel, ([entry]) => {
+  if (entry?.isIntersecting && props.hasMore && !props.loadingMore) emit('load-more')
+})
 </script>
 
 <template>
@@ -133,7 +141,8 @@ function playAlbumFrom(_offset = 0) {
         @dblclick="$emit('play-track', t.uri)"
       >
         <div class="flex items-center justify-center">
-          <span class="text-xs tabular-nums text-dimmed group-hover:hidden">{{ t.track_number }}</span>
+          <UIcon v-if="isNowPlaying(t, props.currentKey)" name="i-lucide-audio-lines" class="size-4 text-primary animate-pulse group-hover:hidden" />
+          <span v-else class="text-xs tabular-nums text-dimmed group-hover:hidden">{{ t.track_number }}</span>
           <UButton
             icon="i-lucide-play"
             variant="ghost"
@@ -145,7 +154,7 @@ function playAlbumFrom(_offset = 0) {
         </div>
 
         <div class="min-w-0">
-          <p class="truncate text-sm font-medium leading-tight">{{ t.name }}</p>
+          <p class="truncate text-sm font-medium leading-tight" :class="{ 'text-primary': isNowPlaying(t, props.currentKey) }">{{ t.name }}</p>
           <p class="truncate text-xs text-dimmed">
             <template v-for="(a, i) in (t.artists ?? [])" :key="a.id">
               <button
@@ -157,12 +166,15 @@ function playAlbumFrom(_offset = 0) {
           </p>
         </div>
 
-        <span class="text-xs tabular-nums text-dimmed text-right">{{ ms(t.duration_ms) }}</span>
+        <div class="flex items-center justify-end gap-1">
+          <UButton v-if="isYoutube(t)" icon="i-lucide-download" size="2xs" variant="ghost" color="neutral" title="Télécharger" class="opacity-0 group-hover:opacity-100" @click.stop="$emit('download-track', t)" />
+          <span class="text-xs tabular-nums text-dimmed text-right">{{ ms(t.duration_ms) }}</span>
+        </div>
       </div>
 
-      <div v-if="hasMore" class="p-3">
+      <div v-if="hasMore" ref="sentinel" class="flex justify-center p-3">
         <UButton :loading="loadingMore" variant="soft" icon="i-lucide-chevrons-down" @click="$emit('load-more')">
-          Charger plus
+          {{ loadingMore ? 'Chargement…' : 'Charger plus' }}
         </UButton>
       </div>
     </div>

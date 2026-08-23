@@ -46,6 +46,8 @@ const props = withDefaults(defineProps<{
   loadingMore?: boolean
   /** ID Spotify du user courant (ex: "11156740298") */
   userId?: string
+  /** Clé de la piste en cours de lecture */
+  currentKey?: string
 }>(), {
   playerHeight: 104,
   hasMore: false,
@@ -56,7 +58,18 @@ const emit = defineEmits<{
   (e: 'load-more'): void
   (e: 'play-in-context', payload: { contextUri?: string; offset: number }): void
   (e: 'enqueue-all'): void
+  (e: 'save-track', track: any): void
+  (e: 'download-track', track: any): void
 }>()
+
+/** Piste originale (LibraryTrack) conservée dans __src par le mapper */
+const src = (t: any) => t?.__src ?? t
+
+/* ---------- Scroll infini ---------- */
+const sentinel = ref<HTMLElement | null>(null)
+useIntersectionObserver(sentinel, ([entry]) => {
+  if (entry?.isIntersecting && props.hasMore && !props.loadingMore) emit('load-more')
+})
 
 /* ---------- Computed ---------- */
 const isLiked = computed(() => props.item?.id === 'liked')
@@ -172,12 +185,13 @@ function onRowPlay(idx: number) {
       <div
         v-for="(t, idx) in rows"
         :key="t.id"
-        class="group grid grid-cols-[2rem_2rem_1fr_1fr_4rem] gap-x-3 items-center px-2 py-1.5 hover:bg-elevated/40 rounded cursor-default"
+        class="group grid grid-cols-[2rem_2rem_1fr_1fr_5.5rem] gap-x-3 items-center px-2 py-1.5 hover:bg-elevated/40 rounded cursor-default"
         @dblclick="onRowPlay(idx)"
       >
-        <!-- Numéro / bouton play -->
+        <!-- Numéro / bouton play / indicateur -->
         <div class="flex items-center justify-center">
-          <span class="text-xs tabular-nums text-dimmed group-hover:hidden">{{ idx + 1 }}</span>
+          <UIcon v-if="isNowPlaying(t, props.currentKey)" name="i-lucide-audio-lines" class="size-4 text-primary animate-pulse group-hover:hidden" />
+          <span v-else class="text-xs tabular-nums text-dimmed group-hover:hidden">{{ idx + 1 }}</span>
           <UButton
             icon="i-lucide-play"
             variant="ghost"
@@ -197,7 +211,7 @@ function onRowPlay(idx: number) {
 
         <!-- Titre + artistes -->
         <div class="min-w-0">
-          <p class="truncate text-sm font-medium leading-tight">{{ t.name }}</p>
+          <p class="truncate text-sm font-medium leading-tight" :class="{ 'text-primary': isNowPlaying(t, props.currentKey) }">{{ t.name }}</p>
           <p class="truncate text-xs text-dimmed">
             {{ (t.artists || []).map(a => a.name).join(', ') }}
           </p>
@@ -206,13 +220,29 @@ function onRowPlay(idx: number) {
         <!-- Album name -->
         <p class="hidden md:block truncate text-xs text-dimmed col-start-4">{{ t.album?.name ?? '' }}</p>
 
-        <!-- Durée -->
-        <span class="text-xs tabular-nums text-dimmed text-right">{{ ms(t.duration_ms) }}</span>
+        <!-- Like + télécharger + durée -->
+        <div class="flex items-center justify-end gap-1">
+          <UButton
+            v-if="isYoutube(src(t))"
+            icon="i-lucide-download" size="2xs" variant="ghost" color="neutral"
+            title="Télécharger"
+            class="opacity-0 group-hover:opacity-100"
+            @click.stop="emit('download-track', src(t))"
+          />
+          <UButton
+            :icon="src(t).like ? 'mdi:heart' : 'mdi:heart-outline'"
+            size="2xs" variant="ghost"
+            :color="src(t).like ? 'primary' : 'neutral'"
+            :title="src(t).like ? 'Retirer des aimés' : 'Aimer'"
+            @click.stop="emit('save-track', src(t))"
+          />
+          <span class="text-xs tabular-nums text-dimmed w-9 text-right">{{ ms(t.duration_ms) }}</span>
+        </div>
       </div>
 
-      <div v-if="hasMore" class="p-3">
+      <div v-if="hasMore" ref="sentinel" class="flex justify-center p-3">
         <UButton :loading="loadingMore" variant="soft" icon="i-lucide-chevrons-down" @click="$emit('load-more')">
-          Charger plus
+          {{ loadingMore ? 'Chargement…' : 'Charger plus' }}
         </UButton>
       </div>
     </div>

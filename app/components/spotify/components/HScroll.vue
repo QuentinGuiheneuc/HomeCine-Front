@@ -78,7 +78,7 @@ onBeforeUnmount(() => {
     </button>
 
     <!-- Contenu défilable -->
-    <div ref="scroller" class="flex gap-3 overflow-x-auto pb-3 scroll-thin scroll-smooth">
+    <div ref="scroller" class="flex gap-3 overflow-x-auto pb-1 scroll-thin scroll-smooth">
       <slot />
     </div>
 

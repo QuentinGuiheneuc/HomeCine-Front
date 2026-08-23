@@ -1,4 +1,5 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+const ip = "192.168.1.19"
 export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
@@ -9,7 +10,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      wsBase: process.env.WS_BASE ?? 'ws://192.168.1.40:8099'
+      wsBase: process.env.WS_BASE ?? `ws://${ip}:8099`
     }
   },
   
@@ -17,9 +18,9 @@ export default defineNuxtConfig({
     routeRules: {
       // /refresh à la racine — REFRESH_TOKEN a path:/refresh côté serveur,
       // la requête doit arriver sur /refresh pour que le cookie soit envoyé
-      '/refresh':  { proxy: 'http://192.168.1.40:3007/refresh' },
+      '/refresh':  { proxy: `http://${ip}:3007/refresh` },
       // Toutes les autres routes API (login, logout, user, etc.)
-      '/proxy/**': { proxy: 'http://192.168.1.40:3007/**' }
+      '/proxy/**': { proxy: `http://${ip}:3007/**` }
     }
   },
 
@@ -35,7 +36,7 @@ export default defineNuxtConfig({
   vite: {
     define: {
       'process.env.API_URL': JSON.stringify(process.env.API_URL ?? '/proxy'),
-      'process.env.WS_BASE': JSON.stringify(process.env.WS_BASE ?? 'ws://192.168.1.40:8099')
+      'process.env.WS_BASE': JSON.stringify(process.env.WS_BASE ?? `ws://${ip}:8099`)
     }
   },
 

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { useLecteursWs } from '@/composables/useLecteursWs'
+import { useDeviceControlWs } from '@/composables/useDeviceControlWs'
+import { useNotifications } from '@/composables/useNotifications'
 import { getProviders, type LibraryProvider } from '@/src/api/library'
+import { formatTimeAgo } from '@vueuse/core'
+import http from '@/src/lib/https'
 
 const { isNotificationsSlideoverOpen } = useDashboard()
 const ws = useLecteursWs()
@@ -20,9 +24,84 @@ const featured = computed(() => {
 /* ── Sources (library) ──────────────────────────────────────────────────── */
 const providers = ref<LibraryProvider[]>([])
 const activeSources = computed(() => providers.value.filter(p => p.active !== false))
-onMounted(async () => {
-  try { providers.value = await getProviders() } catch { /* noop */ }
+
+/* ── Volume des pièces (devices) ────────────────────────────────────────── */
+const devCtrl = useDeviceControlWs()
+const rawDevices = ref<any[]>([])
+const audioByKey = ref<Record<string, any>>({})
+const volOverride = ref<Record<string, number>>({})
+
+const devKey = (d: any) => d.ip || d.allconfig?.interfaces?.address || d.host || ''
+
+const deviceRows = computed(() =>
+  rawDevices.value
+    .filter(d => Number(d.isalive) === 1)
+    .map(d => {
+      const key = devKey(d)
+      const audio = audioByKey.value[key]
+      const vals = audio?.output?.volume ? Object.values(audio.output.volume).map(Number).filter(v => !isNaN(v)) : []
+      const level = vals.length ? Math.round(vals.reduce((a: number, b: number) => a + b) / vals.length) : 0
+      return { key, name: d.name || d.description || key, online: true, level, hasAudio: !!audio?.output }
+    })
+)
+
+function deviceVol(key: string, fallback: number) {
+  return key in volOverride.value ? volOverride.value[key] : fallback
+}
+function setDeviceVol(key: string, v: number) {
+  volOverride.value = { ...volOverride.value, [key]: v }
+  devCtrl.send('Set.output.volume', { targetIp: key, percent: v })
+}
+
+const offDevCtrl = devCtrl.on((msg: any) => {
+  if (msg?.msg?.method === 'State.audio' && msg.from && msg.msg?.State?.audio) {
+    audioByKey.value = { ...audioByKey.value, [String(msg.from)]: msg.msg.State.audio }
+  } else if (msg?.method === 'RES.Device' && msg.msg) {
+    rawDevices.value = msg.msg
+  }
 })
+
+function requestDevices() {
+  devCtrl.send('Get.Device')
+  devCtrl.send('Get.audio')
+}
+watch(() => devCtrl.status.value, s => { if (s === 'connected') requestDevices() })
+
+/* ── Règles de contrôle ─────────────────────────────────────────────────── */
+const rules = ref<any[]>([])
+const ruleBusy = ref<string | null>(null)
+
+async function loadRules() {
+  try {
+    const res = await http.get('/control/rules')
+    rules.value = res.data?.rules || []
+  } catch { /* noop */ }
+}
+async function toggleRule(rule: any) {
+  if (!rule?.id) return
+  ruleBusy.value = rule.id
+  try {
+    await http.patch(`/control/rules/${rule.id}/toggle`)
+    await loadRules()
+  } catch { /* noop */ } finally { ruleBusy.value = null }
+}
+
+/* ── Notifications récentes ─────────────────────────────────────────────── */
+const notif = useNotifications()
+const recentNotifs = computed(() => (notif.history.value ?? []).slice(0, 5))
+const notifIcon = (type: string) => (notif.EVENT_ICON as any)?.[type] ?? 'i-lucide-bell'
+const notifTime = (n: any) => {
+  const t = n.createdAt ?? n.timestamp ?? n.date
+  return t ? formatTimeAgo(new Date(typeof t === 'number' ? (t < 1e12 ? t * 1000 : t) : t)) : ''
+}
+
+onMounted(async () => {
+  if (devCtrl.status.value === 'connected') requestDevices()
+  try { providers.value = await getProviders() } catch { /* noop */ }
+  loadRules()
+  notif.loadHistory()
+})
+onUnmounted(() => offDevCtrl())
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 const toTime = (ms?: number | null) => {
@@ -36,9 +115,9 @@ const progress = (l: any) => {
   return dur ? Math.min(100, (pos / dur) * 100) : 0
 }
 const lecteurIcon = (type?: string) =>
-  type === 'spotify' ? 'mdi:spotify' : type === 'fileplayer' ? 'mdi:file-music' : 'i-lucide-music'
+  type === 'spotify' ? 'mdi:spotify' : type === 'fileplayer' ? 'mdi:file-music' : type === 'youtube' ? 'mdi:youtube' : type === 'deezer' ? 'i-simple-icons-deezer' : 'i-lucide-music'
 const sourceIcon = (s?: string) =>
-  s === 'spotify' ? 'mdi:spotify' : s === 'fileplayer' ? 'mdi:file-music' : s === 'deezer' ? 'i-simple-icons-deezer' : 'i-lucide-music'
+  s === 'spotify' ? 'mdi:spotify' : s === 'fileplayer' ? 'mdi:file-music' : s === 'youtube' ? 'mdi:youtube' : s === 'deezer' ? 'i-simple-icons-deezer' : 'i-lucide-music'
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -168,6 +247,7 @@ const shortcuts = [
               v-for="l in featured"
               :key="l.id"
               variant="subtle"
+              class="min-w-0"
               :ui="{ container: 'p-4 gap-y-3' }"
             >
               <div class="flex items-center gap-3">
@@ -180,8 +260,8 @@ const shortcuts = [
                   <UIcon :name="lecteurIcon(l.type)" class="size-6 text-dimmed" />
                 </div>
                 <div class="min-w-0 flex-1">
-                  <p class="truncate font-medium">{{ l.track?.title ?? 'Aucune piste' }}</p>
-                  <p class="truncate text-xs text-dimmed">{{ (l.track?.artists ?? []).join(', ') || l.name }}</p>
+                  <MarqueeText class="font-medium" :text="l.track?.title ?? 'Aucune piste'" />
+                  <MarqueeText class="text-xs text-dimmed" :text="(l.track?.artists ?? []).join(', ') || l.name" />
                   <div class="flex items-center gap-1.5 mt-0.5">
                     <UIcon :name="lecteurIcon(l.device_type ?? l.type)" class="size-3 text-dimmed" />
                     <span class="text-[11px] text-dimmed truncate">{{ l.name }}</span>
@@ -210,6 +290,98 @@ const shortcuts = [
                 </UBadge>
               </div>
             </UPageCard>
+          </div>
+        </section>
+
+        <!-- ── Volume des pièces ──────────────────────────────────────────── -->
+        <section v-if="deviceRows.length">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Volume des pièces</h2>
+            <UButton to="/devices" size="xs" variant="link" color="primary" trailing-icon="i-lucide-arrow-right">
+              Tous les appareils
+            </UButton>
+          </div>
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <UPageCard
+              v-for="d in deviceRows"
+              :key="d.key"
+              variant="subtle"
+              :ui="{ container: 'p-4 gap-y-2' }"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 min-w-0">
+                  <UIcon name="mdi:speaker" class="size-4 text-primary shrink-0" />
+                  <span class="font-medium truncate">{{ d.name }}</span>
+                </div>
+                <span class="text-sm font-mono tabular-nums text-dimmed">{{ deviceVol(d.key, d.level) }}%</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <UIcon
+                  :name="deviceVol(d.key, d.level) === 0 ? 'i-lucide-volume-x' : deviceVol(d.key, d.level) < 50 ? 'i-lucide-volume-1' : 'i-lucide-volume-2'"
+                  class="size-4 text-dimmed shrink-0"
+                />
+                <input
+                  type="range" min="0" max="100"
+                  :value="deviceVol(d.key, d.level)"
+                  :disabled="!d.hasAudio"
+                  class="flex-1 accent-current h-1.5 range-primary-0 cursor-pointer"
+                  @input="setDeviceVol(d.key, +($event.target as HTMLInputElement).value)"
+                />
+              </div>
+            </UPageCard>
+          </div>
+        </section>
+
+        <!-- ── Règles de contrôle ─────────────────────────────────────────── -->
+        <section v-if="rules.length">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Règles de contrôle</h2>
+            <UButton to="/control" size="xs" variant="link" color="primary" trailing-icon="i-lucide-arrow-right">
+              Gérer
+            </UButton>
+          </div>
+          <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <div
+              v-for="rule in rules"
+              :key="rule.id"
+              class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-default bg-elevated/30"
+            >
+              <UIcon name="whh:controlpanelalt" class="size-4 text-dimmed shrink-0" />
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-medium">{{ rule.name || rule.id }}</p>
+                <p class="truncate text-[11px] text-dimmed font-mono">{{ rule.from || '—' }} · {{ rule.action || '—' }}</p>
+              </div>
+              <USwitch
+                :model-value="rule.enabled !== false"
+                :disabled="ruleBusy === rule.id"
+                @update:model-value="toggleRule(rule)"
+              />
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Notifications récentes ─────────────────────────────────────── -->
+        <section v-if="recentNotifs.length">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Notifications récentes</h2>
+            <UButton size="xs" variant="link" color="primary" trailing-icon="i-lucide-arrow-right" @click="isNotificationsSlideoverOpen = true">
+              Tout voir
+            </UButton>
+          </div>
+          <div class="rounded-xl border border-default divide-y divide-default overflow-hidden">
+            <div
+              v-for="n in recentNotifs"
+              :key="n.id"
+              class="flex items-center gap-3 px-4 py-2.5"
+              :class="{ 'bg-primary/5': !n.read }"
+            >
+              <UIcon :name="notifIcon(n.type)" class="size-4 shrink-0" :class="n.read ? 'text-dimmed' : 'text-primary'" />
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm" :class="{ 'font-medium': !n.read }">{{ n.title }}</p>
+                <p v-if="n.body" class="truncate text-xs text-dimmed">{{ n.body }}</p>
+              </div>
+              <span class="text-[11px] text-dimmed shrink-0">{{ notifTime(n) }}</span>
+            </div>
           </div>
         </section>
 

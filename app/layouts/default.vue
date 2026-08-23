@@ -10,6 +10,7 @@ import LecteurQueueSlideover from '~/components/LecteurQueueSlideover.vue'
 const { menue } = useDashboard()
 const { isAuthenticated } = useAuth()
 const { isAdmin } = useCurrentUser()
+const { isEnabled: isProtocolEnabled } = useProtocols()
 const open = menue
 
 const links = computed<NavigationMenuItem[][]>(() => {
@@ -27,6 +28,7 @@ const links = computed<NavigationMenuItem[][]>(() => {
 
   return [[
     { label: 'Maison',    icon: 'i-lucide-house',        to: '/',        onSelect: () => { open.value = false } },
+    { label: 'Musique',   icon: 'i-lucide-music',        to: '/musique',  onSelect: () => { open.value = false } },
     {
       label: 'EQ', to: '/eq', icon: 'si:equalizer-fill', defaultOpen: false, type: 'trigger',
       children: [
@@ -37,17 +39,27 @@ const links = computed<NavigationMenuItem[][]>(() => {
     },
     { label: 'Lecteur',   icon: 'simple-icons:gocd',     to: '/lecteurs', onSelect: () => { open.value = false } },
     { label: 'Devices',   icon: 'mdi:speaker',           to: '/devices',  onSelect: () => { open.value = false } },
-    { label: 'Musique',   icon: 'i-lucide-music',        to: '/musique',  onSelect: () => { open.value = false } },
-    { label: 'Bluetooth', icon: 'i-lucide-bluetooth',    to: '/bt',       onSelect: () => { open.value = false } },
+    
+    ...(isProtocolEnabled('bluetooth') ? [
+      { label: 'Bluetooth', icon: 'i-lucide-bluetooth', to: '/bt', onSelect: () => { open.value = false } } as NavigationMenuItem
+    ] : []),
     { label: 'Controle',  icon: 'whh:controlpanelalt',   to: '/control',  onSelect: () => { open.value = false } },
-    {
-      label: 'Snap', to: '/snap', icon: 'mdi:cast-audio', defaultOpen: false, type: 'trigger',
-      children: [
-        { label: 'General', to: '/snap',               exact: true, onSelect: () => { open.value = false } },
-        { label: 'Config',  to: '/snap/snapconfig',               onSelect: () => { open.value = false } },
-        { label: 'Presset', to: '/snap/presset',                  onSelect: () => { open.value = false } }
-      ]
-    },
+    ...(isProtocolEnabled('snapcast') ? [
+      {
+        label: 'Snap', to: '/snap', icon: 'mdi:cast-audio', defaultOpen: false, type: 'trigger',
+        children: [
+          { label: 'General', to: '/snap',               exact: true, onSelect: () => { open.value = false } },
+          { label: 'Config',  to: '/snap/snapconfig',               onSelect: () => { open.value = false } },
+          { label: 'Presset', to: '/snap/presset',                  onSelect: () => { open.value = false } }
+        ]
+      } as NavigationMenuItem
+    ] : []),
+    ...(isProtocolEnabled('vban') ? [
+      { label: 'VBAN', icon: 'i-lucide-network', to: '/vban', onSelect: () => { open.value = false } } as NavigationMenuItem
+    ] : []),
+    ...(isProtocolEnabled('sendspin') ? [
+      { label: 'SendSpin', icon: 'i-lucide-radio', to: '/sendspin', onSelect: () => { open.value = false } } as NavigationMenuItem
+    ] : []),
     {
       label: 'Settings', to: '/settings', icon: 'i-lucide-settings', defaultOpen: false, type: 'trigger',
       children: settingsChildren

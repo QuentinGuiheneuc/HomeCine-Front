@@ -11,6 +11,7 @@ import {
 import { typeStreamOptions } from '@/utils/lecteurOptions'
 import { typeItems } from '@/types/lecteur'
 import { getEqPresets, type EqPreset } from '~/src/api/eq'
+import TokenUserSelect from '@/components/lecteur/TokenUserSelect.vue'
 
 const toast = useToast()
 const route = useRoute()
@@ -121,6 +122,21 @@ function toggleEqPreset(id: number) {
 
 const canShowLocalStream = computed(() => cfg.value?.typeStream === 'localStream')
 const canShowFifo = computed(() => cfg.value?.typeStream === 'StreamOutFifo')
+
+const AUTH_TYPES = ['spotify', 'deezer', 'youtube']
+const isAuthType = computed(() => AUTH_TYPES.includes(lecteur.value?.type as string))
+
+/** État du token d'auth (null si le lecteur n'en a pas) */
+const tokenInfo = computed<{ label: string; color: 'success' | 'warning' | 'error'; icon: string; expires?: string } | null>(() => {
+  const t = lecteur.value?.token
+  if (!t) return null
+  const expired = t.expiresAt != null && t.expiresAt < Date.now()
+  const expires = t.expiresAt != null ? new Date(t.expiresAt).toLocaleString() : undefined
+  if (!t.connected) return { label: 'Déconnecté', color: 'error', icon: 'i-lucide-unplug', expires }
+  if (expired)      return { label: 'Expiré',      color: 'warning', icon: 'i-lucide-clock-alert', expires }
+  if (!t.verified)  return { label: 'Non vérifié', color: 'warning', icon: 'i-lucide-shield-alert', expires }
+  return { label: 'Connecté', color: 'success', icon: 'i-lucide-shield-check', expires }
+})
 
 async function fetchOne() {
   try {
@@ -239,7 +255,7 @@ onMounted(async () => {
         <div class="min-w-0">
           <div class="text-sm text-dimmed">Lecteur #{{ id }}</div>
           <div class="text-lg font-semibold truncate">{{ lecteur.name }}</div>
-          <div class="text-xs text-dimmed mt-1">
+          <div class="text-xs text-dimmed mt-1 flex items-center gap-1.5 flex-wrap">
             <UBadge
               :color="lecteur.isStart?.alive ? 'primary' : 'neutral'"
               variant="subtle"
@@ -247,11 +263,29 @@ onMounted(async () => {
             >
               {{ lecteur.isStart?.alive ? 'Actif' : 'Arrêté' }}
             </UBadge>
+            <UBadge v-if="lecteur.isStart?.pid" color="neutral" variant="subtle" class="text-[10px] font-mono">
+              pid {{ lecteur.isStart.pid }}
+            </UBadge>
+            <UTooltip v-if="tokenInfo" :text="tokenInfo.expires ? `Expire : ${tokenInfo.expires}` : ''">
+              <UBadge :color="tokenInfo.color" variant="subtle" class="text-[10px]" :icon="tokenInfo.icon">
+                {{ tokenInfo.label }}
+              </UBadge>
+            </UTooltip>
           </div>
         </div>
 
         <div class="flex flex-wrap gap-2 justify-end">
           <UButton color="neutral" variant="ghost" @click="router.push('/lecteurs')">Retour</UButton>
+
+          <UButton
+            v-if="isAuthType"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-key-round"
+            @click="router.push('/settings/credentials')"
+          >
+            Reconnecter
+          </UButton>
 
           <UButton
             v-if="!lecteur.isStart?.alive"
@@ -299,6 +333,8 @@ onMounted(async () => {
         <h3 class="font-semibold">Configuration lecteur</h3>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <TokenUserSelect v-if="isAuthType" v-model="cfg.tokenUserId" :provider="lecteur.type" class="md:col-span-2" />
+
           <div>
             <label class="text-sm text-dimmed">Backend</label>
             <UInput v-model="cfg.backend" placeholder="pipe" />

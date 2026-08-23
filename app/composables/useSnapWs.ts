@@ -1,4 +1,4 @@
-import appConfig from '@/src/config'
+import { wsProxyUrl } from '@/utils/ws'
 /**
  * useSnapWs — WebSocket Snapcast (JSON-RPC avec suivi des réponses par id)
  *
@@ -25,7 +25,7 @@ export function useSnapWs() {
   const _notifHandlers = new Set<(data: any) => void>()
 
   const { status, error, connect, disconnect, send, on } = useWs(
-    `${appConfig.WS_URL}/Snap`,
+    wsProxyUrl('Snap'),
     { reconnect: true, reconnectDelay: 2000 }
   )
 

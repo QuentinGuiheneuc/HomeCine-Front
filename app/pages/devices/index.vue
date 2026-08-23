@@ -69,7 +69,7 @@ const inChannelPercent  = ref<Record<string, Record<string, number>>>({})
 
 /* ─── WebSocket ──────────────────────────────────────────────────────────── */
 
-const { status: wsStatus, send: wsSend, on: wsOn } = useDeviceControlWs()
+const { status: wsStatus, send: wsSend, on: wsOn, connect: wsConnect } = useDeviceControlWs()
 
 watch(wsStatus, s => { if (s === 'connected'){ 
   wsSend('Get.Device')
@@ -265,6 +265,7 @@ function requestData() {
 }
 
 onMounted(() => {
+  wsConnect()   // s'assure que la connexion est ouverte (idempotent)
   // Si le WS singleton est déjà connecté, le watch ne se déclenche pas → envoi immédiat
   if (wsStatus.value === 'connected') requestData()
   pollTimerAudio = setInterval(() => wsSend('Get.audio'),  10_000)

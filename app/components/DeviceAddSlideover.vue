@@ -64,7 +64,7 @@ function connectWs() {
   wsErrorMsg.value = null
 
   try {
-    ws = new WebSocket(`${config.WS_URL_BROADCAST}/Device`)
+    ws = new WebSocket(wsProxyUrl('Device'))
   } catch (err: any) {
     console.error('[WS] create error', err)
     wsStatus.value = 'disconnected'

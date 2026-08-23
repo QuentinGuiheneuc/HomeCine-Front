@@ -1,5 +1,7 @@
+import { createSharedComposable } from '@vueuse/core'
 import type { LecteurState, HeartbeatEntry, QueueItem, RepeatMode } from '@/types/lecteur'
-import appConfig from '@/src/config'
+import { wsProxyUrl } from '@/utils/ws'
+import { refreshAccessToken } from '@/src/lib/https'
 
 /**
  * useLecteursWs — états temps réel des lecteurs via WebSocket
@@ -17,15 +19,23 @@ import appConfig from '@/src/config'
  *   Lecteur.GetState | Lecteur.GetQueue | Lecteur.Play | Lecteur.Pause
  *   Lecteur.Resume   | Lecteur.Next     | Lecteur.Prev | Lecteur.SetVolume
  *   Lecteur.Seek
+ *
+ * Partagé (createSharedComposable) : une seule connexion + un seul état pour
+ * toute l'app (player, slideovers, pages…).
  */
-export function useLecteursWs() {
+function _useLecteursWs() {
   const toast = useToast()
 
   const lecteursById = ref<Record<number, LecteurState>>({})
   const queuesById   = ref<Record<number, QueueItem[]>>({})
+  const likeById     = ref<Record<number, { sourceId?: string; like: boolean }>>({})
+
+  // URL en ref : après un refresh on la reconstruit pour que la reconnexion
+  // reparte avec le token frais (le token voyage en ?token=)
+  const wsUrl = ref(wsProxyUrl('lecteur-live'))
 
   const { status: wsStatus, error: wsError, connect, send, on } = useWs(
-    `${appConfig.WS_URL}/lecteur-live`,
+    wsUrl,
     {
       reconnect: true,
       reconnectDelay: 2000,
@@ -34,6 +44,36 @@ export function useLecteursWs() {
       }
     }
   )
+
+  /* ── Auth socket : Lecteur.AuthError → /refresh → Lecteur.Auth ─────────── */
+  let authRetries = 0
+  let refreshing  = false
+
+  /**
+   * Traite {"method":"Lecteur.AuthError","reason":"expired"} :
+   * rafraîchit le token (refresh partagé avec axios), reconstruit l'URL du socket
+   * (le token voyage en ?token=) puis renvoie Lecteur.Auth sur la même socket.
+   * Si la socket a été fermée par le serveur, on reconnecte avec le token frais.
+   */
+  async function onAuthError(reason?: string) {
+    if (!import.meta.client || refreshing) return
+    if (authRetries >= 3) {                       // garde anti-boucle
+      toast.add({ title: "Session expirée", description: "Reconnectez-vous.", color: "error" })
+      return
+    }
+    authRetries++
+    refreshing = true
+    try {
+      const token = await refreshAccessToken()    // pose le cookie TOKEN
+      if (!token) {                               // refresh KO → session morte
+        toast.add({ title: "Session expirée", description: reason ?? "Reconnectez-vous.", color: "error" })
+        return
+      }
+      wsUrl.value = wsProxyUrl("lecteur-live")    // prochaine (re)connexion = token frais
+      const sent = send({ method: "Lecteur.Auth", token })
+      if (!sent) connect()                        // socket fermée → reconnexion
+    } finally { refreshing = false }
+  }
 
   on((msg) => {
     switch (msg?.method) {
@@ -67,6 +107,7 @@ export function useLecteursWs() {
               ...updated[entry.id],
               alive:           entry.alive,
               playing:         entry.playing,
+              paused:          entry.paused,
               temp:            entry.temp,
               volume:          entry.volume          ?? updated[entry.id].volume,
               device_type:     entry.device_type     ?? updated[entry.id].device_type,
@@ -81,6 +122,23 @@ export function useLecteursWs() {
       case 'Lecteur.Queue': {
         if (typeof msg.id !== 'number' || !Array.isArray(msg.queue)) break
         queuesById.value = { ...queuesById.value, [msg.id]: msg.queue as QueueItem[] }
+        break
+      }
+
+      case 'Lecteur.Like': {
+        if (typeof msg.id !== 'number') break
+        likeById.value = { ...likeById.value, [msg.id]: { sourceId: msg.sourceId, like: !!msg.like } }
+        break
+      }
+
+      case 'Lecteur.AuthError': {
+        onAuthError(msg.reason)   // reason: 'expired' → refresh puis Lecteur.Auth
+        break
+      }
+
+      case 'Lecteur.Auth': {
+        // Auth acceptée → on peut réinitialiser le compteur
+        if (msg.ok !== false) authRetries = 0
         break
       }
 
@@ -113,19 +171,25 @@ export function useLecteursWs() {
 
   const lecteurs = computed(() => Object.values(lecteursById.value))
 
-  onMounted(connect)
+  // Composable partagé → pas de contexte de composant : on connecte directement (client)
+  if (import.meta.client) connect()
 
   return {
     wsStatus,
     wsError,
     lecteursById,
     queuesById,
+    likeById,
     lecteurs,
     connect,
     cmd,
 
     getState:       ()                                              => cmd('Lecteur.GetState'),
     getQueue:  (id: number | null | undefined)                 => withId('Lecteur.GetQueue',  id),
+    /** Bascule le like de la piste courante (auth via ?token= du handshake) */
+    toggleLike: (id: number | null | undefined)                => withId('Lecteur.ToggleLike', id),
+    /** Demande l'état du like (réponse Lecteur.Like) */
+    getLike:    (id: number | null | undefined)                => withId('Lecteur.GetLike',    id),
     play:      (id: number | null | undefined, uri?: string)   => withId('Lecteur.Play',       id, uri ? { uri } : {}),
     pause:     (id: number | null | undefined)                 => withId('Lecteur.Pause',      id),
     resume:    (id: number | null | undefined)                 => withId('Lecteur.Resume',     id),
@@ -144,6 +208,10 @@ export function useLecteursWs() {
     removeFromQueue: (id: number | null | undefined, index: number)   => withId('Lecteur.RemoveFromQueue', id, { index }),
     /** Déplace un élément de la queue (from → to) sans couper la lecture */
     moveInQueue:     (id: number | null | undefined, from: number, to: number) => withId('Lecteur.MoveInQueue', id, { from, to }),
+    /** Vide entièrement la file (FilePlayer / YouTube / Deezer) */
+    clearQueue:      (id: number | null | undefined)                  => withId('Lecteur.ClearQueue',      id),
+    /** Télécharge une piste (YouTube) via le lecteur — { videoId, format } */
+    download:        (id: number | null | undefined, videoId: string, format = 'best') => withId('Lecteur.Download', id, { videoId, format }),
 
     /** Active/désactive le shuffle */
     toggleShuffle(id: number | null | undefined) {
@@ -177,3 +245,5 @@ export function useLecteursWs() {
     }
   }
 }
+
+export const useLecteursWs = createSharedComposable(_useLecteursWs)

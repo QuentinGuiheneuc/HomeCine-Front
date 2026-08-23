@@ -1,4 +1,6 @@
 ﻿<script setup lang="ts">
+import { getSnapState, restoreSnap, clearSnapState, hasSnapState } from '@/src/api/snap'
+
 const { menue } = useDashboard()
 const toast = useToast()
 
@@ -26,6 +28,14 @@ type SnapClient = {
     volume?: SnapVolume
     latency?: number
     name?: string
+    channel_map?: number[]
+  }
+  device?: {
+    channels?: number       // nb de sorties du périphérique du client
+    bits?: number
+    rate?: number
+    description?: string
+    name?: string
   }
   group_id?: string
 }
@@ -42,6 +52,12 @@ type SnapStream = {
   id: string
   uri?: {
     raw?: string
+    query?: {
+      sampleformat?: string   // "48000:16:8" → rate:bits:canaux
+      codec?: string
+      name?: string
+      chunk_ms?: string
+    }
   }
 }
 
@@ -87,6 +103,13 @@ const offNotif = onNotif((msg) => {
     const clientId = String(msg.params.id || '')
     const volume = msg.params.volume as SnapVolume
     if (clientId && volume) upsertClientVolume(clientId, volume)
+    return
+  }
+
+  if (msg?.method === 'Client.OnChannelMapChanged' && msg.params) {
+    const clientId = String(msg.params.id || '')
+    const channelMap = msg.params.channel_map as number[]
+    if (clientId && Array.isArray(channelMap)) upsertClientChannelMap(clientId, channelMap)
     return
   }
 
@@ -161,6 +184,28 @@ function upsertClientVolume(clientId: string, volume: SnapVolume) {
   }
 }
 
+function upsertClientChannelMap(clientId: string, channel_map: number[]) {
+  const cid = clientId.toLowerCase()
+
+  const c = clients.value.find(x => x.id.toLowerCase() === cid)
+  if (c) {
+    c.config = {
+      ...c.config,
+      channel_map
+    }
+  }
+
+  for (const g of groups.value) {
+    const gc = g.clients?.find(x => x.id.toLowerCase() === cid)
+    if (gc) {
+      gc.config = {
+        ...gc.config,
+        channel_map
+      }
+    }
+  }
+}
+
 function syncGroupsFromClients() {
   for (const g of groups.value) {
     g.clients = clients.value.filter(c => c.group_id?.toLowerCase() === g.id.toLowerCase())
@@ -215,6 +260,54 @@ async function toggleMute(clientId: string, v?: SnapVolume) {
     err(e?.message || 'Mute a échoué')
   }
 }
+
+/* Nombre de canaux d'un flux (depuis sampleformat "48000:16:8" → 8) */
+function streamChannels(streamId?: string): number {
+  const s = streams.value.find(x => x.id === streamId)
+  const ch = Number(s?.uri?.query?.sampleformat?.split(':')[2])
+  return Number.isInteger(ch) && ch > 0 ? ch : 0
+}
+
+/* Envoie Client.SetChannelMap { id, channel_map: [...] } (+ MàJ optimiste) */
+async function applyChannelMap(clientId: string, channel_map: number[]) {
+  try {
+    await rpc('Client.SetChannelMap', { id: clientId, channel_map })
+    upsertClientChannelMap(clientId, channel_map)
+    ok('Channel map mis à jour')
+  } catch (e: any) {
+    err(e?.message || 'Client.SetChannelMap a échoué')
+  }
+}
+
+/* ── Modal de routage (channel map) ─────────────────────────────────────── */
+const cmOpen       = ref(false)
+const cmClient     = ref<SnapClient | null>(null)
+const cmChannels   = ref(0)             // nb de canaux SOURCE (lignes)
+const cmMaxOutputs = ref(0)             // sorties autorisées = device.channels (colonnes max)
+const cmDraft      = ref<number[]>([])  // sortie i → source cmDraft[i]
+
+function openChannelMap(c: SnapClient, g: SnapGroup) {
+  cmChannels.value   = streamChannels(g.stream_id)                     // sources dispo
+  cmMaxOutputs.value = c.device?.channels ?? cmChannels.value          // sorties autorisées (device)
+  const cm = c.config?.channel_map
+  const src = Math.max(0, cmChannels.value - 1)
+  cmDraft.value = (Array.isArray(cm) && cm.length)
+    ? cm.slice(0, cmMaxOutputs.value).map(v => Math.min(Number(v) || 0, src))   // borné aux sorties/sources
+    : Array.from({ length: cmMaxOutputs.value }, (_, i) => Math.min(i, src))     // défaut identité
+  cmClient.value = c
+  cmOpen.value = true
+}
+
+/* Application EN DIRECT à chaque changement */
+function applyDraft() {
+  if (cmClient.value) applyChannelMap(cmClient.value.id, [...cmDraft.value])
+}
+function setOutput(i: number, src: number) { cmDraft.value[i] = src; applyDraft() }
+function addOutput() {
+  if (cmDraft.value.length >= cmMaxOutputs.value) return   // pas plus que device.channels
+  cmDraft.value.push(0); applyDraft()
+}
+function removeOutput(i: number) { cmDraft.value.splice(i, 1); applyDraft() }
 async function removeClientFromGroup(groupId: string, clientId: string) {
   const group = groups.value.find(g => g.id === groupId)
 
@@ -393,11 +486,45 @@ async function submitCreate() {
   }
 }
 
+/** ========= Restauration (persistance serveur) ========= */
+const snapHasState = ref(false)
+const restoring = ref(false)
+const stateBusy = ref(false)
+
+async function loadSnapState() {
+  try { snapHasState.value = hasSnapState(await getSnapState()) }
+  catch { /* noop */ }
+}
+
+async function restoreState() {
+  if (!confirm('Réappliquer la configuration sauvegardée (regroupements, noms, flux, volumes) ?')) return
+  restoring.value = true
+  try {
+    await restoreSnap()
+    ok('Configuration restaurée')
+    setTimeout(refresh, 400)
+  } catch (e: any) {
+    err(e?.response?.data?.error || e?.message || 'Restauration impossible')
+  } finally { restoring.value = false }
+}
+
+async function clearState() {
+  if (!confirm('Effacer la configuration Snapcast sauvegardée ?')) return
+  stateBusy.value = true
+  try {
+    await clearSnapState()
+    snapHasState.value = false
+    ok('Configuration sauvegardée effacée')
+  } catch (e: any) {
+    err(e?.response?.data?.error || 'Suppression impossible')
+  } finally { stateBusy.value = false }
+}
+
 /** ========= UI ========= */
 const hasAnyData = computed(() => groups.value.length > 0 || streams.value.length > 0)
 
 /** ========= Lifecycle ========= */
-onMounted(connect)
+onMounted(() => { connect(); loadSnapState() })
 
 onUnmounted(() => {
   offNotif()
@@ -432,6 +559,24 @@ onUnmounted(() => {
             <UButton color="neutral" icon="i-lucide-refresh-ccw" @click="refresh">
               Rafraîchir
             </UButton>
+
+            <UTooltip :text="snapHasState ? 'Réappliquer la configuration sauvegardée' : 'Aucune configuration sauvegardée'">
+              <UButton
+                color="neutral" icon="i-lucide-history"
+                :loading="restoring" :disabled="!snapHasState"
+                @click="restoreState"
+              >
+                Restaurer
+              </UButton>
+            </UTooltip>
+
+            <UTooltip text="Effacer la configuration sauvegardée">
+              <UButton
+                color="error" variant="ghost" icon="i-lucide-trash-2"
+                :loading="stateBusy" :disabled="!snapHasState"
+                @click="clearState"
+              />
+            </UTooltip>
 
             <UButton color="primary" icon="i-lucide-plus" @click="openCreate">
               Nouveau groupe
@@ -587,6 +732,16 @@ onUnmounted(() => {
                   @input="setClientVolume(c.id, ($event.target as HTMLInputElement).valueAsNumber)"
                   @wheel.prevent="onWheelMaster($event, c.id, c.config?.volume)"
                 />
+
+                <!-- Routage (channel map) : ouvre un modal de menus par canal de sortie -->
+                <div v-if="streamChannels(g.stream_id) > 0" class="flex items-center gap-2">
+                  <UButton size="xs" color="neutral" variant="soft" icon="i-lucide-route" @click="openChannelMap(c, g)">
+                    Routage
+                  </UButton>
+                  <span v-if="c.config?.channel_map?.length" class="text-xs text-dimmed font-mono truncate">
+                    [{{ c.config.channel_map.join(', ') }}]
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -752,5 +907,64 @@ onUnmounted(() => {
         </div>
       </template>
     </UCard>
+
+    <!-- Modal Routage (channel map) — matrice source × sortie, application en direct -->
+    <UModal v-model:open="cmOpen" :title="`Routage — ${cmClient?.name || cmClient?.host?.name || cmClient?.id || ''}`" :ui="{ content: 'max-w-fit' }">
+      <template #content>
+        <div class="p-5 space-y-3">
+          <div class="flex items-center justify-between gap-4">
+            <p class="text-xs text-dimmed">
+              Ligne = <b>source</b>, colonne = <b>sortie</b>. Clic = router (en direct).
+              <span class="text-dimmed/70">· {{ cmDraft.length }}/{{ cmMaxOutputs }} sorties</span>
+            </p>
+            <UButton
+              icon="i-lucide-plus" size="xs" variant="soft" color="neutral"
+              :disabled="cmDraft.length >= cmMaxOutputs"
+              @click="addOutput"
+            >Sortie</UButton>
+          </div>
+
+          <p v-if="!cmDraft.length || !cmChannels" class="text-sm text-dimmed italic py-2">Aucune sortie / flux sans canaux.</p>
+
+          <div v-else class="overflow-auto max-h-[62vh]">
+            <table class="border-separate" style="border-spacing: 4px">
+              <thead>
+                <tr>
+                  <th class="w-8 h-8 text-dimmed">
+                    <UIcon name="i-lucide-x" class="size-4" />
+                  </th>
+                  <th v-for="(src, o) in cmDraft" :key="o" class="align-bottom">
+                    <div class="flex flex-col items-center gap-0.5">
+                      <span class="text-[11px] font-mono text-dimmed">{{ o }}</span>
+                      <UButton icon="i-lucide-x" size="2xs" color="error" variant="ghost" :padded="false" class="p-0.5" @click="removeOutput(o)" />
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="s in cmChannels" :key="s">
+                  <td class="text-[11px] font-mono text-dimmed text-right pr-1 w-8">{{ s - 1 }}</td>
+                  <td v-for="(src, o) in cmDraft" :key="o" class="p-0">
+                    <button
+                      class="w-8 h-8 rounded-md border border-default/60 transition-colors"
+                      :class="cmDraft[o] === (s - 1)
+                        ? 'bg-primary hover:bg-primary/90'
+                        : 'bg-error/15 hover:bg-error/30'"
+                      :title="`Sortie ${o} ← Source ${s - 1}`"
+                      @click="setOutput(o, s - 1)"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="flex items-center justify-between border-t border-default pt-3">
+            <span class="text-xs text-dimmed font-mono">[{{ cmDraft.join(', ') }}]</span>
+            <UButton label="Fermer" color="neutral" variant="soft" @click="cmOpen = false" />
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

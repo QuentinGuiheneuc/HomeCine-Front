@@ -1,5 +1,5 @@
 import type { WsStatus } from './useWs'
-import appConfig from '@/src/config'
+import { wsProxyUrl } from '@/utils/ws'
 /**
  * useDeviceControlWs — WebSocket singleton pour le contrôle des appareils
  *
@@ -41,7 +41,6 @@ function _scheduleReconnect() {
 
 function _connect() {
   if (!import.meta.client) return
-  if (!appConfig.WS_URL) return
   if (_ws?.readyState === WebSocket.OPEN || _ws?.readyState === WebSocket.CONNECTING) return
 
   _clearTimer()
@@ -49,7 +48,7 @@ function _connect() {
   _error.value = null
 
   try {
-    _ws = new WebSocket(`${appConfig.WS_URL}/controlOfDevice`)
+    _ws = new WebSocket(wsProxyUrl('controlOfDevice'))
   } catch (e) {
     _status.value = 'error'
     _error.value = String(e)
@@ -124,6 +123,8 @@ export function useDeviceControlWs() {
     status: readonly(_status),
     error: readonly(_error),
     send,
-    on
+    on,
+    /** Ouvre la connexion si elle ne l'est pas déjà (idempotent, guardé). */
+    connect: _connect,
   }
 }

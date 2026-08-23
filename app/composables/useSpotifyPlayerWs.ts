@@ -6,7 +6,7 @@
  * Reconnexion automatique en cas de déconnexion.
  */
 
-import appConfig from '@/src/config'
+import { wsProxyUrl } from '@/utils/ws'
 
 /* ── Types ─────────────────────────────────────────────────────────────────── */
 
@@ -56,7 +56,7 @@ let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
 const RECONNECT_DELAY = 3000
 
 function _getUrl() {
-  return `${appConfig.WS_URL}/spotify-player`
+  return wsProxyUrl('spotify-player')
 }
 
 function _clearTimer() {

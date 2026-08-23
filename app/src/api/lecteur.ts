@@ -7,7 +7,10 @@ export type LecteurPayload = {
   name: string
   type: string
   config: Record<string, any>
-  conf_eq_id: number | null
+  conf_eq?: number | null          // id du profil EQ (création + édition)
+  conf_eq_id?: number | null       // alias historique
+  isStarting?: boolean
+  autostart?: boolean
 }
 
 export async function getLecteurs(): Promise<Lecteur[]> {
@@ -49,4 +52,18 @@ export async function stopLecteur(id: number) {
 
 export async function postSpotifyUrl(url: string, name: string) {
   return http.post('/spotify/audio', { url, name })
+}
+
+/* ── Commandes file d'attente (REST) ─────────────────────────────────────── */
+/** Commande brute vers un lecteur : POST /lecteur/:id/command */
+export async function lecteurCommand(id: number | string, cmd: Record<string, any>) {
+  return http.post(`/lecteur/${id}/command`, cmd)
+}
+/** Retire l'élément à l'index donné de la file */
+export async function queueRemove(id: number | string, index: number) {
+  return lecteurCommand(id, { cmd: 'remove', index })
+}
+/** Déplace un élément de la file (from → to) */
+export async function queueMove(id: number | string, from: number, to: number) {
+  return lecteurCommand(id, { cmd: 'move', from, to })
 }

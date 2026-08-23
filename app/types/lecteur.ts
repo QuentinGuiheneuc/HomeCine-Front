@@ -1,12 +1,28 @@
 /* ── Config / DB ─────────────────────────────────────────────────────────── */
 
-export type LecteurType = 'spotify' | 'fileplayer' | 'controlinput' | 'deezer' | 'radio' | 'local' | 'localInput' | string
+export type LecteurType = 'spotify' | 'fileplayer' | 'controlinput' | 'deezer' | 'youtube' | 'radio' | 'local' | 'localInput' | string
 
 export type ConfEq = {
   rate: number
   config: string
   path_eq: string
   order: string[]
+}
+
+/** Process en cours (renvoyé par /lecteur) */
+export interface LecteurProcess {
+  alive?: boolean
+  pid?:   number
+  [k: string]: any
+}
+
+/** État du token d'auth lié au lecteur (spotify/deezer/youtube…) */
+export interface LecteurToken {
+  userId?:    number
+  connected?: boolean
+  verified?:  boolean
+  expiresAt?: number          // timestamp ms
+  [k: string]: any
 }
 
 export type Lecteur = {
@@ -18,12 +34,15 @@ export type Lecteur = {
   conf_eq: ConfEq | null
   conf_eq_id: number | null
   url?: Array<{ url: string; type: string }>
+  isStart?: LecteurProcess    // process (alive/pid)
+  token?:   LecteurToken      // état d'authentification
 }
 
 export const typeItems = [
   { label: 'Spotify',    value: 'spotify' },
   { label: 'FilePlayer', value: 'fileplayer' },
   { label: 'Deezer',     value: 'deezer' },
+  { label: 'YouTube',    value: 'youtube' },
   { label: 'Local',      value: 'local' },
   { label: 'Radio',      value: 'radio' },
   { label: 'Local Input', value: 'localInput' }
@@ -63,6 +82,7 @@ export interface LecteurState {
   type:            LecteurType
   alive:           boolean
   playing:         boolean
+  paused:          boolean
   shuffle:         boolean
   repeat:          RepeatMode
   track:           TrackInfo | null
@@ -77,6 +97,7 @@ export interface HeartbeatEntry {
   id:              number
   alive:           boolean
   playing:         boolean
+  paused:          boolean
   temp:            TempInfo | null
   volume:          number | null
   device_type:     string | null

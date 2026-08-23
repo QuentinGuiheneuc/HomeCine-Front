@@ -91,14 +91,17 @@ export function mapArtistDetail(ar: LibraryArtist, tracks: LibraryTrack[], album
     genres:    (ar as any).genres ?? [],
     followers: (ar as any).followers ?? undefined,
     topTracks: tracks.map((t, i) => mapTrack(t, i)),
-    albums: albums.map(a => {
-      const c = cover(a)
-      return {
-        id: a.id, name: a.name, album_type: (a as any).album_type ?? 'album',
-        release_date: String(pick((a as any).release_date, a.year, '')),
-        images: c ? [{ url: c }] : [], uri: `${a.source}:album:${a.id}`,
-        artists: normArtists(a.artists),
-      }
-    }),
+    albums: albums.map(mapArtistAlbum),
+  }
+}
+
+/** Album de discographie (forme ItemArtist) — réutilisé par la pagination « Charger plus » */
+export function mapArtistAlbum(a: LibraryAlbum) {
+  const c = cover(a)
+  return {
+    id: a.id, name: a.name, album_type: (a as any).album_type ?? 'album',
+    release_date: String(pick((a as any).release_date, a.year, '')),
+    images: c ? [{ url: c }] : [], uri: `${a.source}:album:${a.id}`,
+    artists: normArtists(a.artists),
   }
 }

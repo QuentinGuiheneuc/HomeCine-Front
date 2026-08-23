@@ -8,8 +8,12 @@ import {
   postSpotifyUrl,
   type Lecteur
 } from '@/src/api/lecteur'
+import LecteurCreateModal from '@/components/lecteur/LecteurCreateModal.vue'
 
 const toast = useToast()
+
+/* Modale de création (tout le flux passe par là) */
+const isNewOpen = ref(false)
 
 const lecteurs = ref<Lecteur[]>([])
 const loading = ref(true)
@@ -75,7 +79,19 @@ function getChannels(l: Lecteur) {
   return (l.config as any)?.StreamOutFifo?.channels ?? 'n/a'
 }
 function isRunning(l: Lecteur) {
-  return !!(l as any).isStart?.alive
+  return !!l.isStart?.alive
+}
+
+/** État du token d'auth (null si le lecteur n'en a pas) */
+function tokenInfo(l: Lecteur): { label: string; color: 'success' | 'warning' | 'error'; icon: string; expires?: string } | null {
+  const t = l.token
+  if (!t) return null
+  const expired = t.expiresAt != null && t.expiresAt < Date.now()
+  const expires = t.expiresAt != null ? new Date(t.expiresAt).toLocaleString() : undefined
+  if (!t.connected) return { label: 'Déconnecté', color: 'error', icon: 'i-lucide-unplug', expires }
+  if (expired)      return { label: 'Expiré',      color: 'warning', icon: 'i-lucide-clock-alert', expires }
+  if (!t.verified)  return { label: 'Non vérifié', color: 'warning', icon: 'i-lucide-shield-alert', expires }
+  return { label: 'Connecté', color: 'success', icon: 'i-lucide-shield-check', expires }
 }
 
 async function onStart(id: number) {
@@ -114,7 +130,7 @@ onMounted(fetchLecteurs)
       <template #leading>
         <UPageCard
           title="Lecteurs"
-          :description="`Total: ${lecteurs.length} • Actifs: ${lecteurs.filter(l=>(l as any).isStart?.alive).length}`"
+          :description="`Total: ${lecteurs.length} • Actifs: ${lecteurs.filter(l => l.isStart?.alive).length}`"
           variant="naked"
           orientation="horizontal"
           :ui="{ container: 'p-4 sm:p-4 gap-3' }"
@@ -124,7 +140,7 @@ onMounted(fetchLecteurs)
 
       <template #right>
         <div class="flex items-center gap-2">
-          <UButton to="/lecteurs/new" icon="i-lucide-plus" color="primary">Nouveau</UButton>
+          <UButton icon="i-lucide-plus" color="primary" @click="isNewOpen = true">Nouveau</UButton>
           <UButton icon="i-lucide-refresh-ccw" color="neutral" :loading="loading" @click="fetchLecteurs">Rafraîchir</UButton>
         </div>
       </template>
@@ -157,6 +173,11 @@ onMounted(fetchLecteurs)
                   <UBadge :color="isRunning(l) ? 'primary' : 'neutral'" variant="subtle" class="text-[10px]">
                     {{ isRunning(l) ? 'Actif' : 'Arrêté' }}
                   </UBadge>
+                  <UTooltip v-if="tokenInfo(l)" :text="tokenInfo(l)?.expires ? `Expire : ${tokenInfo(l)?.expires}` : ''">
+                    <UBadge :color="tokenInfo(l)!.color" variant="subtle" class="text-[10px]" :icon="tokenInfo(l)!.icon">
+                      {{ tokenInfo(l)!.label }}
+                    </UBadge>
+                  </UTooltip>
                 </div>
 
                 <div class="text-xs text-dimmed font-mono">stream: {{ getStreamType(l) }}</div>
@@ -223,5 +244,8 @@ onMounted(fetchLecteurs)
         </div>
       </div>
     </main>
+
+    <!-- Création (choix du type + formulaire) -->
+    <LecteurCreateModal v-model:open="isNewOpen" @created="fetchLecteurs" />
   </div>
 </template>

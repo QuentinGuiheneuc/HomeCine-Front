@@ -3,6 +3,18 @@ import { useLecteursWs } from '@/composables/useLecteursWs'
 
 const { isLecteurSlideoverOpen, activeLecteurId } = useDashboard()
 const ws = useLecteursWs()
+const toast = useToast()
+
+/** Types gérant une file (réinitialisable via Lecteur.ClearQueue) */
+const QUEUE_TYPES = ['fileplayer', 'youtube', 'deezer']
+const canReset = (type?: string) => QUEUE_TYPES.includes((type ?? '').toLowerCase())
+
+/** Réinitialise le lecteur : vide la file ET stoppe la lecture */
+function resetLecteur(id: number) {
+  if (!confirm('Réinitialiser le lecteur ? La file est vidée et la lecture en cours s\'arrête.')) return
+  if (!ws.clearQueue(id)) { toast.add({ title: 'WS non connecté', color: 'error' }); return }
+  ws.getQueue(id)
+}
 
 const clamp = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n))
 
@@ -134,8 +146,16 @@ function iconForType(type: string) {
             </div>
           </div>
 
-          <!-- Bouton sélection -->
-          <div class="flex flex-col items-center gap-1 shrink-0">
+          <!-- Boutons : Réinitialiser (au-dessus) + sélection -->
+          <div class="flex flex-col items-stretch gap-1 shrink-0">
+            <UButton
+              v-if="canReset(l.type)"
+              label="Réinitialiser"
+              icon="i-lucide-rotate-ccw"
+              color="error" variant="ghost" size="sm"
+              title="Vide la file et stoppe la lecture"
+              @click="resetLecteur(l.id)"
+            />
             <UButton
               :label="activeLecteurId === l.id ? 'Principal' : 'Utiliser'"
               :color="activeLecteurId === l.id ? 'primary' : 'neutral'"
