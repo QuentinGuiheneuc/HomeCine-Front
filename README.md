@@ -1,37 +1,48 @@
 # HomeCine Front
 
-Interface web de contrôle pour un **serveur audio maison multi-pièces / multi-sources**.
+Interface web de pilotage d'un **serveur audio maison multi-pièces / multi-sources**
+(back-end **HomeCine-Serv**).
 
-Elle pilote :
-- des **lecteurs audio** (Spotify, FilePlayer, Deezer, radio, fichiers locaux, entrée audio ligne),
-- une **bibliothèque musicale unifiée** qui agrège plusieurs sources (Spotify + FilePlayer local),
-- des **égaliseurs paramétriques** par canal,
-- les **appareils de sortie** (volume général + par canal, mute, EQ),
-- la **diffusion réseau** (VBAN, Snapcast) et le **Bluetooth**.
+Une seule application réunit :
 
-Tout l'état audio (lecture, position, volume, EQ, devices) est **temps réel via WebSocket** ;
-la configuration (lecteurs, presets, utilisateurs) passe par une **API REST** proxifiée.
+- une **bibliothèque musicale unifiée** (`/library`) qui agrège plusieurs sources
+  (fichiers locaux, Spotify, YouTube, Deezer…) — recherche, navigation, collections, genres, favoris ;
+- des **lecteurs** (un process par service + sortie) pilotés **en temps réel** : transport,
+  volume, shuffle/repeat, seek, file d'attente ;
+- l'**égaliseur paramétrique** et ses presets (mapping canal par canal, jusqu'à 22.2) ;
+- les **appareils de sortie** : ALSA (cartes, PCM, `asound.conf`), volume général et par canal ;
+- la **diffusion réseau** : Snapcast, VBAN, SendSpin, Bluetooth ;
+- un moteur de **règles de contrôle**, la gestion des **comptes/identifiants** et les
+  **notifications** (toasts + Web Push).
+
+L'état audio (lecture, position, volume, devices) arrive **en temps réel par WebSocket** ;
+la configuration passe par une **API REST proxifiée**.
 
 [![Nuxt UI](https://img.shields.io/badge/Made%20with-Nuxt%20UI-00DC82?logo=nuxt&labelColor=020420)](https://ui.nuxt.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
 ## Table des matières
 
 1. [Stack technique](#stack-technique)
-2. [Installation & démarrage](#installation--démarrage)
+2. [Démarrage rapide](#démarrage-rapide)
 3. [Configuration & proxy](#configuration--proxy)
 4. [Authentification & sécurité](#authentification--sécurité)
-5. [Pages principales](#pages-principales)
-6. [Bibliothèque `/library`](#bibliothèque-library-multi-sources)
-7. [Protocole WebSocket lecteurs](#protocole-websocket-lecteurs-lecteur-live)
-8. [Contrat FilePlayer](#contrat-fileplayer)
-9. [Types de lecteurs & transports](#types-de-lecteurs--transports)
-10. [Composables](#composables)
-11. [API REST consommée](#api-rest-consommée)
-12. [Structure du projet](#structure-du-projet)
-13. [Conventions & pièges connus](#conventions--pièges-connus)
-14. [Commandes utiles](#commandes-utiles)
+5. [Navigation & pages](#navigation--pages)
+6. [Bibliothèque musicale (`/musique`)](#bibliothèque-musicale-musique)
+7. [Temps réel — WebSockets](#temps-réel--websockets)
+8. [Lecteurs](#lecteurs)
+9. [Diffusion & protocoles réseau](#diffusion--protocoles-réseau)
+10. [Appareils de sortie & EQ](#appareils-de-sortie--eq)
+11. [Paramètres & administration](#paramètres--administration)
+12. [API REST consommée](#api-rest-consommée)
+13. [Composables](#composables)
+14. [Raccourcis clavier](#raccourcis-clavier)
+15. [Structure du projet](#structure-du-projet)
+16. [Conventions & pièges connus](#conventions--pièges-connus)
+17. [Qualité & CI](#qualité--ci)
+18. [Licence](#licence)
 
 ---
 
@@ -40,276 +51,416 @@ la configuration (lecteurs, presets, utilisateurs) passe par une **API REST** pr
 | Catégorie | Technologie |
 |---|---|
 | Framework | Nuxt 4 + Vue 3 (`<script setup>`) |
-| UI | Nuxt UI 4 (Tailwind CSS v4) |
+| UI | Nuxt UI 4 (Tailwind CSS v4), thème `primary: green` / `neutral: zinc` |
 | Langage | TypeScript |
-| HTTP | Axios — instance unique `src/lib/https.ts` (baseURL `/proxy`) |
-| Temps réel | WebSocket natif, wrappé par `useWs` + composables dédiés |
-| Utilitaires | VueUse (`useDebounceFn`, `useEventListener`, `createSharedComposable`) |
-| Icons | Lucide (`i-lucide-*`), Material Symbols, MDI (`mdi:*`), Simple Icons, Framework7 (`f7:*`) |
-| Package manager | pnpm |
+| HTTP | Axios — instance unique `app/src/lib/https.ts` (baseURL `/proxy`) |
+| Temps réel | WebSocket natif, encapsulé par `useWs` + composables dédiés |
+| Utilitaires | VueUse (`useDebounceFn`, `useStorage`, `useIntersectionObserver`, `createSharedComposable`…) |
+| Graphes | Unovis (`@unovis/vue`) |
+| Validation | Zod |
+| Icônes | Lucide (`i-lucide-*`), Material Symbols, MDI (`mdi:*`), Simple Icons, Framework7 (`f7:*`), CBI |
+| Package manager | pnpm 10 |
 
 ---
 
-## Installation & démarrage
+## Démarrage rapide
 
 ```bash
 pnpm install
-
-pnpm dev       # Développement (localhost:3000)
-pnpm host      # Développement exposé sur le réseau local (0.0.0.0)
-pnpm build     # Build production
-pnpm preview   # Prévisualisation du build
+pnpm dev
 ```
 
-**Prérequis** : Node >= 20, pnpm >= 10, et le backend **HomeCine-Serv** accessible (REST + WS).
+| Script | Effet |
+|---|---|
+| `pnpm dev` | Développement sur `http://localhost:3000` |
+| `pnpm host` | Développement exposé sur le réseau — **IP fixée** (`nuxt dev --host 192.168.1.20`) |
+| `pnpm build` | Build production |
+| `pnpm preview` | Prévisualisation du build |
+| `pnpm lint` | ESLint (config Nuxt + stylistic) |
+| `pnpm typecheck` | `vue-tsc` |
+
+**Prérequis**
+
+- Node **22** (version testée en CI ; Nuxt 4 exige ≥ 20.19), pnpm ≥ 10 ;
+- le back-end **HomeCine-Serv** joignable : REST sur `:3007`, WebSocket sur `:8099`
+  (+ `:9086` pour la découverte des devices).
 
 ---
 
 ## Configuration & proxy
 
-### `app/src/config.ts`
+### IP du back-end
+
+Elle apparaît à **deux endroits** (valeurs par défaut) :
 
 ```ts
-const appConfig = {
-  API_URL: process.env.API_URL ?? '/proxy',                 // REST via proxy Nitro
-  WS_URL:  process.env.WS_BASE ?? 'ws://192.168.1.40:8099',  // WebSocket direct
-  WS_URL_BROADCAST: process.env.WS_URL_BROADCAST ?? 'ws://192.168.1.40:9086',
-} as const
-```
+// nuxt.config.ts
+const ip = '192.168.1.19'
 
-### Proxy Nitro (`nuxt.config.ts`)
-
-```ts
 nitro: {
   routeRules: {
-    '/refresh':  { proxy: 'http://192.168.1.40:3007/refresh' },
-    '/proxy/**': { proxy: 'http://192.168.1.40:3007/**' },
-  },
+    // /refresh à la racine : le cookie REFRESH_TOKEN a path:/refresh côté serveur
+    '/refresh':  { proxy: `http://${ip}:3007/refresh` },
+    // toutes les autres routes API (login, logout, user, library…)
+    '/proxy/**': { proxy: `http://${ip}:3007/**` }
+  }
 }
 ```
 
-**Pourquoi un proxy ?** Le front et le backend sont sur des IP différentes. En passant par
-`/proxy`, toutes les requêtes deviennent **same-origin** du point de vue du navigateur :
-- les cookies `SameSite=Lax` (`TOKEN`, `REFRESH_TOKEN`, `IKEY`) sont envoyés même en POST,
-- les **covers relatives** renvoyées par l'API (`/library/cover/...`) se résolvent correctement,
+```ts
+// app/src/config.ts
+const appConfig = {
+  API_URL:          process.env.API_URL          ?? '/proxy',            // REST via proxy Nitro
+  WS_URL:           process.env.WS_BASE          ?? 'ws://192.168.1.19:8099',
+  WS_URL_BROADCAST: process.env.WS_URL_BROADCAST ?? 'ws://192.168.1.19:9086'
+} as const
+```
+
+`nuxt.config.ts` injecte `API_URL` et `WS_BASE` dans le bundle client via `vite.define` :
+ces variables sont **figées au build**, un changement impose de rebuilder.
+
+> ⚠️ Sur une autre installation, changer l'IP dans `nuxt.config.ts` **et** dans
+> `app/src/config.ts` (ou fournir `API_URL` / `WS_BASE` / `WS_URL_BROADCAST` au build).
+
+### Pourquoi un proxy ?
+
+Le front et le back-end sont sur des hôtes différents. En passant par `/proxy`, toutes les
+requêtes deviennent **same-origin** du point de vue du navigateur :
+
+- les cookies `SameSite=Lax` (`TOKEN`, `REFRESH_TOKEN`, `BROWSER`) partent même en POST ;
+- les **pochettes relatives** renvoyées par l'API (`/library/cover/...`) se résolvent ;
 - pas de préflight CORS bloquant.
 
-La route `/refresh` est proxifiée **à la racine** (et non sous `/proxy`) pour que le path
-corresponde exactement à celui du cookie `REFRESH_TOKEN` (posé par le serveur avec `path:/refresh`).
+La route `/refresh` est proxifiée **à la racine** (pas sous `/proxy`) pour que le chemin
+corresponde exactement à celui du cookie `REFRESH_TOKEN` (posé avec `path:/refresh`).
 
 ---
 
 ## Authentification & sécurité
 
-Gérée dans `src/lib/https.ts` (intercepteurs Axios) + `composables/useAuth.ts`.
+Implémentée dans `app/src/lib/https.ts` (intercepteurs Axios) + `composables/useAuth.ts`.
 
-- **Token Bearer** : cookie `TOKEN` (non-httpOnly, ~15 min), injecté en `Authorization: Bearer …`
-  sur chaque requête.
-- **Refresh** : sur `401`, l'intercepteur appelle `POST /refresh` (instance `authHttp`,
-  `baseURL = window.location.origin`), enregistre le nouveau token dans `TOKEN`, puis **rejoue**
-  la requête initiale. Les requêtes concurrentes pendant un refresh sont mises en file.
-- **Détection navigateur** : `utils/browser.ts` déduit le navigateur (Chrome/Firefox/Opera/
-  Edge/Safari + version), le persiste dans le cookie `BROWSER` et l'envoie en en-tête `X-Browser`
-  (suivi des sessions côté admin).
-- **Rôle / admin** : `useCurrentUser` décode le JWT (`TOKEN`) côté client (sans vérif de
-  signature) pour exposer `user` et `isAdmin`. Le middleware `middleware/admin.ts` bloque les
-  routes admin, et la navigation masque les liens admin pour les non-admins.
-- **Échec de refresh** ou 401/403 persistant → redirection unique vers `/login`.
-
----
-
-## Pages principales
-
-### `/spotify` — Bibliothèque musicale unifiée
-
-Navigateur **multi-sources** (Spotify + FilePlayer) bâti sur l'API `/library`. Layout :
-sidebar bibliothèque à gauche (drawer sur mobile) + zone de contenu + lecteur fixe en bas.
-
-- **`LibrarySidebar`** : onglets Playlists / Albums / Artistes, recherche locale, **filtres de
-  source** (boutons icône), bouton **Réindexer**. Émet l'objet complet sélectionné.
-- **`HomeView`** : accueil avec sections en **carousels horizontaux** (`HScroll`) + barre de
-  recherche temps réel + **chips de filtre par source** (avec coche ✓ sur l'état actif). Le
-  filtre est appliqué **côté client** (instantané, sans refetch).
-- **Vues détail** (`ItemPlaylist`, `ItemAlbum`, `ItemArtist`) : recyclées de l'ancienne UI
-  Spotify, alimentées via un **mapping** `/library` → forme attendue (`useLibraryMappers`).
-  L'en-tête (cover, nom) s'affiche immédiatement même si le chargement des pistes échoue (ex. 403).
-- **Lecture** (`▶`) → `POST /library/play`. Au clic, un **sélecteur de lecteur** propose les
-  lecteurs **dont le `type` correspond à la `source`** (Spotify → lecteurs spotify, etc.).
-  Un seul compatible → lecture directe ; plusieurs → modal de choix ; aucun → toast.
-- **Ajout à la file** (`＋`) → `POST /library/enqueue { track }`.
-- **Lecteur fixe** (`lecture.vue`) : pochette, titre/artiste, transport (shuffle · prev ·
-  play/pause · next · repeat), barre de progression, volume (avec mute mémorisant le niveau),
-  icône du type de device. Piloté par le WS `lecteur-live`.
-
-### `/lecteurs`
-
-- **`index.vue`** : liste des lecteurs configurés, start/stop, filtres par type.
-- **`new.vue`** : création — le formulaire de config s'adapte au type choisi
-  (`SpotifyServiceConfig`, `FilePlayerServiceConfig`, `DeezerServiceConfig`, …).
-- **`[id].vue`** : édition. Pour un lecteur **`fileplayer`** vivant, intègre le composant
-  **`FilePlayerControl`** : transport, seek, volume, repeat/shuffle, et **gestion de queue**
-  (ajout d'un fichier par chemin, lecture, monter/descendre, suppression).
-
-### `/eq` · `/eqconfig` · `/eq/presset`
-
-Égaliseur paramétrique temps réel (bandes ON/OFF, suppression individuelle) et presets EQ
-(sample rate, fichier de config, **mapping canal par canal Input → Output**, layouts jusqu'à 22.2).
-
-### `/devices`
-
-Appareils de sortie. Slider de volume **général** + sliders **par canal** : le nombre de
-canaux affichés suit `vban.channels` (les canaux manquants dans l'état WS sont complétés au
-niveau moyen). Mute, boutons ±5 %, état temps réel via `useDeviceControlWs`.
-
-### `/snap` · `/bt` · `/control`
-
-Snapcast (groupes, clients, volume, latence), Bluetooth (connexion/état), panneau général.
-
-### `/settings`
-
-- **General**, **Notifications** (toasts in-app + **Web Push** via service worker `public/sw.js`,
-  préférences par type d'événement, historique), **Security** (changement de mot de passe).
-- **Admin** (gardé par middleware) : **Members** (CRUD utilisateurs, révocation de session),
-  **Spotify** (auth/config), **Navigateurs** (sessions navigateur, journal global filtrable,
-  suppression de logs).
+- **Bearer** : le cookie `TOKEN` (non-httpOnly, ~15 min) est injecté en
+  `Authorization: Bearer …` sur chaque requête.
+- **Refresh transparent** : sur `401` (ou `403` dont le message évoque un token expiré/révoqué),
+  l'intercepteur appelle `POST /refresh` via une instance dédiée (`baseURL = window.location.origin`),
+  enregistre le nouveau token et **rejoue** la requête. Les requêtes concurrentes pendant un
+  refresh sont mises en file. `refreshAccessToken()` est exporté pour les appelants hors Axios
+  (WebSocket).
+- **Empreinte navigateur** : `utils/browser.ts` déduit le navigateur (Chrome / Firefox / Opera /
+  Edge / Safari + version), le persiste dans le cookie `BROWSER` et l'envoie en en-tête
+  `X-Browser` — c'est ce qui alimente le suivi des sessions côté admin.
+- **WebSockets** : les sockets étant cross-origin, le cookie ne les suit pas ; `utils/ws.ts`
+  joint le token en query (`?token=…`). Sur `Lecteur.AuthError`, le composable rafraîchit le
+  token, reconstruit l'URL et renvoie `Lecteur.Auth` (3 tentatives max, puis toast « session expirée »).
+- **Rôle** : `useCurrentUser` décode le JWT côté client (**sans vérification de signature**)
+  pour exposer `user` et `isAdmin` — c'est du confort d'UI, l'autorisation reste serveur.
+- **Garde de routes** : `middleware/auth.global.ts` redirige vers `/login` sans token ;
+  `middleware/admin.ts` protège les routes admin (`/settings/members`, `/settings/browsers`…),
+  et `/settings/credentials` déclare son propre `definePageMeta({ middleware: 'admin' })`.
+- **Échec de refresh** ou 401/403 persistant → suppression du cookie et redirection unique vers `/login`.
 
 ---
 
-## Bibliothèque `/library` (multi-sources)
+## Navigation & pages
 
-Client : `app/src/api/library.ts` · Mapping vers `Item*` : `useLibraryMappers.ts`.
+Le menu latéral (`app/layouts/default.vue`) est **dynamique** : les entrées Bluetooth, Snap,
+VBAN et SendSpin n'apparaissent que si le service correspondant est activé côté serveur
+(`GET /services`, exposé par `useProtocols`).
 
-### Endpoints
+| Route | Fichier | Contenu |
+|---|---|---|
+| `/` | `pages/index.vue` | **Maison** — tableau de bord : compteurs lecteurs / en lecture / en ligne / sources, cartes des lecteurs actifs, volume par pièce, règles de contrôle, dernières notifications |
+| `/musique` | `pages/musique.vue` | **Bibliothèque unifiée** + lecteur fixe (voir section dédiée) |
+| `/lecteurs` | `pages/lecteurs/index.vue` | Liste des lecteurs, start/stop, création (modale) |
+| `/lecteurs/:id` | `pages/lecteurs/[id].vue` | Édition d'un lecteur + contrôle live FilePlayer |
+| `/devices` | `pages/devices/index.vue` | Appareils de sortie : volume général et par canal, mute, état temps réel |
+| `/devices/:id` | `pages/devices/[id].vue` | Configuration ALSA (cartes USB, PCM/bus, `asound.conf`, save/rollback) + instances snapclient |
+| `/eq` · `/eqconfig` · `/eq/presset` | `pages/eq*.vue` | Égaliseur paramétrique temps réel, presets et mapping des canaux |
+| `/snap` · `/snap/snapconfig` | `pages/snap/*` | Snapcast : groupes, clients, volumes, latence, streams, serveur |
+| `/vban` | `pages/vban.vue` | Flux VBAN : sélection de la cible, master/haut-parleurs, streams enregistrés |
+| `/sendspin` | `pages/sendspin.vue` | SendSpin : mode `snapcast` / `vban` / `url` / `process`, start/stop |
+| `/bt` | `pages/bt.vue` | Bluetooth : adaptateurs, scan, appairage, connexion |
+| `/control` | `pages/control/index.vue` | Moteur de règles (entrées/sorties, schéma, validation, activation) |
+| `/settings/**` | `pages/settings/*` | Profil, notifications, sécurité, et section admin |
+| `/login` | `pages/login.vue` | Connexion |
+
+---
+
+## Bibliothèque musicale (`/musique`)
+
+Client API : `app/src/api/library.ts` (+ `dbPlaylists.ts`, `genres.ts`, `saved.ts`) ·
+adaptation vers les vues détail : `composable/useLibraryMappers.ts`.
+
+**Layout** : sidebar bibliothèque à gauche (drawer sur mobile) · zone de contenu ·
+lecteur fixe en bas (`lecture.vue`, 104 px).
+
+### Sources
+
+Les sources proviennent de `GET /library/providers` — le front sait iconifier `fileplayer`,
+`spotify`, `youtube` et `deezer`, et retombe sur une icône générique pour les autres.
+La sélection de sources est **partagée et persistée** (`useLibrarySources`,
+localStorage `hc-library-sources`) : sidebar et accueil filtrent avec le même état.
+
+### Vues
+
+| Vue | Déclencheur | Contenu |
+|---|---|---|
+| `home` | par défaut | Carrousels (`HScroll`) : sources, titres, albums, artistes, playlists, dossiers, genres — + recherche temps réel |
+| `playlist` / `album` / `artist` | sidebar, accueil, navigation croisée | Détail avec en-tête (pochette, nom) affiché **immédiatement**, même si le chargement des pistes échoue |
+| `db` | « Mes playlists » | Collection stockée en base : réordonner, retirer, renommer, supprimer, importer depuis une URL |
+| `saved` | Titres aimés / Artistes suivis | Favoris paginés (scroll infini) |
+| `tracks` | Dossier fileplayer, genre, « Tous les titres » | Liste paginée ; un genre est éditable (renommer, pochette, retirer une piste) |
+
+### Actions sur une piste
+
+| Geste | Effet |
+|---|---|
+| ▶ | `POST /library/play` — un **sélecteur de lecteur** propose les lecteurs dont le type correspond à la source (un seul candidat → lecture directe, plusieurs → modale, aucun → toast) |
+| ＋ | `POST /library/enqueue { track }` — ajout à la file du lecteur ciblé |
+| ♥ | `POST`/`DELETE /library/saved/tracks` — aimé / non aimé |
+| 📁 | Ajout à une collection (playlist/album en base) ou à un **genre**. La source est verrouillée pour les collections : mélanger les sources casserait la lecture |
+| ⤓ | *(YouTube)* `Lecteur.Download` sur un lecteur YouTube |
+| ✨ | *(FilePlayer)* `POST /library/enrich` — identification des métadonnées en **aperçu** (`dryRun`) puis écriture, à l'unité ou en lot |
+
+### Endpoints `/library`
 
 | Méthode | Endpoint | Rôle |
 |---|---|---|
-| `GET` | `/library/providers` | Sources : `[{ source, lecteurId, canReindex }]` |
-| `POST` | `/library/reindex` | Réindexer `{ source? }` |
-| `GET` | `/library/search?q=&limit=&sources=` | Recherche multi-sources |
-| `POST` | `/library/enqueue` | Ajouter une piste `{ track }` |
-| `POST` | `/library/play` | Lire `{ source, type, id\|uri, lecteurId }` |
-| `GET` | `/library/categories?sources=&limit=` | Catégories |
-| `GET` | `/library/playlists?category=&q=&sources=&limit=` | Playlists |
-| `GET` | `/library/playlists/:source/:id/tracks?limit=` | Pistes d'une playlist |
-| `POST` | `/library/playlists/:source/:id/enqueue` | Enfiler toute la playlist `{ lecteurId? }` |
-| `GET` | `/library/albums?q=&sources=&limit=` | Albums |
-| `GET` | `/library/albums/:source/:id/tracks` | Pistes d'un album |
-| `GET` | `/library/artists?q=&sources=&limit=` | Artistes |
-| `GET` | `/library/artists/:source/:id/albums` | Albums d'un artiste |
-| `GET` | `/library/artists/:source/:id/tracks` | Pistes d'un artiste |
-| `GET` | `/library/cover/:source/:id` | Pochette (URL **relative**) |
+| `GET` | `/library/providers` | Sources disponibles (`source`, `lecteurId`, `canReindex`, `public`…) |
+| `PUT` | `/library/providers/:source/public` | Rendre une source publique/privée |
+| `POST` | `/library/reindex` | Réindexation (`{ source? }`) |
+| `GET` `POST` `PUT` `DELETE` | `/library/roots` | Dossiers scannés (stockage local) |
+| `GET` | `/library/search?q=&sources=&limit=` | Recherche multi-sources |
+| `GET` | `/library/trackliste` | Toutes les pistes (paginé) |
+| `GET` | `/library/categories` · `/library/categories/:source/:id/tracks` | Dossiers et leur contenu |
+| `GET` | `/library/playlists` · `/library/playlists/:source/:id/tracks` | Playlists |
+| `POST` | `/library/playlists/:source/:id/enqueue` | Enfiler toute une playlist |
+| `GET` | `/library/albums` · `/library/albums/:source/:id/tracks` | Albums |
+| `GET` | `/library/artists` · `/library/artists/:source/:id/albums` · `.../tracks` | Artistes |
+| `GET` | `/library/like/:source?artist=` | Titres aimés d'un artiste |
+| `POST` | `/library/enqueue` · `/library/play` | Ajout à la file · lecture |
+| `POST` | `/library/enrich` | Enrichissement des métadonnées (avec `dryRun`) |
+| `GET` | `/library/cover/:source/:id` | Pochette (**URL relative**) |
+| `*` | `/library/db-playlists…` | Collections en base : CRUD, import, pistes, `move`, `play` |
+| `*` | `/library/genres…` | Genres : CRUD, pistes (`add`/`remove`) |
+| `*` | `/library/saved/tracks` · `/library/saved/artists` | Favoris et artistes suivis |
 
-### Formes de données (camelCase backend)
+### Formes de données
 
 ```ts
-LibraryTrack    { source, sourceId|id, uri, title, artists[], album, date,
-                  durationMs, coverUrl, lecteurId }
-LibraryAlbum    { source, id|sourceId, name, artists[], date, coverUrl, trackCount, uri, lecteurId }
-LibraryArtist   { source, id, name, coverUrl, lecteurId }
-LibraryPlaylist { source, id, name, description, coverUrl, trackCount, uri, lecteurId }
-LibraryProvider { source, lecteurId, canReindex }  // normalisé en { id, name } par getProviders()
+LibraryTrack    { source, id|sourceId, uri, title, artists[], album, date,
+                  durationMs|duration_ms, coverUrl|cover_url, lecteurId, like }
+LibraryAlbum    { source, id|sourceId, name, artists[], date, coverUrl, trackCount, lecteurId }
+LibraryArtist   { source, id, name, cover_url }
+LibraryPlaylist { source, id, name, description, cover_url, track_count }
+LibraryProvider { id, name, source, lecteurId, canReindex, active, public }
+Page<T>         { items, total, page, pageSize, hasMore }
 ```
 
-### Deux modèles d'action
+Le back-end mélange **camelCase** et **snake_case** selon les sources : les helpers et les
+mappers tolèrent les deux.
 
-| Geste | Endpoint | Sémantique |
-|---|---|---|
-| `＋` sur une piste | `POST /library/enqueue { track:{source,uri,lecteurId} }` | ajout à la **file** |
-| `▶` playlist/album/artiste | `POST /library/play { source, type, id, lecteurId }` | **lecture** d'un contexte |
-| `▶` une piste | `POST /library/play { source, type:'track', uri, lecteurId }` | lecture d'une piste |
+### Helpers indispensables
 
-### Helpers clés
-
-- **`resolveCoverUrl(url)`** : `null` → placeholder ; `http(s)`/`data:` → tel quel ;
-  chemin relatif (`/library/cover/...`) → **préfixé par `API_URL`** (`/proxy`).
-- **`resolveId(item)`** : `item.id ?? item.sourceId` (les sources ne nomment pas l'id pareil).
-- **`useLibraryMappers`** : convertit `LibraryTrack/Album/Artist/Playlist` vers la forme
-  « Spotify-like » attendue par `ItemPlaylist/ItemAlbum/ItemArtist`, en conservant l'objet
-  original dans `__src` pour pouvoir l'enfiler. Tolérant au camelCase **et** snake_case.
+- **`resolveCoverUrl(url)`** — `null` → placeholder ; `http(s)` / `data:` → tel quel ;
+  `//host/…` → `https:` ; chemin relatif → préfixé par `API_URL` (`/proxy`).
+- **`resolveId(item)`** — `item.id ?? item.sourceId` (les sources ne nomment pas l'id pareil).
+- **`sourceKey(item)`** — id **natif de la source** (`channelId` YouTube, `sourceId`) prioritaire
+  sur l'id de ligne en base : indispensable pour les éléments aimés/suivis.
+- **`unpage` / `pageParams` / `listItems`** — normalisent les réponses paginées (ou les
+  tableaux bruts hérités) en `Page<T>`.
+- **`useLibraryMappers`** — convertit `LibraryTrack/Album/Artist/Playlist` vers la forme
+  « Spotify-like » attendue par `ItemPlaylist/ItemAlbum/ItemArtist`, en gardant l'objet
+  d'origine dans `__src` pour pouvoir l'enfiler ensuite.
 
 ---
 
-## Protocole WebSocket lecteurs (`lecteur-live`)
+## Temps réel — WebSockets
 
-Composable `app/composables/useLecteursWs.ts` · endpoint `ws://…/lecteur-live` ·
-référence complète : `app/pages/lecteurs/API.md`.
+Toutes les sockets passent par `wsProxyUrl(path)` (`app/utils/ws.ts`) : base `WS_URL`
+(ou `WS_URL_BROADCAST` pour `Device`) + `?token=` pour l'authentification.
 
-### Messages serveur → front
+| Endpoint | Composable | Rôle |
+|---|---|---|
+| `/lecteur-live` | `useLecteursWs` | État et commandes des lecteurs (partagé pour toute l'app) |
+| `/controlOfDevice` | `useDeviceControlWs` | État et contrôle des appareils de sortie (singleton) |
+| `/Device` | `DeviceAddSlideover` | Découverte des appareils (port `WS_URL_BROADCAST`) |
+| `/Snap` | `useSnapWs` | Snapcast en JSON-RPC 2.0 (réponses corrélées par `id`) |
+| `/spotify-player` | `useSpotifyPlayerWs` | État du player Spotify (devices, piste) |
+
+### Protocole `lecteur-live`
+
+**Serveur → front**
 
 | Message | Quand | Contenu |
 |---|---|---|
-| `Lecteur.Init` | connexion / `GetState` | `{ lecteurs: LecteurState[] }` (queue incluse si dispo) |
+| `Lecteur.Init` | connexion / `GetState` | `{ lecteurs: LecteurState[] }` (file incluse si disponible) |
 | `Lecteur.Update` | changement d'état | `{ id, data: LecteurState }` |
-| `Lecteur.Heartbeat` | chaque seconde | `{ lecteurs: HeartbeatEntry[] }` (position + volume) |
-| `Lecteur.Queue` | réponse `GetQueue` | `{ id, queue: QueueItem[] }` |
-| `Lecteur.Error` | erreur commande | `{ id?, error }` |
+| `Lecteur.Heartbeat` | chaque seconde | `{ lecteurs: HeartbeatEntry[] }` (position, volume, `device_type`) |
+| `Lecteur.Queue` | réponse à `GetQueue` | `{ id, queue: QueueItem[] }` |
+| `Lecteur.Like` | réponse à `GetLike` / `ToggleLike` | `{ id, sourceId, like }` |
+| `Lecteur.AuthError` / `Lecteur.Auth` | token expiré / ré-authentification | `{ reason }` |
+| `Lecteur.Error` | erreur de commande | `{ id?, error }` |
 
-### Messages front → serveur
+**Front → serveur**
 
-`Lecteur.GetState` · `Lecteur.GetQueue` · `Lecteur.Play` (`{id, uri?}`) · `Lecteur.Pause` ·
-`Lecteur.Resume` · `Lecteur.TogglePlayPause` · `Lecteur.Next` · `Lecteur.Prev` ·
-`Lecteur.SetVolume` (`{id, value}`) · `Lecteur.SetShuffle` (`{id, value}`) ·
-`Lecteur.SetRepeat` (`{id, value}`) · `Lecteur.Seek` (`{id, position_ms}`) ·
-`Set.select` (`{id}` — définit le lecteur principal côté serveur).
+```
+Lecteur.GetState · Lecteur.GetQueue · Lecteur.Play {id, uri?} · Lecteur.Pause · Lecteur.Resume
+Lecteur.Next · Lecteur.Prev · Lecteur.Seek {id, position_ms} · Lecteur.SetVolume {id, value}
+Lecteur.SetShuffle {id, value} · Lecteur.SetRepeat {id, value}
+Lecteur.GetLike · Lecteur.ToggleLike
+Lecteur.SetQueue {id, files[]} · Lecteur.AddToQueue · Lecteur.RemoveFromQueue {id, index}
+Lecteur.MoveInQueue {id, from, to} · Lecteur.ClearQueue · Lecteur.Download {id, videoId, format}
+Set.select {id}          // définit le lecteur principal côté serveur
+```
 
 ### `LecteurState`
 
 ```ts
-{ id, name, type, alive, playing, shuffle, repeat,
+{ id, name, type, alive, playing, paused, shuffle, repeat,
   track: TrackInfo|null, temp: TempInfo|null, queue: QueueItem[]|null,
   volume, device_type, supports_volume }
 ```
 
-- **`playing` seul fait foi** : `true` = lecture, `false` = arrêté. (Pas de champ `paused`.)
+- **`playing` fait foi** pour l'état de lecture (`true` = lit, `false` = arrêté).
 - Le **lecteur principal** est choisi via `Set.select` et mémorisé dans
-  `useDashboard().activeLecteurId`. Les commandes ciblent ce lecteur par défaut, avec repli
-  sur le `lecteurId` renvoyé par l'API.
-- Fréquences : Heartbeat 1 s · poll Spotify ~4 s · poll FilePlayer 1 s · queue à la demande.
+  `useDashboard().activeLecteurId` ; les commandes le ciblent par défaut, avec repli sur le
+  `lecteurId` renvoyé par l'API library.
+- Cadence : heartbeat 1 s · file à la demande · reconnexion automatique toutes les 2 s.
 
 ### Slideovers liés
 
-- **`LecteurSlideover`** (`L`) : liste des lecteurs, sélection du principal (`Set.select`),
-  volume par lecteur, badges Lecture/Arrêté/Hors-ligne.
-- **`LecteurQueueSlideover`** (`Q`) : file d'attente du lecteur actif (piste en cours + suite).
+- **`LecteurSlideover`** (`L`) : liste des lecteurs, sélection du principal, volume par lecteur,
+  badges Lecture / Arrêté / Hors-ligne, réinitialisation de la file (types `fileplayer`,
+  `youtube`, `deezer`).
+- **`LecteurQueueSlideover`** (`Q`) : file du lecteur actif.
+- **`DeviceSlideover`**, **`DeviceSpotifySlideover`**, **`DeviceAddSlideover`**, **`NotificationsSlideover`**.
 
 ---
 
-## Contrat FilePlayer
+## Lecteurs
 
-Documenté en détail dans **`app/API.md`** (config d'instanciation, commandes IPC, events).
-Côté front, un FilePlayer démarré se pilote via le WS `lecteur-live` (transport, volume,
-shuffle/repeat, seek) et les commandes de queue de la bibliothèque :
+Un lecteur = un **service** (d'où vient l'audio) + un **transport** (où il sort).
 
-| Action UI | Effet |
+### Types
+
+| Type | État côté front | Description | Config notable |
+|---|---|---|---|
+| `spotify` | ✅ | librespot + API Spotify | bitrate, device-type, compte (`tokenUserId`) |
+| `fileplayer` | ✅ | Lecture de fichiers locaux, file gérée depuis le front | queue, repeat, shuffle, EQ, upmix |
+| `youtube` | ✅ | Source bibliothèque + téléchargement (`Lecteur.Download`) | transport, file |
+| `deezer` | ⚙️ | Connexion du compte (ARL / OAuth) et gestion de file ; la présence dans la bibliothèque dépend du back-end | bitrate, device-type |
+| `radio` | 🚧 | Formulaire de configuration seulement | URL du flux |
+| `local` | 🚧 | Formulaire de configuration seulement — couvert en pratique par `fileplayer` | transport |
+| `localInput` | ✅ | Capture ALSA (entrée ligne) | `pcm_device`, layout de sortie, `master_gain_db` |
+
+### Transports
+
+| Transport | Description |
 |---|---|
-| Config à la création (`FilePlayerServiceConfig`) | `queue[]`, `volume`, `repeat`, `shuffle`, transport (FIFO/local/VBAN) |
-| Contrôle live (`FilePlayerControl`) | play/pause/next/prev/seek/volume + add/remove/move dans la queue |
+| `localStream` | Sortie sur un périphérique audio local (ALSA) |
+| `StreamOutFifo` | Sortie vers un pipe FIFO (ex. Snapcast) |
+| `vban` / `sendVban` | Envoi réseau via le protocole VBAN |
 
-Extensions audio acceptées : `.mp3 .flac .aac .m4a .ogg .opus .wav .aiff .wma .alac .ape …`
+### Création & édition
+
+- **Création** : modale `LecteurCreateModal` — le formulaire de config s'adapte au type choisi
+  (`SpotifyServiceConfig`, `FilePlayerServiceConfig`, `YouTubeServiceConfig`,
+  `DeezerServiceConfig`, `RadioServiceConfig`, `LocalServiceConfig`, `LocalInputServiceConfig`),
+  avec choix du transport et d'un preset EQ (`conf_eq_id`).
+- **Édition** (`/lecteurs/:id`) : mêmes formulaires + start/stop. Pour un **`fileplayer`** vivant,
+  le composant `FilePlayerControl` ajoute le contrôle live : transport, seek, volume,
+  repeat/shuffle et **gestion de file** (ajout par chemin, lecture, monter/descendre, suppression).
+- **Compte lié** : `TokenUserSelect` choisit le compte d'authentification (`config.tokenUserId`).
+  Un admin voit tous les utilisateurs annotés de l'état de leur token, un utilisateur voit le sien.
+
+### Contrat FilePlayer
+
+Détaillé dans **[`app/API.md`](app/API.md)** : config d'instanciation (queue, volume, sortie
+`StreamOutFifo` / `sendVban` / `localStream`, EQ), commandes IPC et events du process Python.
+
+Extensions acceptées : `.mp3 .flac .aac .m4a .ogg .opus .wav .aiff .wma .alac .ape …`
 et conteneurs `.mkv .mka .dts .ac3 .eac3 .mp4 …`.
 
 ---
 
-## Types de lecteurs & transports
+## Diffusion & protocoles réseau
 
-| Type | Statut | Description | Config notable |
-|---|---|---|---|
-| `spotify` | ✅ | Client Spotify (librespot) + API Spotify | bitrate, device-type, typeStream |
-| `fileplayer` | ✅ | Lecture de fichiers locaux | queue, repeat, shuffle, EQ, upmix |
-| `deezer` | 🚧 **non implémenté** | Client Deezer — formulaire de config présent, intégration lecture/bibliothèque à faire | bitrate, device-type |
-| `radio` | 🚧 **non implémenté** | Flux radio HTTP — formulaire de config présent, lecture à faire | URL du flux |
-| `localInput` | ✅ | Capture audio ALSA (entrée ligne) | pcm_device, layout sortie, master_gain_db |
+Les services sont pilotés par `GET /services` / `PUT /services/:name` (composable `useProtocols`) :
+activer un service le fait apparaître dans le menu. Le catalogue connu du front est dans
+`src/api/protocols.ts` (Snapcast, VBAN, DLNA/UPnP, AirPlay, Chromecast).
 
-> **Deezer** et **radio** : seuls leurs formulaires de configuration
-> (`DeezerServiceConfig`, `RadioServiceConfig`) existent. Ces sources ne sont pas encore
-> branchées à la bibliothèque `/library` ni au protocole de lecture — à compléter.
-> La lecture de **fichiers locaux** est assurée par le type `fileplayer`.
+| Domaine | Page | API |
+|---|---|---|
+| **Snapcast** | `/snap`, `/snap/snapconfig` | WS JSON-RPC (`Client.SetVolume`, `Group.SetStream`, `Client.SetChannelMap`…) + `GET /snap/state`, `POST /snap/restore`, instances via `/snap/*` |
+| **VBAN** | `/vban` | `GET`/`POST`/`DELETE /vban`, `GET /vban/state`, `POST /vban/select` — sélection de la cible, réglages master et haut-parleurs, streams enregistrés |
+| **SendSpin** | `/sendspin` | `GET`/`PUT /sendspin`, `POST /sendspin/start`/`stop`, `DELETE /sendspin` — modes `snapcast`, `vban`, `url`, `process` |
+| **Bluetooth** | `/bt` | `/bt/adapters`, `/bt/devices`, `/bt/status`, `/bt/scan`, `/bt/pair`, `/bt/connect`, `/bt/disconnect` |
+| **Règles** | `/control` | `/control`, `/control/schema`, CRUD `/control/rules`, `POST /control/rules/validate`, `PATCH /control/rules/:id/toggle` |
 
-| Transport | Description |
+---
+
+## Appareils de sortie & EQ
+
+### `/devices`
+
+Liste des appareils détectés (état temps réel via `useDeviceControlWs`) : slider de volume
+**général** + sliders **par canal**, mute, boutons ±5 %. Le nombre de canaux suit
+`vban.channels` ; les canaux absents de l'état WS sont complétés au niveau moyen.
+
+### `/devices/:id`
+
+Configuration ALSA de l'appareil : cartes USB détectées, éditeur de **PCM/bus** multi-cartes
+(`useDeviceBus`), aperçu et écriture de `asound.conf` (`/alsa/save`, `/alsa/rollback`),
+gestion des instances **snapclient** (ajout, autostart, autorestart, start/stop).
+
+### `/eq` · `/eqconfig` · `/eq/presset`
+
+Égaliseur paramétrique temps réel (bandes ON/OFF, courbe calculée via Web Audio dans
+`utils/eqTools.ts`) et presets : sample rate, fichier de config, **mapping canal par canal
+Input → Output**, layouts jusqu'à 22.2 (`utils/audioLayouts.ts`).
+
+---
+
+## Paramètres & administration
+
+| Page | Contenu |
 |---|---|
-| `localStream` | Sortie sur device audio local (ALSA) |
-| `StreamOutFifo` | Sortie vers pipe FIFO (ex. Snapcast) |
-| `vban` / `sendVban` | Envoi réseau via protocole VBAN |
+| `/settings` | Profil (nom, email, avatar) |
+| `/settings/notifications` | Toasts in-app + **Web Push** (service worker `public/sw.js`, clé VAPID, abonnement), préférences par type d'événement, historique |
+| `/settings/security` | Changement de mot de passe (schéma Zod) |
+| `/settings/members` 🔒 | CRUD utilisateurs, révocation de toutes les sessions d'un compte |
+| `/settings/credentials` 🔒 | **Connexions** : clés d'application par fournisseur, comptes Spotify (librespot : autorisation, échange, vérification), Deezer (ARL / OAuth), visibilité publique des sources, dossiers du stockage local, activation des protocoles audio |
+| `/settings/browsers` 🔒 | Sessions navigateur, journal global filtrable, révocation/restauration, suppression de logs |
+
+🔒 = réservé aux administrateurs.
+
+---
+
+## API REST consommée
+
+Toutes les requêtes passent par l'instance Axios `app/src/lib/https.ts` (baseURL `/proxy`).
+
+| Module | Endpoints principaux |
+|---|---|
+| Auth | `POST /login` · `/logout` · `/refresh` · `/register` |
+| `api/user.ts` | `GET /user` · `GET /user/all` · `PUT /user/:id` · `DELETE /user/:id` |
+| `api/lecteur.ts` | `GET`/`POST` `/lecteur` · `GET`/`PUT`/`DELETE` `/lecteur/:id` · `PUT /lecteur/:id/start` et `/stop` · `POST /lecteur/:id/command` |
+| `api/library.ts` | voir [Bibliothèque](#bibliothèque-musicale-musique) |
+| `api/dbPlaylists.ts` | `/library/db-playlists…` (CRUD, import, pistes, move, play) |
+| `api/genres.ts` | `/library/genres…` |
+| `api/saved.ts` | `/library/saved/tracks` · `/library/saved/artists` |
+| `api/eq.ts` | `GET`/`POST` `/eq` · `GET`/`PUT`/`DELETE` `/eq/:id` |
+| `api/credentials.ts` | `/credentials/providers` · `/credentials` · `/credentials/spotify/authorize` · `/credentials/deezer/connect` et `/authorize` · `/credentials/:id/default` |
+| `api/librespot.ts` | `/credentials/librespot` (authorize, exchange, verify, all, user/:id) |
+| `api/appkey.ts` | `/keys` · `/keys/catalog` · `/keys/:provider` |
+| `api/services.ts` | `GET /services` · `PUT /services/:name` |
+| `api/vban.ts` | `/vban` · `/vban/state` · `/vban/select` |
+| `api/sendspin.ts` | `/sendspin` · `/sendspin/start` · `/sendspin/stop` |
+| `api/snap.ts` | `/snap/state` · `/snap/restore` |
+| `api/notifications.ts` | préférences, abonnement Web Push, clé VAPID, historique, `read` |
+| `api/admin.ts` | `/admin/browsers…` · `/admin/logs` · `/admin/users/:id/revoke-token` |
 
 ---
 
@@ -318,43 +469,37 @@ et conteneurs `.mkv .mka .dts .ac3 .eac3 .mp4 …`.
 | Composable | Rôle |
 |---|---|
 | `useWs` | WebSocket générique : reconnexion auto, parsing JSON, handlers multiples, cleanup |
-| `useLecteursWs` | États lecteurs temps réel + toutes les commandes `Lecteur.*` / `Set.select` |
-| `useDeviceControlWs` | Contrôle & état des appareils de sortie (singleton) |
-| `useSnapWs` | État Snapcast (JSON-RPC) |
-| `useDashboard` | État UI global partagé (`createSharedComposable`) : slideovers, `activeLecteurId`, raccourcis clavier |
-| `useAuth` | Login / token / logout / `isAuthenticated` |
-| `useCurrentUser` | Décodage JWT → `user`, `isAdmin` |
-| `useNotifications` | Toasts in-app, Web Push, préférences, historique (`createSharedComposable`) |
-| `useParametricEq` | Gestion des bandes EQ |
-
-### Raccourcis clavier (`useDashboard`)
-
-`n` notifications · `s-d` devices Spotify · `d` device · `l` lecteurs · `q` file d'attente ·
-`m` menu · `ctrl+d` ajout device · `g-h`/`g-s` navigation.
+| `useLecteursWs` | État temps réel des lecteurs + toutes les commandes `Lecteur.*` / `Set.select` (partagé) |
+| `useDeviceControlWs` | Contrôle et état des appareils de sortie (singleton) |
+| `useSnapWs` | Snapcast en JSON-RPC (promesses corrélées par `id` + notifications) |
+| `useSpotifyPlayerWs` | État du player Spotify (devices, piste courante) |
+| `useDashboard` | État UI global partagé : slideovers, `activeLecteurId`, menu, raccourcis clavier |
+| `useLibrarySources` | Sources actives de la bibliothèque, persistées en localStorage |
+| `useProtocols` | Services/protocoles audio (`/services`) — pilote aussi le menu |
+| `useAuth` | Login / logout / `isAuthenticated` |
+| `useCurrentUser` | Décodage du JWT → `user`, `isAdmin` |
+| `useNotifications` | Toasts, Web Push, préférences, historique (partagé) |
+| `useParametricEq` | Gestion des bandes de l'égaliseur |
+| `useDeviceBus` | État et actions de l'éditeur de PCM/bus ALSA (UI-agnostique) |
+| `useToastHelpers` | Raccourcis `ok` / `ko` / `info` sur `useToast()` |
+| `useLibraryMappers` | Adaptation `/library` → composants de détail |
 
 ---
 
-## API REST consommée
+## Raccourcis clavier
 
-### Authentification
-`POST /login` · `POST /logout` · `POST /refresh` · `POST /register`
+Définis dans `useDashboard` :
 
-### Lecteurs (`src/api/lecteur.ts`)
-`GET /lecteur` · `GET /lecteur/:id` · `POST /lecteur` · `PUT /lecteur/:id` ·
-`PUT /lecteur/:id/start` · `PUT /lecteur/:id/stop` · `DELETE /lecteur/:id`
-
-### EQ (`src/api/eq.ts`)
-`GET /eq` · `GET /eq/:id` · `POST /eq` · `PUT /eq/:id` · `DELETE /eq/:id`
-
-### Bibliothèque (`src/api/library.ts`)
-Voir [section dédiée](#bibliothèque-library-multi-sources).
-
-### Admin (`src/api/admin.ts`)
-`GET /user/all` · `POST /admin/users/:id/revoke-token` ·
-navigateurs : `GET` browsers / logs, `revoke`/`restore`, `DELETE /admin/logs`…
-
-### Notifications (`src/api/notifications.ts`)
-préférences, subscribe/unsubscribe Web Push, clé VAPID, historique, mark-read.
+| Touche | Action |
+|---|---|
+| `n` | Notifications |
+| `l` | Lecteurs |
+| `q` | File d'attente |
+| `d` | Appareil |
+| `s` puis `d` | Appareils Spotify |
+| `m` | Menu latéral |
+| `ctrl` + `d` | Ajouter un appareil |
+| `g` puis `h` / `s` | Aller à l'accueil / aux paramètres |
 
 ---
 
@@ -363,69 +508,84 @@ préférences, subscribe/unsubscribe Web Push, clé VAPID, historique, mark-read
 ```
 app/
 ├── pages/
-│   ├── spotify.vue              # Bibliothèque /library + lecteur fixe
-│   ├── lecteurs/               # index, new, [id] (+ FilePlayerControl), API.md
-│   ├── devices/                # index (volume par canal), [id]
+│   ├── index.vue                # Maison (tableau de bord)
+│   ├── musique.vue              # Bibliothèque /library + lecteur fixe
+│   ├── lecteurs/                # index, [id] (+ FilePlayerControl)
+│   ├── devices/                 # index (volume par canal), [id] (ALSA, snapclient)
 │   ├── eq.vue · eqconfig.vue · eq/presset.vue
-│   ├── snap/ · bt.vue · control/
-│   └── settings/               # general, notifications, security, members*, spotify*, browsers*
+│   ├── snap/                    # index, snapconfig
+│   ├── vban.vue · sendspin.vue · bt.vue · control/
+│   └── settings/                # index, notifications, security, members*, credentials*, browsers*
 │
 ├── components/
-│   ├── spotify/components/
-│   │   ├── HomeView.vue · LibrarySidebar.vue · HScroll.vue
-│   │   ├── ItemPlaylist.vue · ItemAlbum.vue · ItemArtist.vue · lecture.vue
-│   │   └── …
-│   ├── spotify/composable/useLibraryMappers.ts
-│   ├── lecteur/services/        # *ServiceConfig.vue (dont FilePlayerServiceConfig)
+│   ├── spotify/components/      # HomeView, LibrarySidebar, HScroll, ItemAlbum/Artist/Playlist,
+│   │                            # TrackListView, SavedDetail, DbPlaylistDetail, lecture.vue…
+│   ├── spotify/composable/      # useLibraryMappers…
+│   ├── lecteur/services/        # *ServiceConfig.vue (un par type de lecteur)
 │   ├── lecteur/transports/      # LocalStream / StreamOutFifo / Vban
+│   ├── lecteur/                 # LecteurCreateModal, LecteurConfigForm, TokenUserSelect
 │   ├── FilePlayerControl.vue · LecteurSlideover.vue · LecteurQueueSlideover.vue
-│   ├── NotificationsSlideover.vue · DeviceSlideover.vue · DeviceAddSlideover.vue
-│   └── …
+│   ├── Device*Slideover.vue · NotificationsSlideover.vue · MarqueeText.vue
+│   └── settings/MembersList.vue
 │
 ├── composables/                 # useWs, useLecteursWs, useDeviceControlWs, useSnapWs,
-│                                # useDashboard, useAuth, useCurrentUser, useNotifications, …
-├── middleware/admin.ts
+│                                # useDashboard, useProtocols, useLibrarySources, useAuth…
+├── middleware/                  # auth.global.ts, admin.ts
 ├── plugins/push-notifications.client.ts
 ├── src/
-│   ├── api/  library.ts · lecteur.ts · eq.ts · admin.ts · notifications.ts
-│   ├── lib/https.ts            # Axios + intercepteurs
-│   └── config.ts
-├── utils/  browser.ts · cookies.ts · audioLayouts.ts · lecteurOptions.ts · eqTools.ts
-├── layouts/default.vue
-├── types/  lecteur.ts (+ index.d.ts)
+│   ├── api/                     # library, dbPlaylists, genres, saved, lecteur, eq, credentials,
+│   │                            # librespot, appkey, services, vban, sendspin, snap, admin…
+│   ├── lib/https.ts             # Axios + intercepteurs (Bearer, refresh, X-Browser)
+│   └── config.ts                # API_URL / WS_URL / WS_URL_BROADCAST
+├── utils/                       # ws, cookies, browser, audioLayouts, channelLayouts,
+│                                # eqTools, eqPreset, lecteurOptions, nowPlaying, youtube
+├── layouts/default.vue          # Sidebar dynamique + slideovers globaux
+├── types/                       # lecteur.ts, device.ts, index.d.ts
 └── API.md                       # Contrat FilePlayer (process Python)
 
-public/sw.js                      # Service worker Web Push
+public/sw.js                     # Service worker Web Push
+server/api/notifications.ts      # Données de démo (reste du template)
 ```
 
 ---
 
 ## Conventions & pièges connus
 
-- **Icônes dynamiques** : UnoCSS/Nuxt UI ne détecte que les classes **présentes statiquement**.
-  Une icône via `:icon="fn()"` peut ne pas être générée → préférer des `<UIcon name="mdi:…">`
-  en `v-if` quand le nom est conditionnel.
-- **`HScroll`** (carousel) : un ancêtre flex sans `min-w-0` laisse le contenu déborder
-  horizontalement → on **plafonne la largeur du scroller** à l'espace visible
-  (`window.innerWidth − left`) avec une **garde** (jamais ≤ 0, sinon la section devient
-  invisible). Les flèches n'apparaissent que s'il y a réellement un dépassement.
-- **Covers** : toujours passer par `resolveCoverUrl` (les URLs FilePlayer sont relatives).
-- **IDs library** : utiliser `resolveId` (les pistes exposent `sourceId`, pas toujours `id`).
-- **Lecteurs** : `playing` est l'unique source de vérité de l'état lecture (pas de `paused`).
-- **Cookies cross-origin** : tout passe par le proxy `/proxy` pour rester same-origin.
+- **Icônes dynamiques** — Nuxt UI ne génère que les classes présentes **statiquement**. Une
+  icône passée via `:icon="fn()"` peut ne pas être produite : préférer des
+  `<UIcon name="mdi:…">` en `v-if` quand le nom est conditionnel.
+- **Pochettes** — toujours passer par `resolveCoverUrl` : les URL FilePlayer sont relatives et
+  doivent être préfixées par `/proxy`.
+- **Identifiants library** — `resolveId` pour l'affichage, `sourceKey` pour rappeler l'API de la
+  source (les éléments aimés/suivis portent un id de ligne en base, pas l'id natif).
+- **Pagination** — les réponses varient (tableau brut ou enveloppe `{ items, … }`) : passer par
+  `unpage` / `listItems` plutôt que lire `res.data` directement.
+- **État de lecture** — `playing` est la source de vérité ; ne pas se fier à `paused`.
+- **`HScroll`** — un ancêtre flex sans `min-w-0` laisse le contenu déborder : le scroller
+  plafonne sa largeur à l'espace visible (`window.innerWidth − left`), avec une garde (jamais
+  ≤ 0, sinon la section devient invisible). Les flèches n'apparaissent qu'en cas de dépassement.
+- **Sources mixtes** — une collection en base est verrouillée sur une source ; y mélanger des
+  pistes d'origines différentes casse la lecture sur le lecteur de cette source.
+- **Cookies** — tout le REST passe par `/proxy` pour rester same-origin ; les WebSockets, eux,
+  s'authentifient par `?token=`.
+- **Restes du template Nuxt UI Dashboard** — `pages/inbox.vue` (lit `/api/mails`, non fourni),
+  `components/customers/*`, `TeamsMenu.vue` et `server/api/notifications.ts` ne sont pas
+  branchés au back-end.
 
 ---
 
-## Thème
+## Qualité & CI
 
-- Couleur primaire : **green** · neutre : **zinc**
-- Mode clair / sombre selon la préférence
-
----
-
-## Commandes utiles
+`.github/workflows/ci.yml` lance, à chaque push (Ubuntu, Node 22, pnpm) :
 
 ```bash
-pnpm lint          # ESLint
-pnpm typecheck     # vue-tsc
+pnpm install
+pnpm run lint
+pnpm run typecheck
 ```
+
+---
+
+## Licence
+
+[MIT](LICENSE) — © 2025 Quentin Guiheneuc.
