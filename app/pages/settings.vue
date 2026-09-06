@@ -13,7 +13,9 @@ const adminLinks: NavigationMenuItem[] = [
   { label: 'Members',     icon: 'i-lucide-users',   to: '/settings/members' },
   // { label: 'Spotify',     icon: 'logos:spotify-icon', to: '/settings/spotify' },
   { label: 'Connexions', icon: 'i-lucide-key-round', to: '/settings/credentials' },
-  { label: 'Navigateurs', icon: 'i-lucide-monitor', to: '/settings/browsers' }
+  { label: 'Navigateurs', icon: 'i-lucide-monitor', to: '/settings/browsers' },
+  { label: 'FIFO', icon: 'i-lucide-file-audio', to: '/settings/fifo' },
+  { label: 'Mise à jour', icon: 'i-lucide-refresh-cw', to: '/settings/update' }
 ]
 
 const links = computed<NavigationMenuItem[][]>(() => [

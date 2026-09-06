@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FifoSelect from '../FifoSelect.vue'
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -36,11 +37,7 @@ const localValue = computed({
 
     <div class="md:col-span-2">
       <label class="text-sm text-dimmed">Path fifo</label>
-      <UInput
-        v-model="localValue['path-audio']"
-        placeholder="/tmp/spotify/Cuisine_Snap.fifo"
-        class="min-w-[160px] w-full flex items-center h-8 rounded-md border border-accented bg-elevated text-sm font-mono"
-      />
+      <FifoSelect v-model="localValue['path-audio']" />
     </div>
 
     <div>

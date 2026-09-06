@@ -12,6 +12,7 @@ import { typeStreamOptions } from '@/utils/lecteurOptions'
 import { typeItems } from '@/types/lecteur'
 import { getEqPresets, type EqPreset } from '~/src/api/eq'
 import TokenUserSelect from '@/components/lecteur/TokenUserSelect.vue'
+import FifoSelect from '@/components/lecteur/FifoSelect.vue'
 
 const toast = useToast()
 const route = useRoute()
@@ -400,7 +401,7 @@ onMounted(async () => {
 
           <div class="md:col-span-2">
             <label class="text-sm text-dimmed">Path fifo</label>
-            <UInput v-model="cfg.localStream['path-audio']" placeholder="/tmp/spotify/multiroom_Snap.fifo" />
+            <FifoSelect v-model="cfg.localStream['path-audio']" />
           </div>
         </div>
 
@@ -411,7 +412,7 @@ onMounted(async () => {
 
           <div class="md:col-span-2">
             <label class="text-sm text-dimmed">Path fifo</label>
-            <UInput v-model="cfg.StreamOutFifo['path-audio']" placeholder="/tmp/spotify/Cuisine_Snap.fifo" class="w-full flex items-center h-8 rounded-md border border-accented bg-elevated text-sm font-mono"/>
+            <FifoSelect v-model="cfg.StreamOutFifo['path-audio']" />
           </div>
 
           <div>

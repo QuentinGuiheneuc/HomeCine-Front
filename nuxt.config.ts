@@ -1,26 +1,31 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
-const ip = "192.168.1.19"
+
 export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
     '@nuxt/ui',
     '@vueuse/nuxt'
   ],
-  css: ['~/assets/css/main.css', '~/assets/css/sliders-many-colors.css'],
+
+  css: [
+    '~/assets/css/main.css',
+    '~/assets/css/sliders-many-colors.css'
+  ],
 
   runtimeConfig: {
+    // Variables uniquement serveur
+    hostServ: process.env.HOST_SERV || '192.168.1.19',
+    port: Number(process.env.PORT || 3007),
+
     public: {
-      wsBase: process.env.WS_BASE ?? `ws://${ip}:8099`
-    }
-  },
-  
-  nitro: {
-    routeRules: {
-      // /refresh à la racine — REFRESH_TOKEN a path:/refresh côté serveur,
-      // la requête doit arriver sur /refresh pour que le cookie soit envoyé
-      '/refresh':  { proxy: `http://${ip}:3007/refresh` },
-      // Toutes les autres routes API (login, logout, user, etc.)
-      '/proxy/**': { proxy: `http://${ip}:3007/**` }
+      // URL HTTP utilisée par le client
+      apiUrl: process.env.API_URL || '/proxy',
+
+      // WebSocket principal
+      wsBase: `ws://${process.env.HOST_SERV || '192.168.1.19'}:${process.env.PORT_WS || 8099}`,
+
+      // WebSocket broadcast
+      wsUrlBroadcast: `ws://${process.env.HOST_SERV || '192.168.1.19'}:${process.env.PORT_WS_BROADCAST || 9086}`
     }
   },
 
@@ -32,11 +37,17 @@ export default defineNuxtConfig({
 
   compatibilityDate: '2024-07-11',
 
-  // Expose les variables d'environnement au bundle client (baked au build)
-  vite: {
-    define: {
-      'process.env.API_URL': JSON.stringify(process.env.API_URL ?? '/proxy'),
-      'process.env.WS_BASE': JSON.stringify(process.env.WS_BASE ?? `ws://${ip}:8099`)
+  nitro: {
+    routeRules: {
+      // Refresh token
+      '/refresh': {
+        proxy: `http://${process.env.HOST_SERV || '192.168.1.19'}:${process.env.PORT_SERV || 3007}/refresh`
+      },
+
+      // API backend
+      '/proxy/**': {
+        proxy: `http://${process.env.HOST_SERV || '192.168.1.19'}:${process.env.PORT_SERV || 3007}/**`
+      }
     }
   },
 

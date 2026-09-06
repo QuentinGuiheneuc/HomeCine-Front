@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDebounceFn } from '@vueuse/core'
 import {
-  getProviders, getPlaylists, getAlbums, getArtists, reindex, resolveCoverUrl, resolveId,
+  getProviders, getPlaylistsPage, getAlbumsPage, getArtistsPage, reindex, resolveCoverUrl, resolveId, clearLibraryCache,
   type LibrarySource, type LibraryProvider,
   type LibraryPlaylist, type LibraryAlbum, type LibraryArtist
 } from '@/src/api/library'
@@ -48,7 +48,8 @@ function toggleSource(id: LibrarySource) {
 }
 async function onReindex() {
   reindexing.value = true
-  try { await reindex() } finally { reindexing.value = false; reload() }
+  try { await reindex() }
+  finally { reindexing.value = false; clearLibraryCache(); reload() }
 }
 const sourceIcon = (s?: LibrarySource) => {
   switch ((s ?? '').toLowerCase()) {
@@ -100,26 +101,64 @@ const playlists = ref<LibraryPlaylist[]>([])
 const albums    = ref<LibraryAlbum[]>([])
 const artists   = ref<LibraryArtist[]>([])
 
-async function loadPlaylists() {
+/* Pagination : 1re page, puis « Charger plus » (ou scroll à 100 %) */
+const page    = ref(1)
+const hasMore = ref(false)
+const more    = ref(false)
+
+const fetchers = {
+  playlists: (pg: number) => getPlaylistsPage({ q: q.value || undefined, sources: selectedSources.value, page: pg }),
+  albums:    (pg: number) => getAlbumsPage({    q: q.value || undefined, sources: selectedSources.value, page: pg }),
+  artists:   (pg: number) => getArtistsPage({   q: q.value || undefined, sources: selectedSources.value, page: pg }),
+} as const
+
+const listOf = (s: Section) => (s === 'playlists' ? playlists : s === 'albums' ? albums : artists)
+
+/** Pages chargées d'entrée (les listes sont courtes : 1 page ne remplit pas le panneau) */
+const INITIAL_PAGES = 2
+
+/** (Re)charge les premières pages de l'onglet courant */
+async function reload() {
+  const sec = active.value
   loading.value = true
-  try { playlists.value = await getPlaylists({ q: q.value || undefined, sources: selectedSources.value }) }
-  finally { loading.value = false }
-}
-async function loadAlbums() {
-  loading.value = true
-  try { albums.value = await getAlbums({ q: q.value || undefined, sources: selectedSources.value }) }
-  finally { loading.value = false }
-}
-async function loadArtists() {
-  loading.value = true
-  try { artists.value = await getArtists({ q: q.value || undefined, sources: selectedSources.value }) }
+  page.value = 1
+  hasMore.value = false
+  try {
+    const items: any[] = []
+    let loaded = 0, hm = false
+    for (let pg = 1; pg <= INITIAL_PAGES; pg++) {
+      const res = await fetchers[sec](pg)
+      items.push(...res.items)
+      loaded = pg
+      hm = res.hasMore
+      if (!hm) break
+    }
+    ;(listOf(sec).value as any[]) = items
+    page.value = loaded
+    hasMore.value = hm
+  } catch { /* liste indisponible */ }
   finally { loading.value = false }
 }
 
-function reload() {
-  if (active.value === 'playlists') loadPlaylists()
-  if (active.value === 'albums')    loadAlbums()
-  if (active.value === 'artists')   loadArtists()
+/** Page suivante, ajoutée à la liste */
+async function loadMore() {
+  if (!hasMore.value || more.value || loading.value) return
+  const sec = active.value
+  more.value = true
+  try {
+    const next = page.value + 1
+    const res = await fetchers[sec](next)
+    ;(listOf(sec).value as any[]) = [...(listOf(sec).value as any[]), ...res.items]
+    page.value = next
+    hasMore.value = res.hasMore
+  } catch { /* noop */ }
+  finally { more.value = false }
+}
+
+/** Scroll du corps : charge la suite seulement à 100 % (tout en bas) */
+function onScroll(e: Event) {
+  const el = e.target as HTMLElement
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) loadMore()
 }
 
 const _searchDebounced = useDebounceFn(reload, 300)
@@ -128,14 +167,14 @@ watch(active, reload)
 /* Refetch quand les sources changent (depuis la sidebar OU la home) */
 watch(selectedSources, () => reload(), { deep: true })
 
-function onRefresh() { emit('refresh'); reload() }
+function onRefresh() { clearLibraryCache(); emit('refresh'); reload() }
 
 const cover = (o: any) => resolveCoverUrl(o.coverUrl ?? o.cover_url ?? o.image) ?? 'https://via.placeholder.com/64x64?text=♪'
 const trackCount = (o: any) => o.trackCount ?? o.track_count ?? null
 
 onMounted(async () => {
   await loadProviders()
-  await loadPlaylists()
+  await reload()
   loadDb()
 })
 </script>
@@ -187,8 +226,8 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- CORPS scrollable -->
-    <div class="p-2 overflow-y-auto flex-1 min-h-0">
+    <!-- CORPS scrollable (charge la suite au scroll à 100 %) -->
+    <div class="p-2 overflow-y-auto flex-1 min-h-0" @scroll.passive="onScroll">
 
       <!-- PLAYLISTS -->
       <template v-if="active === 'playlists'">
@@ -243,6 +282,12 @@ onMounted(async () => {
           <UButton icon="i-lucide-play" size="2xs" color="primary" square class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop="playCtx(ar, 'artist')" />
         </div>
       </template>
+
+      <!-- Chargement de la suite : uniquement quand la barre de défilement
+           atteint 100 % (cf. onScroll) — pas de bouton ici. -->
+      <div v-if="more" class="flex justify-center py-3">
+        <UIcon name="i-lucide-loader-circle" class="animate-spin text-dimmed size-4" />
+      </div>
 
       <div v-if="loading" class="flex justify-center py-4">
         <UIcon name="i-lucide-loader-circle" class="animate-spin text-dimmed size-5" />

@@ -24,7 +24,7 @@ const authHttp = axios.create({
 })
 
 const http = axios.create({
-  baseURL: appConfig.API_URL,
+  baseURL: appConfig.API_URL,          // écrasé au démarrage par plugins/config.ts
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' }
 })

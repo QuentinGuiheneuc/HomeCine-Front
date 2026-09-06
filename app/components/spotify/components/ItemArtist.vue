@@ -78,11 +78,9 @@ function loadMoreCurrent() {
   else emit('load-more-tracks')
 }
 
-/* ---------- Scroll infini ---------- */
-const sentinel = ref<HTMLElement | null>(null)
-useIntersectionObserver(sentinel, ([entry]) => {
-  if (entry?.isIntersecting && hasMoreCurrent.value && !loadingCurrent.value) loadMoreCurrent()
-})
+/* ---------- Pagination manuelle ----------
+   Pas de scroll infini ici : le capteur restait visible après chaque page et
+   enchaînait les chargements jusqu'à ramener toute la discothèque. */
 
 /* ---------- Hero / infos ---------- */
 const avatar = computed(() =>
@@ -281,7 +279,7 @@ function playArtist() {
         </div>
 
         <!-- Charger plus (+ scroll infini) -->
-        <div v-if="hasMoreCurrent" ref="sentinel" class="flex justify-center pt-3">
+        <div v-if="hasMoreCurrent" class="flex justify-center pt-3">
           <UButton size="sm" variant="soft" color="neutral" @click="loadMoreCurrent">
             {{ loadingCurrent ? 'Chargement…' : 'Charger plus' }}
           </UButton>

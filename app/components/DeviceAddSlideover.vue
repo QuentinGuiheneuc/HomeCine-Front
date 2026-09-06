@@ -13,6 +13,10 @@ const wsStatus = ref<'disconnected' | 'connecting' | 'connected'>('disconnected'
 const wsErrorMsg = ref<string | null>(null)
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+/** URL (token inclus) avec laquelle la socket courante a été ouverte */
+let wsUrlUsed = ''
+/** Commandes envoyées avant l'ouverture : rejouées dans onopen */
+let pendingSend: any[] = []
 
 // const wsUrl = computed(() => `${config.WS_URL}/Device`)
 
@@ -36,6 +40,116 @@ const searching = ref(false)
 const foundMap = ref<Record<string, FoundDevice>>({})
 const checkingMap = ref<Record<string, boolean>>({}) // anti-spam checks
 const q = ref('')
+
+/* ---------- Balayage de présence (Presence.* sur le WS broadcast) ----------
+   Sondage unicast adresse par adresse : passe là où la diffusion est bloquée
+   (pare-feu, routeur, VPN). Les résultats remontent au fil de l'eau. */
+const rxCount      = ref(0)                     // messages reçus sur la socket (diagnostic)
+const scanning     = ref(false)
+const scanProgress = ref<{ faites: number; total: number } | null>(null)
+const scanRetryMs  = ref<number | null>(null)   // refus : réessayer dans…
+
+const scanPercent = computed(() => {
+  const pr = scanProgress.value
+  return pr && pr.total ? Math.min(100, Math.round((pr.faites / pr.total) * 100)) : 0
+})
+
+/** Lance Presence.Scan (le serveur balaie les réseaux de ses interfaces) */
+function startPresenceScan() {
+  ensureFreshWs()
+  scanning.value = true
+  scanRetryMs.value = null
+  scanProgress.value = null
+  sendWs({ method: 'Presence.Scan' })
+  // Aucun accusé de réception : seul Presence.Done clôt le balayage.
+  setTimeout(() => { if (scanning.value && !scanProgress.value) scanning.value = false }, 20000)
+}
+
+/**
+ * Messages liés au balayage — renvoie true si le message est consommé.
+ * Device.Search et Presence.Scan ne reviennent QUE pour signaler un refus ;
+ * une annonce d'appareil, elle, ne porte pas de champ `method`.
+ */
+function handlePresence(msg: any): boolean {
+  switch (msg?.method) {
+    case 'Device.Search':
+      if (!msg.error) return true          // pas d'accusé de réception attendu
+      searching.value = false
+      toast?.add?.({
+        title: 'Recherche refusée',
+        description: String(msg.error),
+        color: 'warning', icon: 'i-lucide-triangle-alert'
+      })
+      return true
+    case 'Presence.Scan': {
+      if (!msg.error) return true          // pas d'accusé de réception attendu
+      searching.value = false
+      scanning.value = false
+      scanRetryMs.value = Number(msg.reessayerDansMs) || null
+      toast?.add?.({
+        title: 'Balayage refusé',
+        description: scanRetryMs.value
+          ? msg.error + ' — réessayez dans ' + Math.ceil(scanRetryMs.value / 1000) + ' s'
+          : String(msg.error),
+        color: 'warning', icon: 'i-lucide-triangle-alert'
+      })
+      return true
+    }
+
+    case 'Presence.Progress':
+      scanProgress.value = { faites: Number(msg.faites) || 0, total: Number(msg.total) || 0 }
+      return true
+
+    case 'Presence.Done': {
+      scanning.value = false
+      scanProgress.value = null
+      const plages = Array.isArray(msg.plages) ? msg.plages : []
+      // `trouvees` est un TABLEAU d'adresses, pas un compteur
+      const trouvees = plages.reduce((n: number, x: any) =>
+        n + (Array.isArray(x?.trouvees) ? x.trouvees.length : Number(x?.trouvees) || 0), 0)
+      const sondees = plages.reduce((n: number, x: any) => n + (Number(x?.sondees) || 0), 0)
+      toast?.add?.({
+        title: 'Balayage terminé',
+        description: trouvees + ' adresse(s) sur ' + sondees + ' sondée(s)',
+        color: 'success', icon: 'i-lucide-radar'
+      })
+      return true
+    }
+
+    case 'Presence.Found': {
+      // Sonde UDP : l'annonce complète est dans `reponse` → même message qu'une
+      // diffusion, on le repasse tel quel au traitement broadcast.
+      if (msg.reponse && typeof msg.reponse === 'object') {
+        handleWsMessage(msg.reponse)
+        return true
+      }
+      // Sondes tcp/ping : on sait seulement qu'une machine répond à cette adresse.
+      const ip = String(msg.ip || '')
+      if (!ip) return true
+      handleWsMessage({
+        name: ip,
+        interfaces: { address: ip },
+        config: {
+          Server: { Port: Number(msg.port) || undefined },
+          con: {
+            type: String(msg.methode || 'sonde'),
+            description: msg.ms != null ? 'sonde ' + msg.methode + ' · ' + msg.ms + ' ms' : ''
+          }
+        }
+      })
+      return true
+    }
+
+    case 'Presence.Alive': {
+      // Appareil déjà en base : rafraîchit une carte affichée, n'en crée pas.
+      const ip = String(msg.ip || '')
+      const prev = ip ? foundMap.value[ip] : undefined
+      if (prev) foundMap.value = { ...foundMap.value, [ip]: { ...prev, lastSeen: Date.now() } }
+      return true
+    }
+  }
+  return false
+}
 
 const foundList = computed(() => {
   const arr = Object.values(foundMap.value)
@@ -64,7 +178,8 @@ function connectWs() {
   wsErrorMsg.value = null
 
   try {
-    ws = new WebSocket(wsProxyUrl('Device'))
+    wsUrlUsed = wsProxyUrl('Device')
+    ws = new WebSocket(wsUrlUsed)
   } catch (err: any) {
     console.error('[WS] create error', err)
     wsStatus.value = 'disconnected'
@@ -76,6 +191,9 @@ function connectWs() {
   ws.onopen = () => {
     wsStatus.value = 'connected'
     wsErrorMsg.value = null
+    const queue = pendingSend
+    pendingSend = []
+    for (const payload of queue) ws?.send(JSON.stringify(payload))
   }
 
   ws.onclose = () => {
@@ -89,6 +207,7 @@ function connectWs() {
   }
 
   ws.onmessage = (event: MessageEvent) => {
+    rxCount.value++
     let msg: any
     try {
       msg = JSON.parse(event.data)
@@ -156,6 +275,7 @@ async function existsInDbByIpMainOrAlt(ipMain: string, ipAlt: string) {
 /* ---------- Message parsing ---------- */
 async function handleWsMessage(msg: any) {
   if (!msg) return
+  if (handlePresence(msg)) return          // messages du balayage réseau
 
   // on accepte si on a au moins interfaces.address ou ipres
   if (!msg.interfaces?.address && !msg.ipres) return
@@ -216,16 +336,34 @@ async function handleWsMessage(msg: any) {
 /* ---------- Actions ---------- */
 function clearResults() {
   foundMap.value = {}
+  scanProgress.value = null
+  scanRetryMs.value = null
 }
 
 function sendWs(payload: any) {
+  console.log('[WS] sending message', payload)
   if (!ws || ws.readyState !== WebSocket.OPEN) {
-    toast?.add?.({ title: 'WS non connecté', description: 'Impossible d’envoyer.', color: 'error' })
+    // La socket n'est pas (encore) prête : on garde la commande et on connecte.
+    pendingSend.push(payload)
+    connectWs()
     return
   }
-  console.log('[WS] sending message', payload)
   ws.send(JSON.stringify(payload))
 }
+
+/**
+ * Le token voyage dans l'URL : une socket ouverte garde celui du départ.
+ * Après un rafraîchissement de session, le serveur la rejette silencieusement —
+ * on la rouvre donc si l'URL a changé.
+ */
+function ensureFreshWs() {
+  if (ws && ws.readyState === WebSocket.OPEN && wsUrlUsed !== wsProxyUrl('Device')) {
+    ws.close()
+    ws = null
+  }
+  connectWs()
+}
+
 
 /**
  * Lance une recherche.
@@ -233,7 +371,7 @@ function sendWs(payload: any) {
  * Si ton backend attend juste "SEARCH" ou autre, change ici.
  */
 function startSearch() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) connectWs()
+  ensureFreshWs()
 
   searching.value = true
   wsErrorMsg.value = null
@@ -303,7 +441,7 @@ const DeviceAddSlideoverToggle = () => {
         <div>
           <div class="font-medium text-sm">Découverte devices</div>
           <div class="text-[11px] text-dimmed">
-            Trouvés: {{ foundList.length }} · WS:
+            Trouvés: {{ foundList.length }} · Reçus: {{ rxCount }} · WS:
             <span
               :class="[
                 'px-2 py-0.5 rounded-full text-[10px]',
@@ -331,6 +469,18 @@ const DeviceAddSlideoverToggle = () => {
           >
             Scanner
           </UButton>
+          <UTooltip text="Balayer le réseau adresse par adresse (Presence.Scan)">
+            <UButton
+              size="xs"
+              color="primary"
+              variant="soft"
+              :loading="scanning"
+              icon="i-lucide-scan-search"
+              @click="startPresenceScan"
+            >
+              {{ scanProgress ? scanPercent + ' %' : 'Balayage' }}
+            </UButton>
+          </UTooltip>
         </div>
       </div>
     </template>

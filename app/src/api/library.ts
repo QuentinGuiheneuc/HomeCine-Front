@@ -164,16 +164,79 @@ export const pageParams = (p: PageParams = {}) => ({
  * Le serveur peut plafonner pageSize (ex. 50) → on boucle tant que `hasMore`.
  * Garde anti-boucle : 50 pages max.
  */
+/**
+ * Cache court + déduplication des agrégations de pages.
+ * Nécessaire car plusieurs composants (home + sidebar) demandent les mêmes
+ * listes en même temps : sans cela, chaque liste est parcourue deux fois, et
+ * côté serveur une seule page front = N appels Spotify (limit=10 + curseurs).
+ */
+const PAGES_TTL_LOCAL  = 30_000     // fileplayer : peu coûteux, on rafraîchit vite
+const PAGES_TTL_REMOTE = 5 * 60_000 // Spotify & co : quotas stricts (429 / Retry-After)
+const _pagesCache = new Map<string, { at: number; promise: Promise<any[]> }>()
+
+/** Vide le cache (après une réindexation ou une modification de la bibliothèque) */
+export function clearLibraryCache() { _pagesCache.clear() }
+
 async function getAllPages<T>(url: string, params: Record<string, any> = {}): Promise<T[]> {
-  const all: T[] = []
-  let page = 1
-  for (;;) {
-    const res = unpage<T>(await http.get(url, { params: { ...params, page, pageSize: 200 } }))
-    all.push(...res.items)
-    if (!res.hasMore || !res.items.length || page >= 50) break
-    page++
-  }
-  return all
+  // pageSize n'est imposé que pour fileplayer (source locale) : de grandes pages
+  // y évitent des dizaines d'allers-retours. Aucune autre source ne le déclenche.
+  const srcs = String(params.sources ?? '').split(',').map(v => v.trim()).filter(Boolean)
+  const localOnly = srcs.includes('fileplayer')
+
+  const key = `${url}?${JSON.stringify(params)}`
+  const ttl = localOnly ? PAGES_TTL_LOCAL : PAGES_TTL_REMOTE
+  const hit = _pagesCache.get(key)
+  if (hit && Date.now() - hit.at < ttl) return (await hit.promise).slice() as T[]
+
+  const promise = (async () => {
+    const all: T[] = []
+    let page = 1
+    for (;;) {
+      const res = unpage<T>(await http.get(url, {
+        params: { ...params, page, ...(localOnly ? { pageSize: 200 } : {}) }
+      }))
+      all.push(...res.items)
+      // Sources distantes (Spotify…) : on s'arrête à la 1re page. Dérouler tout le
+      // catalogue déclenchait des centaines d'appels API et un 429 Retry-After.
+      if (!localOnly) break
+      if (!res.hasMore || !res.items.length || page >= 50) break
+      page++
+    }
+    return all
+  })()
+
+  _pagesCache.set(key, { at: Date.now(), promise })
+  promise.catch(() => _pagesCache.delete(key))   // un échec ne se met pas en cache
+  return (await promise).slice()
+}
+
+
+/* ── Listes paginées (1re page + « Charger plus ») ───────────────────────────
+   À préférer à getPlaylists/getAlbums/getArtists sur les sources distantes :
+   dérouler tout le catalogue déclenche des quotas (429 Retry-After). */
+
+export async function getPlaylistsPage(
+  opts: { category?: string; q?: string; sources?: LibrarySource[] } & PageParams = {}
+): Promise<Page<LibraryPlaylist>> {
+  return unpage<LibraryPlaylist>(await http.get('/library/playlists', {
+    params: { category: opts.category, q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+  }))
+}
+
+export async function getAlbumsPage(
+  opts: { q?: string; sources?: LibrarySource[] } & PageParams = {}
+): Promise<Page<LibraryAlbum>> {
+  return unpage<LibraryAlbum>(await http.get('/library/albums', {
+    params: { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+  }))
+}
+
+export async function getArtistsPage(
+  opts: { q?: string; sources?: LibrarySource[] } & PageParams = {}
+): Promise<Page<LibraryArtist>> {
+  return unpage<LibraryArtist>(await http.get('/library/artists', {
+    params: { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+  }))
 }
 
 /* ── Providers / index ─────────────────────────────────────────────────────── */

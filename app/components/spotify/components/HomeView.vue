@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDebounceFn } from '@vueuse/core'
 import {
-  search, getPlaylists, getAlbums, getArtists, getProviders, getCategories,
+  search, getPlaylistsPage, getAlbumsPage, getArtistsPage, getProviders, getCategories,
   resolveId, resolveCoverUrl,
   type LibrarySource, type LibraryTrack, type LibraryPlaylist,
   type LibraryAlbum, type LibraryArtist, type LibraryCategory, type SearchResult,
@@ -190,20 +190,68 @@ const greeting = computed(() => {
   return 'Bonsoir'
 })
 
+/* Pagination des sections de la home (1re page + « Charger plus ») */
+type HomeSection = 'playlists' | 'albums' | 'artists'
+const homePage    = ref<Record<HomeSection, number>>({ playlists: 1, albums: 1, artists: 1 })
+const homeHasMore = ref<Record<HomeSection, boolean>>({ playlists: false, albums: false, artists: false })
+const homeLoading = ref<Record<HomeSection, boolean>>({ playlists: false, albums: false, artists: false })
+
+const homeFetchers = {
+  playlists: (pg: number) => getPlaylistsPage({ sources: apiSources(), page: pg }),
+  albums:    (pg: number) => getAlbumsPage({    sources: apiSources(), page: pg }),
+  artists:   (pg: number) => getArtistsPage({   sources: apiSources(), page: pg }),
+} as const
+
+const homeList = (sec: HomeSection) => (sec === 'playlists' ? playlists : sec === 'albums' ? albums : artists)
+
+/** Pages chargées d'entrée pour Playlists / Albums / Artistes */
+const INITIAL_PAGES = 2
+
+/** Récupère les premières pages d'une section */
+async function firstPages(sec: HomeSection) {
+  const items: any[] = []
+  let loaded = 0, hasMore = false
+  for (let pg = 1; pg <= INITIAL_PAGES; pg++) {
+    const res = await homeFetchers[sec](pg)
+    items.push(...res.items)
+    loaded = pg
+    hasMore = res.hasMore
+    if (!hasMore) break
+  }
+  return { items, page: loaded, hasMore }
+}
+
+/** Charge la page suivante d'une section et l'ajoute */
+async function loadMoreHome(sec: HomeSection) {
+  if (!homeHasMore.value[sec] || homeLoading.value[sec]) return
+  homeLoading.value[sec] = true
+  try {
+    const next = homePage.value[sec] + 1
+    const res = await homeFetchers[sec](next)
+    ;(homeList(sec).value as any[]) = [...(homeList(sec).value as any[]), ...res.items]
+    homePage.value[sec] = next
+    homeHasMore.value[sec] = res.hasMore
+  } catch { /* noop */ }
+  finally { homeLoading.value[sec] = false }
+}
+
 async function loadHome() {
   loading.value = true
   try {
     const sources = apiSources()
+    const empty = { items: [] as any[], page: 1, hasMore: false }
     const [pl, al, ar, fo, ge] = await Promise.all([
-      getPlaylists({ sources }).catch(() => []),
-      getAlbums({    sources }).catch(() => []),
-      getArtists({   sources }).catch(() => []),
+      firstPages('playlists').catch(() => empty),
+      firstPages('albums').catch(() => empty),
+      firstPages('artists').catch(() => empty),
       getCategories().catch(() => []),   // dossiers globaux (agrège toutes les pages)
       getGenres().catch(() => []),
     ])
-    playlists.value = pl
-    albums.value    = al
-    artists.value   = ar
+    playlists.value = pl.items as any[]
+    albums.value    = al.items as any[]
+    artists.value   = ar.items as any[]
+    homePage.value    = { playlists: pl.page, albums: al.page, artists: ar.page }
+    homeHasMore.value = { playlists: pl.hasMore, albums: al.hasMore, artists: ar.hasMore }
     // /library/categories renvoie toutes sources confondues (dont le catalogue de
     // genres Deezer) → on ne garde que les catégories des sources actives (hc-library-sources)
     folders.value   = (fo as any[]).filter(f => activeSources.value.includes(f.source))
@@ -454,6 +502,13 @@ onMounted(async () => {
               <!-- <p class="text-xs text-dimmed truncate">{{ trackCount(p) ? trackCount(p) + ' titres' : p.source }}</p> -->
             </div>
           </component>
+
+          <!-- Charger plus (playlists) -->
+          <div v-if="homeHasMore.playlists" class="flex justify-center pt-2">
+            <UButton size="xs" variant="soft" color="neutral" :loading="homeLoading.playlists" @click="loadMoreHome('playlists')">
+              {{ homeLoading.playlists ? 'Chargement…' : 'Charger plus' }}
+            </UButton>
+          </div>
         </section>
 
         <!-- Albums -->
@@ -478,6 +533,13 @@ onMounted(async () => {
              <!--  <p class="text-xs text-dimmed truncate">{{ a.artists?.join(', ') }}</p> -->
             </div>
           </component>
+
+          <!-- Charger plus (albums) -->
+          <div v-if="homeHasMore.albums" class="flex justify-center pt-2">
+            <UButton size="xs" variant="soft" color="neutral" :loading="homeLoading.albums" @click="loadMoreHome('albums')">
+              {{ homeLoading.albums ? 'Chargement…' : 'Charger plus' }}
+            </UButton>
+          </div>
         </section>
 
         <!-- Artistes -->
@@ -501,6 +563,13 @@ onMounted(async () => {
               <p class="text-sm font-semibold truncate">{{ ar.name }}</p>
             </div>
           </component>
+
+          <!-- Charger plus (artists) -->
+          <div v-if="homeHasMore.artists" class="flex justify-center pt-2">
+            <UButton size="xs" variant="soft" color="neutral" :loading="homeLoading.artists" @click="loadMoreHome('artists')">
+              {{ homeLoading.artists ? 'Chargement…' : 'Charger plus' }}
+            </UButton>
+          </div>
         </section>
 
         <!-- Dossiers (categories) + Tous les titres -->
