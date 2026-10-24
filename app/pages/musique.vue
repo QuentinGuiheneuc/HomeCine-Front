@@ -12,14 +12,14 @@ import { useEventListener } from '@vueuse/core'
 import {
   getDbPlaylists, createDbPlaylist, addDbPlaylistTrack, playDbPlaylist, type DbPlaylist
 } from '@/src/api/dbPlaylists'
-import { addSavedTrack, removeSavedTrack, addSavedArtist } from '@/src/api/saved'
+import { addSavedTrack, removeSavedTrack, addSavedArtist, addSavedPlaylist, removeSavedPlaylist } from '@/src/api/saved'
 import {
   getPlaylistTracks, getAlbumTracks, getArtistTracks, getArtistAlbumsPage, getProviders,
-  getCategoryTracks, getTrackliste, getLikedByArtist, enrichTrack, resolveCoverUrl,
+  getCategoryTracks, getTrackliste, getLikedByArtist, enrichTrack, searchEnrich, resolveCoverUrl,
   enqueueTrack, play, resolveId, sourceKey, type PlayType,
   type LibrarySource, type LibraryTrack, type LibraryProvider,
   type LibraryPlaylist, type LibraryAlbum, type LibraryArtist, type LibraryCategory,
-  type EnrichResult, type Page
+  type EnrichResult, type EnrichCandidat, type Page
 } from '@/src/api/library'
 import {
   mapPlaylistDetail, mapAlbumDetail, mapArtistDetail, mapArtistAlbum, mapTrack
@@ -512,11 +512,71 @@ const enrichBatch     = ref<LibraryTrack[]>([])          // mode lot
 const enrichPreview   = ref<EnrichResult | null>(null)
 const enrichOverwrite = ref(false)
 const enrichCover     = ref(true)
+/* Le serveur renomme par defaut : le dire, et laisser refuser. */
+const enrichRename    = ref(true)
+
+/* Recherche manuelle. Disponible meme quand l'empreinte a trouve : un score
+   eleve n'empeche pas une fiche fausse, et c'est l'utilisateur qui tranche. */
+const searchOpen = ref(false)
+const searchTitle = ref('')
+const searchArtist = ref('')
+const searchBusy = ref(false)
+const searchResults = ref<EnrichCandidat[]>([])
+const chosenMbid = ref<string | null>(null)
+
+/** Ouvre la recherche, preremplie avec ce qu'on a de plus pertinent. */
+function openEnrichSearch() {
+  const t = enrichTrackRef.value
+  searchTitle.value = enrichPreview.value?.found?.title || t?.title || ''
+  searchArtist.value = enrichPreview.value?.found?.artist
+    || (Array.isArray(t?.artists) ? t.artists[0] : '') || ''
+  searchResults.value = []
+  searchOpen.value = true
+}
+
+/* Bouton plutot que debounce : MusicBrainz plafonne a ~1 requete/s, et un
+   declenchement explicite le respecte sans minuterie a entretenir. */
+async function runEnrichSearch() {
+  const title = searchTitle.value.trim()
+  if (!title) return
+  searchBusy.value = true
+  try {
+    searchResults.value = await searchEnrich(title, searchArtist.value.trim())
+    if (!searchResults.value.length) toast.add({ title: 'Aucun candidat', color: 'warning' })
+  } catch {
+    toast.add({ title: 'Recherche impossible', description: 'MusicBrainz injoignable', color: 'error' })
+  } finally {
+    searchBusy.value = false
+  }
+}
+
+/** Choisir un candidat : on relance l'apercu sur CE mbid pour voir le resultat. */
+async function chooseCandidat(c: EnrichCandidat) {
+  const t = enrichTrackRef.value
+  if (!t || !c.rec_mbid) return
+  chosenMbid.value = c.rec_mbid
+  searchOpen.value = false
+  enrichLoading.value = true
+  try {
+    enrichPreview.value = await enrichTrack(trackRef(t), {
+      dryRun: true, cover: true, rename: enrichRename.value, mbid: c.rec_mbid
+    })
+  } catch {
+    toast.add({ title: 'Aperçu impossible', color: 'error' })
+  } finally {
+    enrichLoading.value = false
+  }
+}
 const enrichLoading   = ref(false)   // dryRun en cours
 const enrichWriting   = ref(false)   // écriture en cours
 const enrichProgress  = ref(0)
 const enrichIsBatch   = computed(() => enrichBatch.value.length > 0)
-const enrichCoverUrl  = computed(() => resolveCoverUrl(enrichPreview.value?.cover ?? null))
+/* `cover` est un booleen depuis la refonte de /enrich — il dit si une pochette a
+   ete integree, il n'en donne pas l'URL. L'apercu montre donc celle de la piste
+   en cours, ou rien. */
+const enrichCoverUrl  = computed(() =>
+  resolveCoverUrl(enrichPreview.value?.track?.coverUrl ?? enrichTrackRef.value?.coverUrl ?? null)
+)
 
 /** Référence d'identité d'une piste (uri prioritaire, sinon sourceId/id) */
 function trackRef(t: LibraryTrack): { uri?: string; id?: string; title?: string; artist?: string } {
@@ -532,10 +592,13 @@ async function onEnrichTrack(t: LibraryTrack) {
   enrichPreview.value = null
   enrichOverwrite.value = false
   enrichCover.value = true
+  enrichRename.value = true
+  chosenMbid.value = null
+  searchOpen.value = false
   enrichOpen.value = true
   enrichLoading.value = true
   try {
-    enrichPreview.value = await enrichTrack(trackRef(t), { dryRun: true, cover: true })
+    enrichPreview.value = await enrichTrack(trackRef(t), { dryRun: true, cover: true, rename: enrichRename.value })
   } catch { toast.add({ title: 'Identification impossible', color: 'error' }) }
   finally { enrichLoading.value = false }
 }
@@ -548,6 +611,7 @@ function onEnrichAll() {
   enrichBatch.value = fp
   enrichOverwrite.value = false
   enrichCover.value = true
+  enrichRename.value = true
   enrichProgress.value = 0
   enrichOpen.value = true
 }
@@ -556,17 +620,35 @@ function onEnrichAll() {
 function applyEnrich(t: LibraryTrack, res: EnrichResult) {
   const src: any = res.track ?? res.found
   if (src) {
-    if (src.title)   (t as any).title   = src.title
-    if (src.artists) (t as any).artists = src.artists
-    else if (src.artist) (t as any).artists = [src.artist]
-    if (src.album)   (t as any).album   = src.album
+    if (src.title) t.title = src.title
+    if (src.artists) t.artists = src.artists
+    else if (src.artist) t.artists = [src.artist]
+    if (src.album) t.album = src.album
   }
-  if (res.cover) { (t as any).coverUrl = res.cover; (t as any).cover_url = res.cover }
+  // Le serveur renomme le fichier d'apres le titre trouve : l'ancien uri ne
+  // designe plus rien. Sans ca, lire ou enfiler la piste echouerait ensuite.
+  const nouvelUri = res.renomme?.uri ?? res.track?.uri
+  if (nouvelUri) {
+    t.uri = nouvelUri
+    t.sourceId = nouvelUri
+  }
+  // `cover` est un booleen (pochette integree au fichier), pas une URL : on
+  // repart de celle du track renvoye, sinon on laisse l'ancienne.
+  if (res.track?.coverUrl) {
+    t.coverUrl = res.track.coverUrl
+    t.cover_url = res.track.coverUrl
+  }
 }
 
 async function confirmEnrich() {
   if (enrichWriting.value) return                     // garde anti double-clic
-  const opts = { overwrite: enrichOverwrite.value, cover: enrichCover.value }
+  // `mbid` ne vaut qu'en mode un titre — le serveur l'ignore en lot.
+  const opts = {
+    overwrite: enrichOverwrite.value,
+    cover: enrichCover.value,
+    rename: enrichRename.value,
+    ...(chosenMbid.value && !enrichIsBatch.value ? { mbid: chosenMbid.value } : {})
+  }
   enrichWriting.value = true
   try {
     if (enrichIsBatch.value) {
@@ -584,11 +666,21 @@ async function confirmEnrich() {
       // Fermer, laisser le modal se démonter, PUIS muter la piste (évite le re-render pendant la fermeture)
       enrichOpen.value = false
       await nextTick()
-      applyEnrich(t, res)
-      toast.add({
-        title: res?.matched ? 'Piste enrichie' : 'Aucune correspondance fiable',
-        description: res?.found?.title, color: res?.matched ? 'success' : 'warning', icon: 'i-lucide-wand-sparkles'
-      })
+      // Un echec du traitement revient en HTTP 200 avec ok: false : sans ce test
+      // on annoncerait « aucune correspondance » pour une cle AcoustID invalide.
+      if (!res?.ok) {
+        toast.add({ title: 'Enrichissement impossible', description: res?.error, color: 'error' })
+      } else if (!res.matched) {
+        toast.add({ title: 'Aucune correspondance fiable', description: res.message, color: 'warning', icon: 'i-lucide-wand-sparkles' })
+      } else {
+        applyEnrich(t, res)
+        toast.add({
+          title: res.renomme?.error ? 'Tags écrits, fichier non renommé' : 'Piste enrichie',
+          description: res.renomme?.error ?? res.found?.title,
+          color: res.renomme?.error ? 'warning' : 'success',
+          icon: 'i-lucide-wand-sparkles'
+        })
+      }
     } else {
       enrichOpen.value = false
     }
@@ -808,6 +900,24 @@ async function onSaveTrack(t: LibraryTrack) {
     }
   } catch { toast.add({ title: 'Action impossible', color: 'error' }) }
 }
+/* Bascule le suivi d'une playlist. Meme forme que onSaveTrack : le serveur
+   renvoie deja `like` sur chaque playlist, on le met a jour sur place plutot
+   que de recharger la liste. */
+async function onSavePlaylist(p: LibraryPlaylist) {
+  const liked = !!p.like
+  try {
+    if (liked) {
+      await removeSavedPlaylist(sourceKey(p))
+      p.like = false
+      toast.add({ title: 'Playlist retirée', description: p.name, color: 'neutral', icon: 'i-lucide-heart-off' })
+    } else {
+      await addSavedPlaylist(p)
+      p.like = true
+      toast.add({ title: 'Playlist suivie', description: p.name, color: 'success', icon: 'i-lucide-heart' })
+    }
+  } catch { toast.add({ title: 'Action impossible', color: 'error' }) }
+}
+
 async function onFollowArtist(a: LibraryArtist) {
   try {
     await addSavedArtist(a)
@@ -870,6 +980,7 @@ onMounted(() => { isMounted.value = true; loadLecteurs() })
           ref="sidebarRef"
           :player-height="playerHeight"
           @select-playlist="openPlaylist"
+          @save-playlist="onSavePlaylist"
           @select-album="openAlbum"
           @select-artist="openArtist"
           @select-db-playlist="openDbPlaylist"
@@ -1188,13 +1299,91 @@ onMounted(() => { isMounted.value = true; loadLecteurs() })
               </div>
             </div>
             <p v-else class="text-sm text-dimmed text-center py-4">Aucune information.</p>
+
+            <!-- Message du serveur quand rien n'a ete trouve (empreinte inconnue…) -->
+            <p v-if="enrichPreview && !enrichPreview.matched && enrichPreview.message" class="text-xs text-warning">
+              {{ enrichPreview.message }}
+            </p>
+
+            <!-- Accessible meme sur une correspondance : un bon score peut viser faux. -->
+            <div v-if="!enrichLoading" class="flex items-center gap-2">
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="soft"
+                icon="i-lucide-search"
+                :label="searchOpen ? 'Masquer la recherche' : 'Chercher manuellement'"
+                @click="searchOpen ? (searchOpen = false) : openEnrichSearch()"
+              />
+              <UBadge
+                v-if="chosenMbid"
+                color="primary"
+                variant="subtle"
+                size="xs"
+              >
+                choix manuel
+              </UBadge>
+            </div>
+
+            <div v-if="searchOpen" class="rounded-md border border-default p-3 space-y-2">
+              <div class="flex gap-2">
+                <UInput
+                  v-model="searchTitle"
+                  placeholder="Titre"
+                  class="flex-1"
+                  @keyup.enter="runEnrichSearch"
+                />
+                <UInput
+                  v-model="searchArtist"
+                  placeholder="Artiste (optionnel)"
+                  class="flex-1"
+                  @keyup.enter="runEnrichSearch"
+                />
+                <UButton
+                  icon="i-lucide-search"
+                  color="primary"
+                  :loading="searchBusy"
+                  :disabled="!searchTitle.trim()"
+                  @click="runEnrichSearch"
+                />
+              </div>
+              <div v-if="searchResults.length" class="max-h-56 overflow-y-auto divide-y divide-default">
+                <button
+                  v-for="c in searchResults"
+                  :key="c.rec_mbid || c.title || ''"
+                  type="button"
+                  class="w-full text-left py-2 px-1 hover:bg-elevated/50 rounded"
+                  @click="chooseCandidat(c)"
+                >
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-dimmed tabular-nums shrink-0">{{ Math.round(c.score * 100) }}%</span>
+                    <span class="text-sm truncate">{{ c.title || '—' }}</span>
+                  </div>
+                  <p class="text-xs text-dimmed truncate pl-8">
+                    {{ c.artist || '—' }}<span v-if="c.album"> · {{ c.album }}</span><span v-if="c.date"> · {{ c.date }}</span>
+                  </p>
+                </button>
+              </div>
+            </div>
           </template>
 
           <!-- Options communes -->
           <div class="space-y-2">
             <USwitch v-model="enrichOverwrite" label="Écraser les tags existants" :description="enrichOverwrite ? 'Remplace tout' : 'Complète seulement les manquants'" />
             <USwitch v-model="enrichCover" label="Intégrer la pochette" />
+            <USwitch
+              v-model="enrichRename"
+              label="Renommer le fichier"
+              :description="enrichRename ? 'D’après le titre trouvé' : 'Le nom du fichier est conservé'"
+            />
           </div>
+
+          <!-- Le renommage est la seule action irreversible du lot : l'annoncer. -->
+          <p v-if="enrichRename && enrichPreview?.renommerEn" class="text-xs text-dimmed">
+            <UIcon name="i-lucide-corner-down-right" class="inline size-3.5 mr-1" />
+            Le fichier sera renommé en
+            <span class="font-mono text-default">{{ enrichPreview.renommerEn }}</span>
+          </p>
 
           <div class="flex justify-end gap-2 pt-1">
             <UButton label="Annuler" color="neutral" variant="soft" :disabled="enrichWriting" @click="enrichOpen = false" />

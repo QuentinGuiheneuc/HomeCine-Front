@@ -1,8 +1,8 @@
 import http from '../lib/https'
-import { unpage, pageParams, type LibraryTrack, type LibraryArtist, type LibrarySource, type Page, type PageParams } from './library'
+import { unpage, pageParams, type LibraryTrack, type LibraryArtist, type LibraryPlaylist, type LibrarySource, type Page, type PageParams } from './library'
 
 /**
- * Client API « saved » — titres aimés et artistes suivis (par source).
+ * Client API « saved » — titres aimés, artistes et playlists suivis (par source).
  * Les objets ajoutés proviennent des résultats de /library/search.
  */
 
@@ -40,4 +40,20 @@ export async function addSavedArtist(artist: LibraryArtist) {
 
 export async function removeSavedArtist(id: number | string) {
   return http.delete(`/library/saved/artists/${encodeURIComponent(id)}`)
+}
+
+/* ── Playlists suivies ────────────────────────────────────────────────────── */
+/* Le serveur decore deja chaque playlist d'un `like` dans /library/playlists ;
+   il manquait seulement de quoi le basculer. Meme modele que les artistes. */
+
+export async function getSavedPlaylists(sources?: LibrarySource[], opts: PageParams = {}): Promise<Page<LibraryPlaylist>> {
+  return unpage<LibraryPlaylist>(await http.get('/library/saved/playlists', { params: { sources: srcParam(sources), ...pageParams(opts) } }))
+}
+
+export async function addSavedPlaylist(playlist: LibraryPlaylist) {
+  return http.post('/library/saved/playlists', { playlist })
+}
+
+export async function removeSavedPlaylist(id: number | string) {
+  return http.delete(`/library/saved/playlists/${encodeURIComponent(id)}`)
 }

@@ -218,9 +218,15 @@ async function getAllPages<T>(url: string, params: Record<string, any> = {}): Pr
 export async function getPlaylistsPage(
   opts: { category?: string; q?: string; sources?: LibrarySource[] } & PageParams = {}
 ): Promise<Page<LibraryPlaylist>> {
-  return unpage<LibraryPlaylist>(await http.get('/library/playlists', {
+  const page = unpage<LibraryPlaylist>(await http.get('/library/playlists', {
     params: { category: opts.category, q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
   }))
+  // « Titres aimés » est en tête de SON provider, donc apres toutes les sources
+  // distantes dans la liste agregee — 21e element en pratique. On la remonte
+  // ici, au seul endroit que la sidebar et l'accueil partagent.
+  const i = page.items.findIndex(p => p.source === 'playlist' && String(p.id) === 'likes')
+  if (i > 0) page.items.unshift(...page.items.splice(i, 1))
+  return page
 }
 
 export async function getAlbumsPage(
@@ -357,13 +363,24 @@ export async function getLikedByArtist(source: LibrarySource, artist: string, op
 /* ── Enrichissement métadonnées (FilePlayer) ───────────────────────────────── */
 
 export interface EnrichResult {
-  ok:       boolean
+  ok: boolean
   matched?: boolean
-  score?:   number
-  found?:   { title?: string; artist?: string; album?: string; [k: string]: any }
+  applied?: boolean
+  score?: number
+  before?: { title?: string | null; artist?: string | null; album?: string | null; date?: string | null }
+  found?: { title?: string; artist?: string; album?: string; [k: string]: any }
   written?: string[]
-  cover?:   string | null
-  track?:   LibraryTrack
+  /** `true` = une pochette a ete integree AU FICHIER. Ce n'est PAS une URL. */
+  cover?: boolean
+  /** dryRun : nom que prendrait le fichier. Absent si le nom ne change pas. */
+  renommerEn?: string
+  /** Apres ecriture : le fichier a ete renomme, donc son uri a change. */
+  renomme?: { nom: string; uri?: string; error?: string }
+  track?: LibraryTrack
+  /** Explication quand matched vaut false. */
+  message?: string
+  /** Echec du traitement — arrive en HTTP 200 avec ok: false. */
+  error?: string
   [k: string]: any
 }
 
@@ -372,10 +389,15 @@ export interface EnrichResult {
  * @param dryRun    true = identifie sans écrire (aperçu)
  * @param overwrite true = remplace les tags existants ; sinon complète les manquants
  * @param cover     intègre la pochette (défaut true)
+ * @param rename    renomme le fichier d'après le titre trouvé (défaut true côté serveur)
+ * @param mbid      enregistrement choisi dans /enrich/recherche
+ *
+ * ⚠️ `dryRun` vaut **false** côté serveur : sans lui, l'appel écrit et renomme.
+ * ⚠️ Un échec revient en HTTP 200 avec `ok: false` — tester `ok`, pas le statut.
  */
 export async function enrichTrack(
   ref: { uri?: string; id?: string; title?: string; artist?: string },
-  opts: { dryRun?: boolean; overwrite?: boolean; cover?: boolean } = {}
+  opts: { dryRun?: boolean; overwrite?: boolean; cover?: boolean; rename?: boolean; mbid?: string } = {}
 ): Promise<EnrichResult> {
   return unwrap(await http.post('/library/enrich', {
     ...(ref.uri ? { uri: ref.uri } : { id: ref.id }),
@@ -383,6 +405,31 @@ export async function enrichTrack(
     ...(ref.artist ? { artist: ref.artist } : {}),
     ...opts,
   }))
+}
+
+/** Un candidat de /enrich/recherche, du meilleur au moins bon. */
+export interface EnrichCandidat {
+  score: number
+  title: string | null
+  artist: string | null
+  album: string | null
+  date: string | null
+  rec_mbid: string | null
+  rg_mbid: string | null
+}
+
+/**
+ * Recherche manuelle MusicBrainz : sert quand l'empreinte ne trouve rien, mais
+ * aussi pour corriger une correspondance fausse malgre un bon score.
+ * `artist` est facultatif et leve beaucoup d'ambiguite.
+ *
+ * MusicBrainz limite a ~1 requete/s : ne pas appeler a chaque frappe.
+ */
+export async function searchEnrich(title: string, artist?: string): Promise<EnrichCandidat[]> {
+  const d = unwrap<{ ok?: boolean; candidats?: EnrichCandidat[] }>(
+    await http.get('/library/enrich/recherche', { params: { title, artist: artist || undefined } })
+  )
+  return d?.candidats ?? []
 }
 
 /* ── Catégories (dossiers) ─────────────────────────────────────────────────── */

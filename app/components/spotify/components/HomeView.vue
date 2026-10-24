@@ -244,7 +244,10 @@ async function loadHome() {
       firstPages('playlists').catch(() => empty),
       firstPages('albums').catch(() => empty),
       firstPages('artists').catch(() => empty),
-      getCategories().catch(() => []),   // dossiers globaux (agrège toutes les pages)
+      // Passer les sources actives n'est pas qu'un filtre : getAllPages ne
+      // déroule la pagination que si `fileplayer` y figure (source locale, sans
+      // quota). Sans ce paramètre on s'arrêtait à la 1re page, soit 10 dossiers.
+      getCategories({ sources: sources }).catch(() => []),
       getGenres().catch(() => []),
     ])
     playlists.value = pl.items as any[]
@@ -252,8 +255,9 @@ async function loadHome() {
     artists.value   = ar.items as any[]
     homePage.value    = { playlists: pl.page, albums: al.page, artists: ar.page }
     homeHasMore.value = { playlists: pl.hasMore, albums: al.hasMore, artists: ar.hasMore }
-    // /library/categories renvoie toutes sources confondues (dont le catalogue de
-    // genres Deezer) → on ne garde que les catégories des sources actives (hc-library-sources)
+    // Filtre de ceinture : l'API reçoit déjà `sources`, mais sans ce garde un
+    // serveur qui ignorerait le paramètre réinjecterait le catalogue de genres
+    // Deezer parmi les dossiers.
     folders.value   = (fo as any[]).filter(f => activeSources.value.includes(f.source))
     genres.value    = ge
   } finally { loading.value = false }

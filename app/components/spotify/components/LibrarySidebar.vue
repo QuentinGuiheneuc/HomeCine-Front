@@ -16,7 +16,7 @@ withDefaults(defineProps<{
 }>(), { headerHeight: 92, playerHeight: 110 })
 
 const emit = defineEmits<{
-  (e: 'select-playlist', payload: LibraryPlaylist): void
+  (e: 'select-playlist' | 'save-playlist', payload: LibraryPlaylist): void
   (e: 'select-album',    payload: LibraryAlbum): void
   (e: 'select-artist',   payload: LibraryArtist): void
   (e: 'select-db-playlist', payload: DbPlaylist): void
@@ -243,6 +243,17 @@ onMounted(async () => {
             <p class="truncate text-xs text-dimmed">{{ trackCount(p) ? trackCount(p) + ' titres' : p.source }}</p>
           </div>
           <UIcon :name="sourceIcon(p.source)" class="size-3.5 text-dimmed shrink-0" />
+          <UButton
+            :icon="p.like ? 'mdi:heart' : 'mdi:heart-outline'"
+            :color="p.like ? 'primary' : 'neutral'"
+            :title="p.like ? 'Ne plus suivre' : 'Suivre cette playlist'"
+            size="2xs"
+            variant="ghost"
+            square
+            class="shrink-0 transition-opacity"
+            :class="p.like ? '' : 'opacity-0 group-hover:opacity-100'"
+            @click.stop="emit('save-playlist', p)"
+          />
           <UButton icon="i-lucide-play" size="2xs" color="primary" square class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop="playCtx(p, 'playlist')" />
         </div>
       </template>

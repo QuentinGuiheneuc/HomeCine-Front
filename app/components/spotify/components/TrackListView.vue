@@ -48,6 +48,12 @@ useIntersectionObserver(sentinel, ([entry]) => {
 })
 
 const cover = (o: any) => resolveCoverUrl(o?.coverUrl ?? o?.cover_url ?? o?.image)
+
+/* L'en-tete recoit un coverUrl brut (ex. /library/cover/default/category). Sans
+   prefixe, le navigateur le demande sur l'origine du front : Nuxt n'y a ni page
+   ni regle de proxy, d'ou un avertissement de routeur et une image manquante.
+   `props.cover` reste brut pour l'edition, qui enregistre la valeur telle quelle. */
+const coverSrc = computed(() => resolveCoverUrl(props.cover))
 const toTime = (ms?: number | null) => {
   if (!ms) return ''
   const s = Math.floor(ms / 1000)
@@ -83,7 +89,7 @@ function onDelete() {
           :class="props.editable ? 'cursor-pointer' : ''"
           @click="props.editable && editCover()"
         >
-          <img v-if="props.cover" :src="props.cover" class="h-full w-full object-cover" alt="" />
+          <img v-if="coverSrc" :src="coverSrc" class="h-full w-full object-cover" alt="" />
           <UIcon v-else :name="props.icon || 'i-lucide-folder'" class="size-10 text-dimmed" />
           <div v-if="props.editable" class="absolute inset-0 bg-black/50 opacity-0 group-hover/cover:opacity-100 transition-opacity flex items-center justify-center">
             <UIcon name="i-lucide-image" class="size-6 text-white" />
