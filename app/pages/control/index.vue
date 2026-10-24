@@ -266,6 +266,37 @@ const filteredRules = computed(() => {
   return (rules.value || []).filter(ruleMatchesSearch)
 })
 
+/* Les regles sont ecrites par entree (MINI-KEYBOARD, vol20…) : les lister a
+   plat obligeait a lire `from` sur chaque carte pour s'y retrouver. On les
+   regroupe par module d'entree, le filtre de recherche s'appliquant avant. */
+const SANS_ENTREE = '(sans entrée)'
+
+/* Navigation a deux niveaux : la liste des entrees, puis les regles de celle
+   qu'on ouvre. Un ref plutot qu'une route — l'etat ne survit pas au
+   rechargement, mais la page recharge deja tout a chaque visite. */
+const selectedInput = ref(null)
+
+const selectedRules = computed(() =>
+  rulesByInput.value.find(g => g.from === selectedInput.value)?.rules ?? []
+)
+
+const rulesByInput = computed(() => {
+  const groupes = new Map()
+  for (const rule of filteredRules.value) {
+    const from = rule.from || SANS_ENTREE
+    if (!groupes.has(from)) groupes.set(from, [])
+    groupes.get(from).push(rule)
+  }
+  return [...groupes.entries()]
+    .map(([from, list]) => ({
+      from,
+      rules: list,
+      actives: list.filter(r => r.enabled !== false).length
+    }))
+    // Les entrees sans module en dernier : ce sont des regles incompletes.
+    .sort((a, b) => (a.from === SANS_ENTREE) - (b.from === SANS_ENTREE) || a.from.localeCompare(b.from))
+})
+
 const inputCount = computed(() => Object.keys(overview.value?.modulesin || {}).length)
 const outputCount = computed(() => Object.keys(overview.value?.modulesout || {}).length)
 
@@ -370,8 +401,11 @@ function buildPayloadFromEditor() {
   return payload
 }
 
-function openCreateEditor() {
+/* L'editeur s'ouvre toujours depuis une entree ouverte : `from` est pose
+   d'emblee, il n'y a plus de creation « hors entree ». */
+function openCreateEditor(from) {
   editor.value = createEmptyEditor()
+  if (from) editor.value.from = from
   validationResult.value = null
   editorOpen.value = true
 }
@@ -695,111 +729,12 @@ onMounted(async () => {
             >
               Rafraîchir
             </UButton>
-
-            <UButton
-              icon="i-lucide-plus"
-              color="primary"
-              @click="openCreateEditor"
-            >
-              Nouvelle règle
-            </UButton>
           </div>
         </template>
       </UDashboardNavbar>
     </div>
 
     <UAlert v-if="errorMsg" color="red" :title="errorMsg" />
-
-    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-      <UPageCard variant="subtle" :ui="{ container: 'p-4 gap-y-3' }">
-        <div class="flex items-center justify-between">
-          <h3 class="font-semibold">Modules input</h3>
-          <UBadge color="primary" variant="subtle">{{ Object.keys(overview.modulesin || {}).length }}</UBadge>
-        </div>
-
-        <div v-if="!Object.keys(overview.modulesin || {}).length" class="text-sm text-dimmed">
-          Aucun module input.
-        </div>
-
-        <div v-else class="grid gap-3">
-          <UPageCard
-            v-for="(mod, name) in overview.modulesin"
-            :key="`in-${name}`"
-            variant="soft"
-            :ui="{ container: 'p-3 gap-y-2' }"
-          >
-            <div class="flex items-center justify-between">
-              <div>
-                <div class="font-medium">{{ name }}</div>
-                <div class="text-xs text-dimmed">{{ mod.type }}</div>
-              </div>
-              <UBadge color="primary" variant="subtle">
-                {{ mod.keyActions.length || 0 }} actions
-              </UBadge>
-            </div>
-
-            <div class="flex flex-wrap gap-2">
-              <UBadge
-                v-for="act in mod.keyActions || []"
-                :key="`${name}-${act}`"
-                color="neutral"
-                variant="soft"
-              >
-                {{ act }}
-              </UBadge>
-            </div>
-          </UPageCard>
-        </div>
-      </UPageCard>
-
-      <UPageCard variant="subtle" :ui="{ container: 'p-4 gap-y-3' }">
-        <div class="flex items-center justify-between">
-          <h3 class="font-semibold">Modules output</h3>
-          <UBadge color="primary" variant="subtle">{{ Object.keys(overview.modulesout || {}).length }}</UBadge>
-        </div>
-
-        <div v-if="!Object.keys(overview.modulesout || {}).length" class="text-sm text-dimmed">
-          Aucun module output.
-        </div>
-
-        <div v-else class="grid gap-3">
-          <UPageCard
-            v-for="(mod, name) in overview.modulesout"
-            :key="`out-${name}`"
-            variant="soft"
-            :ui="{ container: 'p-3 gap-y-2' }"
-          >
-            <div class="flex items-center justify-between">
-              <div>
-                <div class="font-medium">{{ name }}</div>
-                <div class="text-xs text-dimmed">{{ mod.type }}</div>
-              </div>
-              <UBadge color="primary" variant="subtle">
-                {{ mod.functions?.length || 0 }} fonctions
-              </UBadge>
-            </div>
-
-            <div class="flex flex-wrap gap-2">
-              <UBadge
-                v-for="fn in mod.functions || []"
-                :key="`${name}-${fn}`"
-                color="neutral"
-                variant="soft"
-              >
-                {{ fn }}
-              </UBadge>
-            </div>
-
-            <div
-              v-if="mod.functionSchema && Object.keys(mod.functionSchema).length"
-              class="grid gap-2 pt-2"
-            >
-
-            </div>
-          </UPageCard>
-        </div>
-      </UPageCard>
-    </div>
 
     <UPageCard
       variant="subtle"
@@ -825,392 +760,462 @@ onMounted(async () => {
       </div>
     </UPageCard>
 
-    <UPageCard
-      v-if="editorOpen"
-      variant="subtle"
-      :ui="{ container: 'p-4 sm:p-5 gap-y-4' }"
+    <UModal
+      v-model:open="editorOpen"
+      :title="editor.id ? 'Modifier la règle' : 'Créer une règle'"
+      :ui="{ content: 'max-w-5xl' }"
+      @update:open="v => { if (!v) closeEditor() }"
     >
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <h3 class="font-semibold">
-            {{ editor.id ? 'Modifier la règle' : 'Créer une règle' }}
-          </h3>
-          <div class="text-xs text-dimmed">
-            Format cible: <span class="font-mono">module: { fn, args }</span>
-          </div>
-        </div>
+      <template #content>
+        <div class="p-4 sm:p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+          <div class="flex items-center justify-between gap-3 sticky -top-4 sm:-top-5 z-10 bg-default/95 backdrop-blur py-2 -mt-2">
+            <!-- Le titre est porte par le UModal : ici on ne garde que le rappel de format. -->
+            <div class="text-xs text-dimmed">
+              Format cible: <span class="font-mono">module: { fn, args }</span>
+            </div>
 
-        <div class="flex gap-2">
-          <UButton color="neutral" variant="ghost" @click="closeEditor">
-            Fermer
-          </UButton>
-          <UButton color="amber" variant="ghost" :loading="validatingRule" @click="validateEditor">
-            Valider
-          </UButton>
-          <UButton color="primary" :loading="savingRule" @click="saveEditor">
-            Enregistrer
-          </UButton>
-        </div>
-      </div>
-
-      <UAlert
-        v-if="validationResult"
-        :color="validationResult.ok ? 'green' : 'amber'"
-        :title="validationResult.ok ? 'Validation OK' : 'Validation KO'"
-        :description="validationResult.ok ? 'La règle est valide.' : (validationResult.errors || []).join(' | ')"
-      />
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div>
-          <label class="text-xs text-dimmed block mb-1">Nom</label>
-          <UInput v-model="editor.name" placeholder="Volume - salon" />
-        </div>
-
-        <div>
-          <label class="text-xs text-dimmed block mb-1">Description</label>
-          <UInput v-model="editor.description" placeholder="Règle volume bas salon" />
-        </div>
-
-        <div>
-          <label class="text-xs text-dimmed block mb-1">Input</label>
-          <USelect
-            v-model="editor.from"
-            size="sm"
-            :items="toSelectItems(getInputNames())"
-          />
-        </div>
-
-        <div>
-          <label class="text-xs text-dimmed block mb-1">Action</label>
-          <USelect
-            v-model="editor.action"
-            size="sm"
-            :items="currentInputActionItems"
-          />
-        </div>
-
-        <div>
-          <label class="text-xs text-dimmed block mb-1">Cooldown (ms)</label>
-          <UInput v-model.number="editor.cooldownMs" type="number" min="0" />
-        </div>
-
-        <div class="flex items-center gap-3 pt-5">
-          <USwitch v-model="editor.enabled" />
-          <span class="text-sm">Enabled</span>
-        </div>
-
-        <div>
-          <label class="text-xs text-dimmed block mb-1">When</label>
-          <USelect
-            v-model="editor.whenMode"
-            size="sm"
-            :items="[
-              { label: 'None', value: 'none' },
-              { label: 'Press', value: 'press' },
-              { label: 'Release', value: 'release' },
-              { label: 'Hold', value: 'hold' },
-              { label: 'Value', value: 'value' }
-            ]"
-          />
-        </div>
-
-        <div v-if="editor.whenMode === 'value'">
-          <label class="text-xs text-dimmed block mb-1">when.value</label>
-          <UInput v-model.number="editor.whenValue" type="number" min="0" max="2" />
-        </div>
-      </div>
-
-      <div class="flex items-center justify-between pt-2">
-        <h4 class="font-medium">Targets</h4>
-        <UButton size="xs" color="primary" variant="ghost" @click="addTarget">
-          Ajouter target
-        </UButton>
-      </div>
-
-      <div class="grid gap-4">
-        <UPageCard
-          v-for="(target, index) in editor.targets"
-          :key="`target-${index}`"
-          variant="soft"
-          :ui="{ container: 'p-4 gap-y-3' }"
-        >
-          <div class="flex items-center justify-between">
-            <div class="font-medium">Target #{{ index + 1 }}</div>
-            <UButton
-              size="xs"
-              color="red"
-              variant="ghost"
-              :disabled="editor.targets.length <= 1"
-              @click="removeTarget(index)"
-            >
-              Supprimer
-            </UButton>
+            <div class="flex gap-2">
+              <UButton color="neutral" variant="ghost" @click="closeEditor">
+                Fermer
+              </UButton>
+              <UButton color="amber" variant="ghost" :loading="validatingRule" @click="validateEditor">
+                Valider
+              </UButton>
+              <UButton color="primary" :loading="savingRule" @click="saveEditor">
+                Enregistrer
+              </UButton>
+            </div>
           </div>
 
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <UAlert
+            v-if="validationResult"
+            :color="validationResult.ok ? 'green' : 'amber'"
+            :title="validationResult.ok ? 'Validation OK' : 'Validation KO'"
+            :description="validationResult.ok ? 'La règle est valide.' : (validationResult.errors || []).join(' | ')"
+          />
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label class="text-xs text-dimmed block mb-1">Module output</label>
+              <label class="text-xs text-dimmed block mb-1">Nom</label>
+              <UInput v-model="editor.name" placeholder="Volume - salon" />
+            </div>
+
+            <div>
+              <label class="text-xs text-dimmed block mb-1">Description</label>
+              <UInput v-model="editor.description" placeholder="Règle volume bas salon" />
+            </div>
+
+            <div>
+              <label class="text-xs text-dimmed block mb-1">Input</label>
               <USelect
-                v-model="target.moduleName"
+                v-model="editor.from"
                 size="sm"
-                :items="toSelectItems(getOutputNames())"
-                @update:model-value="updateTargetModule(index)"
+                :items="toSelectItems(getInputNames())"
               />
             </div>
 
             <div>
-              <label class="text-xs text-dimmed block mb-1">Fonction</label>
+              <label class="text-xs text-dimmed block mb-1">Action</label>
               <USelect
-                v-model="target.fn"
+                v-model="editor.action"
                 size="sm"
-                :items="toSelectItems(getOutputFunctions(target.moduleName))"
-                @update:model-value="updateTargetFunction(index)"
+                :items="currentInputActionItems"
               />
             </div>
-          </div>
 
-          <div
-            v-if="getFunctionSchema(target.moduleName, target.fn)"
-            class="rounded-lg border border-default p-3 bg-muted/30"
-          >
-            <div class="font-medium">
-              {{ getFunctionSchema(target.moduleName, target.fn)?.label || target.fn }}
+            <div>
+              <label class="text-xs text-dimmed block mb-1">Cooldown (ms)</label>
+              <UInput v-model.number="editor.cooldownMs" type="number" min="0" />
             </div>
 
-            <div
-              v-if="getFunctionSchema(target.moduleName, target.fn)?.description"
-              class="text-xs text-dimmed mt-1"
-            >
-              {{ getFunctionSchema(target.moduleName, target.fn)?.description }}
+            <div class="flex items-center gap-3 pt-5">
+              <USwitch v-model="editor.enabled" />
+              <span class="text-sm">Enabled</span>
+            </div>
+
+            <div>
+              <label class="text-xs text-dimmed block mb-1">When</label>
+              <USelect
+                v-model="editor.whenMode"
+                size="sm"
+                :items="[
+                  { label: 'None', value: 'none' },
+                  { label: 'Press', value: 'press' },
+                  { label: 'Release', value: 'release' },
+                  { label: 'Hold', value: 'hold' },
+                  { label: 'Value', value: 'value' }
+                ]"
+              />
+            </div>
+
+            <div v-if="editor.whenMode === 'value'">
+              <label class="text-xs text-dimmed block mb-1">when.value</label>
+              <UInput v-model.number="editor.whenValue" type="number" min="0" max="2" />
             </div>
           </div>
 
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              v-if="target.moduleName === 'snap'"
-              size="2xs"
-              color="neutral"
-              variant="ghost"
-              @click="makeVolumeDeltaPreset(index, -3)"
-            >
-              Preset snap volume -3
-            </UButton>
-
-            <UButton
-              v-if="target.moduleName === 'snap'"
-              size="2xs"
-              color="neutral"
-              variant="ghost"
-              @click="makeVolumeDeltaPreset(index, 3)"
-            >
-              Preset snap volume +3
-            </UButton>
-
-            <UButton
-              v-if="target.moduleName === 'snap'"
-              size="2xs"
-              color="neutral"
-              variant="ghost"
-              @click="makeToggleMutePreset(index)"
-            >
-              Preset snap toggleMute
-            </UButton>
-
-            <UButton
-              v-if="target.moduleName === 'snap'"
-              size="2xs"
-              color="neutral"
-              variant="ghost"
-              @click="makeSetVolumePreset(index, 50)"
-            >
-              Preset snap setVolume 50
+          <div class="flex items-center justify-between pt-2">
+            <h4 class="font-medium">Targets</h4>
+            <UButton size="xs" color="primary" variant="ghost" @click="addTarget">
+              Ajouter target
             </UButton>
           </div>
 
-          <div
-            v-if="hasStructuredArgs(target)"
-            class="grid grid-cols-1 lg:grid-cols-2 gap-4"
-          >
-            <div
-              v-for="[argName, meta] in getFunctionArgEntries(target.moduleName, target.fn)"
-              :key="`${target.moduleName}-${target.fn}-${argName}`"
-              class="space-y-1"
+          <div class="grid gap-4">
+            <UPageCard
+              v-for="(target, index) in editor.targets"
+              :key="`target-${index}`"
+              variant="soft"
+              :ui="{ container: 'p-4 gap-y-3' }"
             >
-              <label class="text-xs text-dimmed block">
-                {{ getArgLabel(argName, meta) }}
-                <span v-if="meta.required" class="text-red-500">*</span>
-              </label>
-
-              <div v-if="getArgInputKind(meta) === 'boolean'" class="flex items-center gap-3 pt-2">
-                <USwitch v-model="target.argsModel[argName]" />
-                <span class="text-sm">{{ getArgLabel(argName, meta) }}</span>
+              <div class="flex items-center justify-between">
+                <div class="font-medium">Target #{{ index + 1 }}</div>
+                <UButton
+                  size="xs"
+                  color="red"
+                  variant="ghost"
+                  :disabled="editor.targets.length <= 1"
+                  @click="removeTarget(index)"
+                >
+                  Supprimer
+                </UButton>
               </div>
 
-              <UInput
-                v-else-if="getArgInputKind(meta) === 'number'"
-                v-model.number="target.argsModel[argName]"
-                type="number"
-                :min="meta.min"
-                :max="meta.max"
-                :placeholder="getArgPlaceholder(meta)"
-              />
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="text-xs text-dimmed block mb-1">Module output</label>
+                  <USelect
+                    v-model="target.moduleName"
+                    size="sm"
+                    :items="toSelectItems(getOutputNames())"
+                    @update:model-value="updateTargetModule(index)"
+                  />
+                </div>
 
-              <UTextarea
-                v-else-if="getArgInputKind(meta) === 'json'"
-                :model-value="prettyJson(target.argsModel[argName] ?? (meta.type === 'array' ? [] : {}))"
-                :rows="6"
-                class="font-mono"
-                @update:model-value="(val) => {
-                  try {
-                    target.argsModel[argName] = JSON.parse(val)
-                  } catch {}
-                }"
-              />
-
-              <UInput
-                v-else
-                v-model="target.argsModel[argName]"
-                type="text"
-                :placeholder="getArgPlaceholder(meta)"
-              />
-
-              <div v-if="meta.description" class="text-[11px] text-dimmed">
-                {{ meta.description }}
+                <div>
+                  <label class="text-xs text-dimmed block mb-1">Fonction</label>
+                  <USelect
+                    v-model="target.fn"
+                    size="sm"
+                    :items="toSelectItems(getOutputFunctions(target.moduleName))"
+                    @update:model-value="updateTargetFunction(index)"
+                  />
+                </div>
               </div>
 
-              <div class="text-[11px] text-dimmed">
-                type: <span class="font-mono">{{ meta.type || 'string' }}</span>
+              <div
+                v-if="getFunctionSchema(target.moduleName, target.fn)"
+                class="rounded-lg border border-default p-3 bg-muted/30"
+              >
+                <div class="font-medium">
+                  {{ getFunctionSchema(target.moduleName, target.fn)?.label || target.fn }}
+                </div>
+
+                <div
+                  v-if="getFunctionSchema(target.moduleName, target.fn)?.description"
+                  class="text-xs text-dimmed mt-1"
+                >
+                  {{ getFunctionSchema(target.moduleName, target.fn)?.description }}
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div v-else>
-            <label class="text-xs text-dimmed block mb-1">args (JSON)</label>
-            <UTextarea
-              v-model="target.argsText"
-              :rows="8"
-              class="font-mono"
-            />
-            <div class="text-[11px] text-dimmed mt-1">
-              Aucun schema disponible pour cette fonction. Mode JSON brut.
-            </div>
-          </div>
+              <div class="flex flex-wrap gap-2">
+                <UButton
+                  v-if="target.moduleName === 'snap'"
+                  size="2xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="makeVolumeDeltaPreset(index, -3)"
+                >
+                  Preset snap volume -3
+                </UButton>
 
-          <div v-if="hasStructuredArgs(target)" class="rounded-lg border border-default p-3 bg-muted/20">
-            <div class="text-xs text-dimmed mb-1">Preview args</div>
-            <pre class="text-[11px] leading-5 whitespace-pre-wrap break-all text-dimmed font-mono">{{ prettyJson(target.argsModel) }}</pre>
+                <UButton
+                  v-if="target.moduleName === 'snap'"
+                  size="2xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="makeVolumeDeltaPreset(index, 3)"
+                >
+                  Preset snap volume +3
+                </UButton>
+
+                <UButton
+                  v-if="target.moduleName === 'snap'"
+                  size="2xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="makeToggleMutePreset(index)"
+                >
+                  Preset snap toggleMute
+                </UButton>
+
+                <UButton
+                  v-if="target.moduleName === 'snap'"
+                  size="2xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="makeSetVolumePreset(index, 50)"
+                >
+                  Preset snap setVolume 50
+                </UButton>
+              </div>
+
+              <div
+                v-if="hasStructuredArgs(target)"
+                class="grid grid-cols-1 sm:grid-cols-2 gap-4"
+              >
+                <div
+                  v-for="[argName, meta] in getFunctionArgEntries(target.moduleName, target.fn)"
+                  :key="`${target.moduleName}-${target.fn}-${argName}`"
+                  class="space-y-1"
+                >
+                  <label class="text-xs text-dimmed block">
+                    {{ getArgLabel(argName, meta) }}
+                    <span v-if="meta.required" class="text-red-500">*</span>
+                  </label>
+
+                  <div v-if="getArgInputKind(meta) === 'boolean'" class="flex items-center gap-3 pt-2">
+                    <USwitch v-model="target.argsModel[argName]" />
+                    <span class="text-sm">{{ getArgLabel(argName, meta) }}</span>
+                  </div>
+
+                  <UInput
+                    v-else-if="getArgInputKind(meta) === 'number'"
+                    v-model.number="target.argsModel[argName]"
+                    type="number"
+                    :min="meta.min"
+                    :max="meta.max"
+                    :placeholder="getArgPlaceholder(meta)"
+                  />
+
+                  <UTextarea
+                    v-else-if="getArgInputKind(meta) === 'json'"
+                    :model-value="prettyJson(target.argsModel[argName] ?? (meta.type === 'array' ? [] : {}))"
+                    :rows="6"
+                    class="font-mono"
+                    @update:model-value="(val) => {
+                      try {
+                        target.argsModel[argName] = JSON.parse(val)
+                      } catch {}
+                    }"
+                  />
+
+                  <UInput
+                    v-else
+                    v-model="target.argsModel[argName]"
+                    type="text"
+                    :placeholder="getArgPlaceholder(meta)"
+                  />
+
+                  <div v-if="meta.description" class="text-[11px] text-dimmed">
+                    {{ meta.description }}
+                  </div>
+
+                  <div class="text-[11px] text-dimmed">
+                    type: <span class="font-mono">{{ meta.type || 'string' }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else>
+                <label class="text-xs text-dimmed block mb-1">args (JSON)</label>
+                <UTextarea
+                  v-model="target.argsText"
+                  :rows="8"
+                  class="font-mono"
+                />
+                <div class="text-[11px] text-dimmed mt-1">
+                  Aucun schema disponible pour cette fonction. Mode JSON brut.
+                </div>
+              </div>
+
+              <div v-if="hasStructuredArgs(target)" class="rounded-lg border border-default p-3 bg-muted/20">
+                <div class="text-xs text-dimmed mb-1">Preview args</div>
+                <pre class="text-[11px] leading-5 whitespace-pre-wrap break-all text-dimmed font-mono">{{ prettyJson(target.argsModel) }}</pre>
+              </div>
+            </UPageCard>
           </div>
-        </UPageCard>
-      </div>
-    </UPageCard>
+        </div>
+      </template>
+    </UModal>
 
     <div>
       <div class="flex items-center justify-between mb-2">
         <h3 class="font-semibold">Règles</h3>
-        <div class="text-xs text-dimmed">{{ filteredRules.length }} affichée(s)</div>
+        <div class="text-xs text-dimmed">
+          {{ selectedInput ? `${selectedRules.length} pour ${selectedInput}` : `${rulesByInput.length} entrée(s), ${filteredRules.length} règle(s)` }}
+        </div>
       </div>
 
       <div v-if="!filteredRules.length" class="text-sm text-dimmed">
         Aucune règle.
       </div>
 
-      <div v-else class="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+      <!-- Niveau 1 : une carte par entree -->
+      <div v-else-if="!selectedInput" class="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
         <UPageCard
-          v-for="rule in filteredRules"
-          :key="rule.id"
+          v-for="groupe in rulesByInput"
+          :key="groupe.from"
           variant="subtle"
-          :ui="{ container: 'p-4 gap-y-3' }"
+          class="cursor-pointer transition-colors hover:bg-elevated/50"
+          :ui="{ container: 'p-4 gap-y-2' }"
+          @click="selectedInput = groupe.from"
         >
-          <div class="flex items-start justify-between gap-3">
-            <div class="space-y-1 min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-medium text-base truncate">
-                  {{ rule.name || rule.id }}
-                </span>
-
-                <UBadge :color="rule.enabled === false ? 'amber' : 'green'" variant="subtle">
-                  {{ rule.enabled === false ? 'Disabled' : 'Enabled' }}
-                </UBadge>
-              </div>
-
-              <div class="text-xs text-dimmed font-mono">
-                {{ rule.id }}
-              </div>
-
-              <div class="text-sm text-dimmed" v-if="rule.description">
-                {{ rule.description }}
-              </div>
-            </div>
-
-            <div class="flex flex-col gap-2 items-end">
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-dimmed">Enabled</span>
-                <USwitch
-                  :model-value="rule.enabled !== false"
-                  :disabled="actionLoading === `toggle:${rule.id}`"
-                  @update:model-value="toggleRule(rule)"
-                />
-              </div>
-
-              <UButton size="xs" color="neutral" variant="ghost" @click="openEditEditor(rule)">
-                Edit
-              </UButton>
-
-              <UButton size="xs" color="neutral" variant="ghost" @click="copyRuleAsJson(rule)">
-                Copy JSON
-              </UButton>
-
-              <UButton
-                size="xs"
-                color="red"
-                variant="ghost"
-                :loading="actionLoading === `delete:${rule.id}`"
-                @click="deleteRule(rule)"
-              >
-                Delete
-              </UButton>
-            </div>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-arrow-right-to-line" class="size-4 text-primary shrink-0" />
+            <h4 class="font-semibold font-mono truncate flex-1">
+              {{ groupe.from }}
+            </h4>
+            <UIcon name="i-lucide-chevron-right" class="size-4 text-dimmed shrink-0" />
           </div>
-
-          <div class="grid grid-cols-2 gap-2 text-[11px] text-dimmed">
-            <div>
-              Input:
-              <span class="font-mono">{{ rule.from || '-' }}</span>
-            </div>
-            <div>
-              Action:
-              <span class="font-mono">{{ rule.action || '-' }}</span>
-            </div>
-            <div>
-              When:
-              <span class="font-mono">{{ prettyJson(rule.when || { press: true }) }}</span>
-            </div>
-            <div>
-              Cooldown:
-              <span class="font-mono">{{ rule.cooldownMs ?? 0 }}</span>
-            </div>
-          </div>
-
-          <div class="grid gap-3">
-            <UPageCard
-              v-for="[moduleName, spec] in listRuleTargets(rule)"
-              :key="`${rule.id}-${moduleName}`"
-              variant="soft"
-              :ui="{ container: 'p-3 gap-y-2' }"
+          <div class="flex items-center gap-2">
+            <UBadge
+              color="neutral"
+              variant="subtle"
+              size="xs"
             >
-              <div class="flex items-center justify-between gap-2">
-                <div class="font-medium">
-                  {{ moduleName }}
-                </div>
-                <UBadge color="primary" variant="subtle">
-                  {{ spec?.fn || '-' }}
-                </UBadge>
-              </div>
-
-              <pre class="text-[11px] leading-5 whitespace-pre-wrap break-all text-dimmed font-mono">{{ prettyJson(spec?.args || {}) }}</pre>
-            </UPageCard>
+              {{ groupe.rules.length }} règle{{ groupe.rules.length > 1 ? 's' : '' }}
+            </UBadge>
+            <UBadge
+              v-if="groupe.actives < groupe.rules.length"
+              color="warning"
+              variant="subtle"
+              size="xs"
+            >
+              {{ groupe.rules.length - groupe.actives }} désactivée{{ groupe.rules.length - groupe.actives > 1 ? 's' : '' }}
+            </UBadge>
           </div>
         </UPageCard>
+      </div>
+
+      <!-- Niveau 2 : les regles de l'entree ouverte -->
+      <div v-else class="space-y-4">
+        <div class="flex items-center gap-2">
+          <UButton
+            icon="i-lucide-arrow-left"
+            color="neutral"
+            variant="soft"
+            size="xs"
+            label="Entrées"
+            @click="selectedInput = null"
+          />
+          <h4 class="font-semibold font-mono truncate">
+            {{ selectedInput }}
+          </h4>
+
+          <UButton
+            icon="i-lucide-plus"
+            color="primary"
+            size="xs"
+            label="Nouvelle règle"
+            class="ms-auto"
+            @click="openCreateEditor(selectedInput)"
+          />
+        </div>
+
+        <p v-if="!selectedRules.length" class="text-sm text-dimmed">
+          Aucune règle pour cette entrée avec le filtre actuel.
+        </p>
+
+        <div class="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          <UPageCard
+            v-for="rule in selectedRules"
+            :key="rule.id"
+            variant="subtle"
+            :ui="{ container: 'p-4 gap-y-3' }"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="space-y-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-medium text-base truncate">
+                    {{ rule.name || rule.id }}
+                  </span>
+
+                  <UBadge :color="rule.enabled === false ? 'amber' : 'green'" variant="subtle">
+                    {{ rule.enabled === false ? 'Disabled' : 'Enabled' }}
+                  </UBadge>
+                </div>
+
+                <div class="text-xs text-dimmed font-mono">
+                  {{ rule.id }}
+                </div>
+
+                <div class="text-sm text-dimmed" v-if="rule.description">
+                  {{ rule.description }}
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-2 items-end">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-dimmed">Enabled</span>
+                  <USwitch
+                    :model-value="rule.enabled !== false"
+                    :disabled="actionLoading === `toggle:${rule.id}`"
+                    @update:model-value="toggleRule(rule)"
+                  />
+                </div>
+
+                <UButton size="xs" color="neutral" variant="ghost" @click="openEditEditor(rule)">
+                  Edit
+                </UButton>
+
+                <UButton size="xs" color="neutral" variant="ghost" @click="copyRuleAsJson(rule)">
+                  Copy JSON
+                </UButton>
+
+                <UButton
+                  size="xs"
+                  color="red"
+                  variant="ghost"
+                  :loading="actionLoading === `delete:${rule.id}`"
+                  @click="deleteRule(rule)"
+                >
+                  Delete
+                </UButton>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-[11px] text-dimmed">
+              <div>
+                Input:
+                <span class="font-mono">{{ rule.from || '-' }}</span>
+              </div>
+              <div>
+                Action:
+                <span class="font-mono">{{ rule.action || '-' }}</span>
+              </div>
+              <div>
+                When:
+                <span class="font-mono">{{ prettyJson(rule.when || { press: true }) }}</span>
+              </div>
+              <div>
+                Cooldown:
+                <span class="font-mono">{{ rule.cooldownMs ?? 0 }}</span>
+              </div>
+            </div>
+
+            <div class="grid gap-3">
+              <UPageCard
+                v-for="[moduleName, spec] in listRuleTargets(rule)"
+                :key="`${rule.id}-${moduleName}`"
+                variant="soft"
+                :ui="{ container: 'p-3 gap-y-2' }"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <div class="font-medium">
+                    {{ moduleName }}
+                  </div>
+                  <UBadge color="primary" variant="subtle">
+                    {{ spec?.fn || '-' }}
+                  </UBadge>
+                </div>
+
+                <pre class="text-[11px] leading-5 whitespace-pre-wrap break-all text-dimmed font-mono">{{ prettyJson(spec?.args || {}) }}</pre>
+              </UPageCard>
+            </div>
+          </UPageCard>
+        </div>
       </div>
     </div>
   </div>
