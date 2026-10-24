@@ -25,7 +25,16 @@ const _useProtocols = () => {
     try { services.value = await getServices() } catch { /* noop */ }
     finally { pending.value = false }
   }
-  if (import.meta.client) refresh()
+  /* Ne rien demander tant qu'on n'est pas connecte : sur /login, le GET /services
+     repondait 401, l'intercepteur axios tentait un /refresh, echouait, SUPPRIMAIT
+     le cookie TOKEN et redirigeait. Le watch relance des que le jeton apparait,
+     donc le menu se remplit juste apres la connexion. */
+  if (import.meta.client) {
+    const token = useCookie<string | null>('TOKEN')
+    watch(token, (t) => {
+      if (t) refresh()
+    }, { immediate: true })
+  }
 
   /** Liste enrichie (icône/description depuis les métadonnées connues) */
   const protocols = computed<ProtocolView[]>(() =>

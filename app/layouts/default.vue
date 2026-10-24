@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
+import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from '@nuxt/ui'
 import { useAuth } from '@/composables/useAuth'
 import DeviceSlideover from '~/components/DeviceSlideover.vue'
 import DeviceSpotifySlideover from '~/components/DeviceSpotifySlideover.vue'
@@ -78,11 +78,14 @@ const links = computed<NavigationMenuItem[][]>(() => {
   ], []]
 })
 
-const groups = computed(() => [
+const groups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [
   {
     id: 'links',
     label: 'Go to',
-    items: links.value.flat()
+    items: links.value.flat().map(item => ({
+      ...item,
+      chip: item.chip === false ? undefined : item.chip
+    })) as CommandPaletteItem[]
   },
   {
     id: 'code',
@@ -156,11 +159,15 @@ const groups = computed(() => [
       </main>
     </div>
 
-    <NotificationsSlideover />
-    <DeviceSlideover />
-    <DeviceSpotifySlideover />
-    <DeviceAddSlideover />
-    <LecteurSlideover />
-    <LecteurQueueSlideover />
+    <!-- Chacun ouvre un WebSocket au montage. Montes sur /login, ils tentaient
+         de se connecter sans jeton et retentaient en boucle (1,5 s / 2 s). -->
+    <template v-if="isAuthenticated">
+      <NotificationsSlideover />
+      <DeviceSlideover />
+      <DeviceSpotifySlideover />
+      <DeviceAddSlideover />
+      <LecteurSlideover />
+      <LecteurQueueSlideover />
+    </template>
   </UDashboardGroup>
 </template>

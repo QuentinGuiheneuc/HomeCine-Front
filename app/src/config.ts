@@ -1,6 +1,5 @@
 export const useAppConfig = () => {
   const config = useRuntimeConfig()
-
   return {
     API_URL: config.public.apiUrl,
     WS_URL: config.public.wsBase,
@@ -14,10 +13,11 @@ export const useAppConfig = () => {
  * où useRuntimeConfig() n'est pas appelable.
  * Renseignée une fois au démarrage par plugins/config.ts.
  */
+
 export const appConfig = {
   API_URL: '/proxy',
-  WS_URL: 'ws://192.168.1.19:8099',
-  WS_URL_BROADCAST: 'ws://192.168.1.19:9086'
+  WS_URL: 'ws://192.168.1.45:8099',
+  WS_URL_BROADCAST: 'ws://192.168.1.45:9086'
 }
 
 export default appConfig
