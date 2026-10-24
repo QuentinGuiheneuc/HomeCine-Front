@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import FifoSelect from '../FifoSelect.vue'
 import { computed } from 'vue'
+import FifoSelect from '../FifoSelect.vue'
+import { formatFifoFormat } from '@/utils/fifo'
 
+/**
+ * Sortie vers un FIFO lu par Snapcast.
+ *
+ * Le lecteur n'enregistre plus que `fifo_id` : chemin, débit, profondeur et
+ * nombre de canaux appartiennent au FIFO et reviennent RÉSOLUS dans
+ * GET /lecteur. Les renvoyer en écriture serait sans effet — POST et PUT
+ * /lecteur les ignorent — d'où l'affichage en lecture seule, avec le lien vers
+ * Réglages → FIFO pour les modifier là où ils sont stockés.
+ */
 const props = defineProps<{
   modelValue: any
 }>()
@@ -18,15 +28,12 @@ const audioConfigItems = [
 ]
 
 const localValue = computed({
-  get: () =>
-    props.modelValue || {
-      'path-audio': '',
-      channels: 8,
-      rate: 48000,
-      config: '7.1'
-    },
-  set: (value) => emit('update:modelValue', value)
+  get: () => props.modelValue || { fifo_id: null, config: '7.1' },
+  set: value => emit('update:modelValue', value)
 })
+
+/** Vue résolue renvoyée par l'API — jamais réécrite. */
+const resolved = computed(() => formatFifoFormat(props.modelValue))
 </script>
 
 <template>
@@ -36,18 +43,15 @@ const localValue = computed({
     </div>
 
     <div class="md:col-span-2">
-      <label class="text-sm text-dimmed">Path fifo</label>
-      <FifoSelect v-model="localValue['path-audio']" />
-    </div>
-
-    <div>
-      <label class="text-sm text-dimmed">Channels</label>
-      <UInput v-model.number="localValue.channels" type="number" class="min-w-[160px] w-full flex items-center h-8 rounded-md border border-accented bg-elevated text-sm font-mono"/>
-    </div>
-
-    <div>
-      <label class="text-sm text-dimmed">Rate</label>
-      <UInput v-model.number="localValue.rate" type="number" class="min-w-[160px] w-full flex items-center h-8 rounded-md border border-accented bg-elevated text-sm font-mono"/>
+      <label class="text-sm text-dimmed">FIFO de sortie</label>
+      <FifoSelect
+        v-model="localValue['path-audio']"
+        v-model:fifo-id="localValue.fifo_id"
+      />
+      <p v-if="resolved" class="text-[11px] text-dimmed mt-1">
+        Format du FIFO : <span class="font-mono">{{ resolved }}</span>
+        <span class="opacity-60"> · modifiable dans Réglages → FIFO</span>
+      </p>
     </div>
 
     <div>

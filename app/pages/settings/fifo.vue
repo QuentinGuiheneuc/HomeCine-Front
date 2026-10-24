@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import {
-  getFifos, createFifo, ensureFifos, setFifoEnabled, deleteFifo,
-  type Fifo
+  getFifos, createFifo, updateFifo, ensureFifos, setFifoEnabled, deleteFifo,
+  type Fifo, type FifoBits
 } from '@/src/api/fifo'
 import { syncSnap } from '@/src/api/snap'
 
@@ -29,17 +29,84 @@ async function resync() {
 const enabledCount = computed(() => fifos.value.filter(f => f.enabled).length)
 const missingCount = computed(() => fifos.value.filter(f => !f.exists).length)
 
+/* ── Édition (PUT /fifo/:id) ────────────────────────────────────────────── */
+const editOpen = ref(false)
+const editing = ref(false)
+const editId = ref<number | null>(null)
+const editPath = ref('')
+const editLabel = ref('')
+const editRate = ref<number | null>(null)
+const editBits = ref<FifoBits | null>(null)
+const editChannels = ref<number | null>(null)
+
+function openEdit(f: Fifo) {
+  editId.value = f.id
+  editPath.value = f.path
+  editLabel.value = f.label ?? ''
+  editRate.value = f.rate ?? null
+  editBits.value = f.bits ?? null
+  editChannels.value = f.channels ?? null
+  editOpen.value = true
+}
+
+async function onSaveEdit() {
+  if (editId.value == null) return
+  const path = editPath.value.trim()
+  if (!path) {
+    toast.add({ title: 'Chemin requis', color: 'warning' })
+    return
+  }
+  editing.value = true
+  try {
+    await updateFifo(editId.value, {
+      path,
+      label: editLabel.value.trim() || undefined,
+      rate: editRate.value ?? undefined,
+      bits: editBits.value ?? undefined,
+      channels: editChannels.value ?? undefined
+    })
+    toast.add({ title: 'FIFO modifié', description: path, color: 'success', icon: 'i-lucide-check' })
+    editOpen.value = false
+    await load()
+    await resync()
+  } catch {
+    toast.add({ title: 'Modification impossible', color: 'error' })
+  } finally {
+    editing.value = false
+  }
+}
+
 /* ── Création ───────────────────────────────────────────────────────────── */
 const addOpen  = ref(false)
 const addPath   = ref('')
 const addLabel  = ref('')
-const addFormat = ref('')
 const adding   = ref(false)
+
+/* Le format s'écrit en trois champs distincts. `sampleformat` reste renvoyé
+   par l'API, mais recomposé et en lecture seule : l'envoyer n'aurait aucun
+   effet. Laisser les trois vides = format dérivé du lecteur, comme avant. */
+const addRate = ref<number | null>(null)
+const addBits = ref<FifoBits | null>(null)
+const addChannels = ref<number | null>(null)
+
+/** Un FIFO n'accepte que ces trois profondeurs ; `null` = dérivé du lecteur. */
+const bitsItems: { label: string, value: FifoBits | null }[] = [
+  { label: 'Dérivé du lecteur', value: null },
+  { label: '16 bits', value: 16 },
+  { label: '24 bits', value: 24 },
+  { label: '32 bits', value: 32 }
+]
+
+function resetFormat() {
+  addRate.value = null
+  addBits.value = null
+  addChannels.value = null
+}
 
 function openAdd() {
   addPath.value = '/tmp/spotify/'
   addLabel.value = ''
-  addFormat.value = ''
+  resetFormat()
   addOpen.value = true
 }
 
@@ -50,8 +117,10 @@ async function onCreate() {
   try {
     const res = await createFifo({
       path,
-      label:        addLabel.value.trim()  || undefined,
-      sampleformat: addFormat.value.trim() || undefined,   // omis → dérivé du lecteur
+      label: addLabel.value.trim() || undefined,
+      rate: addRate.value ?? undefined,
+      bits: addBits.value ?? undefined,
+      channels: addChannels.value ?? undefined
     })
     if (res.ok === false) {
       // 207 : référencé en base mais non créé sur le disque
@@ -192,6 +261,7 @@ onMounted(load)
 
           <UDropdownMenu
             :items="[[
+              { label: 'Modifier',               icon: 'i-lucide-pencil',  onSelect: () => openEdit(f) },
               { label: 'Supprimer la référence', icon: 'i-lucide-unlink',  onSelect: () => onDelete(f, false) },
               { label: 'Supprimer + fichier',    icon: 'i-lucide-trash-2', onSelect: () => onDelete(f, true) }
             ]]"
@@ -212,15 +282,103 @@ onMounted(load)
           <UFormField label="Libellé" description="Optionnel — conserve l'existant s'il est omis.">
             <UInput v-model="addLabel" placeholder="Salon" class="w-full" />
           </UFormField>
-          <UFormField label="Sample format" description="rate:bits:canaux — omis : dérivé du lecteur.">
-            <UInput v-model="addFormat" placeholder="48000:16:8" class="w-full font-mono" />
-            <p v-if="formatSampleformat(addFormat)" class="text-[11px] text-dimmed mt-1">
-              {{ formatSampleformat(addFormat) }}
+          <UFormField label="Format" description="Laisser vide pour le dériver du lecteur.">
+            <div class="grid grid-cols-3 gap-2">
+              <UInput
+                v-model.number="addRate"
+                type="number"
+                placeholder="48000"
+                class="font-mono"
+              />
+              <USelect
+                v-model="addBits"
+                :items="bitsItems"
+                class="font-mono"
+              />
+              <UInput
+                v-model.number="addChannels"
+                type="number"
+                placeholder="8"
+                class="font-mono"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-[11px] text-dimmed mt-1">
+              <span>Débit (Hz)</span>
+              <span>Bits</span>
+              <span>Canaux</span>
+            </div>
+            <p v-if="formatFifoFormat({ rate: addRate, bits: addBits, channels: addChannels })" class="text-[11px] text-dimmed mt-1">
+              {{ formatFifoFormat({ rate: addRate, bits: addBits, channels: addChannels }) }}
             </p>
           </UFormField>
           <div class="flex items-center justify-end gap-2 border-t border-default pt-3">
             <UButton label="Annuler" color="neutral" variant="soft" @click="addOpen = false" />
             <UButton label="Créer" icon="i-lucide-plus" color="primary" :loading="adding" :disabled="!addPath.trim()" @click="onCreate" />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Modal édition -->
+    <UModal v-model:open="editOpen" title="Modifier le FIFO">
+      <template #content>
+        <div class="p-6 space-y-4">
+          <UFormField label="Chemin" description="Absolu, sous /tmp ou data/.">
+            <UInput
+              v-model="editPath"
+              class="w-full font-mono"
+            />
+          </UFormField>
+          <UFormField label="Libellé">
+            <UInput
+              v-model="editLabel"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField label="Format" description="Débit, profondeur et canaux du flux.">
+            <div class="grid grid-cols-3 gap-2">
+              <UInput
+                v-model.number="editRate"
+                type="number"
+                placeholder="48000"
+                class="font-mono"
+              />
+              <USelect
+                v-model="editBits"
+                :items="bitsItems"
+                class="font-mono"
+              />
+              <UInput
+                v-model.number="editChannels"
+                type="number"
+                placeholder="8"
+                class="font-mono"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-[11px] text-dimmed mt-1">
+              <span>Débit (Hz)</span>
+              <span>Bits</span>
+              <span>Canaux</span>
+            </div>
+            <p v-if="formatFifoFormat({ rate: editRate, bits: editBits, channels: editChannels })" class="text-[11px] text-dimmed mt-1">
+              {{ formatFifoFormat({ rate: editRate, bits: editBits, channels: editChannels }) }}
+            </p>
+          </UFormField>
+          <div class="flex items-center justify-end gap-2 border-t border-default pt-3">
+            <UButton
+              label="Annuler"
+              color="neutral"
+              variant="soft"
+              @click="editOpen = false"
+            />
+            <UButton
+              label="Enregistrer"
+              icon="i-lucide-save"
+              color="primary"
+              :loading="editing"
+              :disabled="!editPath.trim()"
+              @click="onSaveEdit"
+            />
           </div>
         </div>
       </template>

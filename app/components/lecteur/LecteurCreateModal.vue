@@ -34,7 +34,7 @@ const typeIcon = (t: string) =>
 /* ── Config par défaut selon le type ─────────────────────────────────────── */
 const TRANSPORT_DEFAULTS = () => ({
   localStream: { output_device_index: 0, 'path-audio': '' },
-  StreamOutFifo: { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' },
+  StreamOutFifo: { fifo_id: null, 'path-audio': '', channels: 8, rate: 48000, config: '7.1' },
   vban: { dest_ip: '', dest_port: 6980, stream_name: '' }
 })
 

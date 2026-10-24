@@ -21,7 +21,7 @@ const localCfg = computed({
 function ensureSubConfigs() {
   const next = { ...(localCfg.value || {}) }
   if (!next.localStream) next.localStream = { output_device_index: 0, 'path-audio': '' }
-  if (!next.StreamOutFifo) next.StreamOutFifo = { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
+  if (!next.StreamOutFifo) next.StreamOutFifo = { fifo_id: null, 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
   if (!next.vban) next.vban = { dest_ip: '', dest_port: 6980, stream_name: '' }
   if (!next.typeStream) next.typeStream = 'localStream'
   if (!next.source_path) next.source_path = ''

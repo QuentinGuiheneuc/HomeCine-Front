@@ -65,12 +65,12 @@ const cfg = ref<any>({
   typeStream: 'localStream',
   frames_per_buffer: 1024,
   localStream: { output_device_index: 0, 'path-audio': '' },
-  StreamOutFifo: { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
+  StreamOutFifo: { fifo_id: null, 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
 })
 
 function ensureSubConfigs() {
   if (!cfg.value.localStream) cfg.value.localStream = { output_device_index: 0, 'path-audio': '' }
-  if (!cfg.value.StreamOutFifo) cfg.value.StreamOutFifo = { 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
+  if (!cfg.value.StreamOutFifo) cfg.value.StreamOutFifo = { fifo_id: null, 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
   if (!cfg.value.typeStream) cfg.value.typeStream = 'localStream'
 }
 
@@ -411,20 +411,42 @@ onMounted(async () => {
           </div>
 
           <div class="md:col-span-2">
-            <label class="text-sm text-dimmed">Path fifo</label>
-            <FifoSelect v-model="cfg.StreamOutFifo['path-audio']" />
+            <label class="text-sm text-dimmed">FIFO de sortie</label>
+            <FifoSelect
+              v-model="cfg.StreamOutFifo['path-audio']"
+              v-model:fifo-id="cfg.StreamOutFifo.fifo_id"
+            />
+            <p class="text-[11px] text-dimmed mt-1">
+              Débit, profondeur et canaux appartiennent au FIFO — modifiables dans Réglages → FIFO.
+            </p>
           </div>
 
+          <!-- Champs résolus : le lecteur ne stocke que fifo_id, POST/PUT les ignorent. -->
           <div>
             <label class="text-sm text-dimmed">Channels</label>
-            <input v-if="confEqEnabled" :value="cfg.StreamOutFifo.channels" readonly class="w-full flex items-center h-8 px-3 rounded-md border border-accented bg-elevated text-sm font-mono" />
-            <UInput v-else v-model.number="cfg.StreamOutFifo.channels" type="number" class="w-full flex items-center h-8 rounded-md border border-accented font-mono text-sm" />
+            <input
+              :value="cfg.StreamOutFifo.channels"
+              readonly
+              class="w-full flex items-center h-8 px-3 rounded-md border border-accented bg-elevated text-sm font-mono"
+            >
           </div>
 
           <div>
             <label class="text-sm text-dimmed">Rate</label>
-            <input v-if="confEqEnabled" :value="`${cfg.StreamOutFifo.rate} Hz`" readonly class="min-w-[220px] w-full flex items-center h-8 px-3 rounded-md border border-accented bg-elevated text-sm font-mono" />
-            <USelect v-else v-model="cfg.StreamOutFifo.rate" :items="rateItems" class="min-w-[220px] w-full flex items-center h-8 px-3 rounded-md  border-accented bg-elevated text-sm font-mono"  />
+            <input
+              :value="cfg.StreamOutFifo.rate ? `${cfg.StreamOutFifo.rate} Hz` : ''"
+              readonly
+              class="min-w-[220px] w-full flex items-center h-8 px-3 rounded-md border border-accented bg-elevated text-sm font-mono"
+            >
+          </div>
+
+          <div>
+            <label class="text-sm text-dimmed">Bits</label>
+            <input
+              :value="cfg.StreamOutFifo.bits"
+              readonly
+              class="w-full flex items-center h-8 px-3 rounded-md border border-accented bg-elevated text-sm font-mono"
+            >
           </div>
 
           <div>

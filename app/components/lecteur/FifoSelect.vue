@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { getFifos, type Fifo } from '@/src/api/fifo'
 
 /**
  * Choix du FIFO de sortie : bouton + UModal listant les FIFO déclarés (GET /fifo).
  * Pas de saisie libre — les chemins se déclarent dans Réglages → FIFO.
+ *
+ * Deux v-model, parce que les deux transports ne stockent pas la même chose :
+ *  - `modelValue` = le CHEMIN, ce que `localStream` enregistre ;
+ *  - `fifoId` = l'ID, seul champ que le serveur retient pour `StreamOutFifo`
+ *    (POST/PUT /lecteur ignorent les champs résolus qu'on lui renverrait).
+ * Choisir un FIFO renseigne les deux : l'appelant lit celui qui le concerne.
  */
 const model = defineModel<string>({ default: '' })
+const fifoId = defineModel<number | null>('fifoId', { default: null })
 
 const fifos   = ref<Fifo[]>([])
 const loading = ref(false)
@@ -18,15 +25,27 @@ async function load() {
   finally { loading.value = false }
 }
 
-/** FIFO correspondant au chemin enregistré (null si hors liste) */
-const current = computed(() => fifos.value.find(f => f.path === model.value) ?? null)
+/** FIFO enregistré : par id s'il est connu, sinon par chemin (null si hors liste) */
+const current = computed(() =>
+  fifos.value.find(f => (fifoId.value != null ? f.id === fifoId.value : f.path === model.value)) ?? null
+)
+
+/* Les lecteurs anterieurs au passage a `fifo_id` ne portent qu'un chemin : la
+   vue resolue remplit le format mais laisse `fifo_id` vide. Comme PUT /lecteur
+   ne garde QUE ce champ, enregistrer un tel lecteur sans retoucher au FIFO lui
+   ferait perdre sa sortie. On adopte donc l'id des que le chemin le designe. */
+watch(current, (f) => {
+  if (f && fifoId.value == null) fifoId.value = f.id
+}, { immediate: true })
 
 function choose(f: Fifo) {
   model.value = f.path
+  fifoId.value = f.id
   open.value = false
 }
 function clear() {
   model.value = ''
+  fifoId.value = null
   open.value = false
 }
 

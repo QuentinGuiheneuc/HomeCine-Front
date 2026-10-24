@@ -6,15 +6,32 @@ import http from '../lib/https'
  * Après toute modification : POST /snap/sync (cf. syncSnap) pour régénérer la conf.
  */
 
+/** Profondeur d'échantillon acceptée par un FIFO. */
+export type FifoBits = 16 | 24 | 32
+
 export interface Fifo {
   id:         number
   path:       string
   label:      string
   enabled:      boolean    // exposé comme stream dans snapserver.conf
-  sampleformat?: string    // "<rate>:<bits>:<canaux>" (ex. 48000:16:8) — dérivé du lecteur si absent
+  /* Le format est porté par TROIS champs distincts depuis la refonte de l'API.
+     `sampleformat` reste renvoyé, recomposé par le serveur, mais en LECTURE
+     SEULE : l'écrire n'aurait aucun effet, c'est `rate`/`bits`/`channels` qui
+     font foi. */
+  rate?: number
+  bits?: FifoBits
+  channels?: number
+  sampleformat?: string // "<rate>:<bits>:<canaux>" — recomposé, lecture seule
   createdAt?:   string
   exists:       boolean    // le FIFO est réellement présent sur le disque
   [k: string]: any
+}
+
+/** Format d'un FIFO, écrit champ par champ (plus de chaîne à composer). */
+export interface FifoFormat {
+  rate?: number
+  bits?: FifoBits
+  channels?: number
 }
 
 /** Réponse de création : ok = créé sur disque, created = venait d'être créé */
@@ -38,10 +55,18 @@ export async function getFifo(id: number | string): Promise<Fifo> {
  * Crée un FIFO. Le serveur peut répondre 207 : référencé en base mais non créé
  * sur disque (ex. chemin déjà occupé par un fichier ordinaire) → `ok: false`.
  */
-export async function createFifo(payload: { path: string; label?: string; sampleformat?: string }): Promise<FifoCreated> {
+export async function createFifo(payload: { path: string; label?: string } & FifoFormat): Promise<FifoCreated> {
   const res = await http.post('/fifo', payload, { validateStatus: s => s === 200 || s === 201 || s === 207 })
   const data = res.data?.data ?? res.data ?? res
   return { ...data, ok: res.status === 207 ? false : (data?.ok ?? true) }
+}
+
+/** Modifie chemin, libellé et/ou format d'un FIFO déjà référencé. */
+export async function updateFifo(
+  id: number | string,
+  patch: { path?: string; label?: string } & FifoFormat
+): Promise<Fifo> {
+  return unwrap(await http.put(`/fifo/${id}`, patch))
 }
 
 /** (Re)crée sur disque tous les FIFO référencés */
