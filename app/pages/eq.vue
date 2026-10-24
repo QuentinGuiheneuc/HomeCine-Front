@@ -7,6 +7,9 @@ import {
   computeEqCurveWebAudio,
   type UiBand
 } from "~/utils/eqTools"
+import ChannelMeters from '@/components/eq/ChannelMeters.vue'
+import { useSnapStream } from '@/composables/useSnapStream'
+import { useSnapWs } from '@/composables/useSnapWs'
 
 const toast = useToast()
 
@@ -149,6 +152,59 @@ watch([channelItems, selectedPresetName, selectedLayout], () => {
     selectedChannel.value = items[0].value
   }
 }, { immediate: true })
+
+/* ── Niveaux temps réel lus sur le flux Snapcast ────────────────────────────
+   Les échantillons arrivent par WS direct sur snapserver ; le contrôle passe
+   par le JSON-RPC relayé par le back-end, snapserver n'envoyant aucun en-tête
+   CORS (un fetch direct sur /jsonrpc serait bloqué par le navigateur). */
+const snapRpc = useSnapWs()
+const snapStream = ref('')
+const snapStreams = ref<{ label: string, value: string }[]>([])
+
+const meterChannels = computed(() => channelItems.value.map(i => i.value))
+
+const {
+  status: meterStatus,
+  error: meterError,
+  levels: meterLevels,
+  bufferMs: meterBufferMs,
+  connect: meterConnect,
+  disconnect: meterDisconnect,
+  restart: meterRestart
+} = useSnapStream({ streamId: snapStream, rpc: snapRpc.rpc })
+
+/** Streams du serveur : le codec est affiché, seul le PCM étant mesurable. */
+async function loadSnapStreams() {
+  try {
+    const st = await snapRpc.rpc('Server.GetStatus') as {
+      server?: { streams?: { id: string, uri?: { query?: Record<string, string> } }[] }
+    }
+    const streams = st?.server?.streams ?? []
+    snapStreams.value = streams.map(x => ({
+      label: `${x.id} · ${x.uri?.query?.codec ?? '?'}`,
+      value: x.id
+    }))
+    if (!snapStream.value) {
+      const pcm = streams.find(x => x.uri?.query?.codec === 'pcm')
+      snapStream.value = (pcm ?? streams[0])?.id ?? ''
+    }
+  } catch {
+    /* idem */
+  }
+}
+
+onMounted(() => {
+  snapRpc.connect()
+})
+
+watch(() => snapRpc.status.value, (st) => {
+  if (st === 'connected') loadSnapStreams()
+})
+
+/* Changer de stream impose un nouveau CodecHeader : on relance la socket. */
+watch(snapStream, () => {
+  if (meterStatus.value === 'connected') meterRestart()
+})
 
 const bands = ref<UiBand[]>([])
 
@@ -365,6 +421,20 @@ watch([eqCurve, dbRange], scheduleDraw)
 
     <main class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-2 sm:px-6 lg:px-8">
       <div class="w-full lg:max-w-12xl py-6 sm:py-2 lg:py-3 space-y-2">
+        <ChannelMeters
+          v-model:stream="snapStream"
+          :channels="meterChannels"
+          :levels="meterLevels"
+          :selected="selectedChannel"
+          :status="meterStatus"
+          :error="meterError"
+          :streams="snapStreams"
+          :delay-ms="meterBufferMs"
+          @select="selectedChannel = $event"
+          @connect="meterConnect()"
+          @disconnect="meterDisconnect()"
+        />
+
         <UCard>
           <div class="flex flex-wrap gap-3 items-end">
             <div class="min-w-[160px]">
