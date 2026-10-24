@@ -95,7 +95,6 @@ const positionMs = ref(0)
 watch(
   () => activeLecteur.value?.temp?.position_ms,
   (ms) => { if (ms != null) positionMs.value = ms 
-    /* console.log('playback override', activeLecteur.value) */
   },
   { immediate: true }
 )
@@ -169,7 +168,6 @@ const volumeIcon = computed((): string => {
 function onWheelVolume(e: WheelEvent) {
   const step  = e.shiftKey ? 10 : 5
   const delta = e.deltaY > 0 ? -step : step
-  console.log('delta:', delta, volume.value, clamp(volume.value + delta))
   const next  = clamp(volume.value + delta)
   if (next !== volume.value) setVolume(next)
   e.preventDefault()

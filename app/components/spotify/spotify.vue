@@ -289,7 +289,6 @@ async function selectArtist(id: string) {
       topTracks: tp?.tracks ?? [],
       albums:    al?.items  ?? [],
     }
-    console.log('[selectArtist] artistDetail set:', artistDetail.value?.name, '| topTracks:', artistDetail.value?.topTracks?.length, '| albums:', artistDetail.value?.albums?.length)
   } catch (e: any) {
     error.value = e?.message || 'Chargement impossible'
     console.error('[selectArtist] error:', error.value)

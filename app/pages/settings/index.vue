@@ -35,9 +35,7 @@ const user = ref<UserProfile | null>(null)
 
 const toast = useToast()
 
-async function onSubmit(event: { data: ProfileSchema }) {
-  console.log('SUBMIT =>', event.data)
-
+async function onSubmit(_event: { data: ProfileSchema }) {
   toast.add({
     title: 'Success',
     description: 'Your settings have been updated.',

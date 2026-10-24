@@ -85,7 +85,6 @@ export function connectPlayerWs() {
 
   _ws.onopen = () => {
     wsStatus.value = 'connected'
-    console.log('[useSpotifyPlayerWs] connecté')
   }
 
   _ws.onmessage = (ev) => {

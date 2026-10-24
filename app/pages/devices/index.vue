@@ -77,7 +77,6 @@ watch(wsStatus, s => { if (s === 'connected'){
 } })
 
 const offWs = wsOn((msg: any) => {
-  console.log("send ws", msg)
   if (msg?.msg?.method === 'State.audio' && msg.from && msg.msg?.State?.audio) {
     audioByKey.value = { ...audioByKey.value, [String(msg.from)]: msg.msg.State.audio as StateAudio }
     return
@@ -186,7 +185,6 @@ const offlineCount = computed(() => devices.value.filter(d => !d.online).length)
 /* ─── Commandes WS ───────────────────────────────────────────────────────── */
 
 function send(key: string, method: string, extra: Record<string, any> = {}) {
-  console.log(method, { targetIp: key, ...extra })
   const ok = wsSend(method, { targetIp: key, ...extra })
   if (!ok) toast?.add?.({ title: 'WS non connecté', color: 'error' })
 }

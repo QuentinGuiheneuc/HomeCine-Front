@@ -211,7 +211,6 @@ function connectWs() {
     let msg: any
     try {
       msg = JSON.parse(event.data)
-      console.log('[WS] message received', msg)
     } catch {
       console.error('[WS] invalid JSON', event.data)
       return
@@ -312,7 +311,6 @@ async function handleWsMessage(msg: any) {
 
       // 1) check uniquement interfaces.address
       const { exists, row } = await existsInDbByIp(ipMain)
-      console.log(`[exists] check for ${ipMain} => ${exists}`)
       // 2) check interfaces.address puis ipres
 
       const cur = foundMap.value[key]
@@ -329,7 +327,6 @@ async function handleWsMessage(msg: any) {
       checkingMap.value[key] = false
     }
   }
-  console.log(foundMap.value)
 }
 
 
@@ -341,7 +338,6 @@ function clearResults() {
 }
 
 function sendWs(payload: any) {
-  console.log('[WS] sending message', payload)
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     // La socket n'est pas (encore) prête : on garde la commande et on connecte.
     pendingSend.push(payload)

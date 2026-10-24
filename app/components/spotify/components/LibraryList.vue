@@ -151,15 +151,11 @@ const rangeLabel = computed(() => {
 })
 
 /** ---------- Actions (fake) ---------- */
-function playAlbum(id: string) {
-  // eslint-disable-next-line no-console
-  console.log('[PLAY ALBUM]', id)
+function playAlbum(_id: string) {
 }
-function playArtist(id: string) {
-  console.log('[PLAY ARTIST]', id)
+function playArtist(_id: string) {
 }
-function playTrack(id: string) {
-  console.log('[PLAY TRACK]', id)
+function playTrack(_id: string) {
 }
 
 /** ---------- Pagination ---------- */

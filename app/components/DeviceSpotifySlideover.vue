@@ -77,7 +77,6 @@ async function transferPlayback(deviceId: string) {
 const setVolumeDebounced = useDebounceFn(async (device: Device, pct: number) => {
   try {
     settingVolume.value = device.id
-    console.log(`Setting volume of device ${device.id} to ${pct}%`)
     await http.put('/spotify/devices/volume', { device_id: device.id, volume_percent: pct })
   } finally {
     settingVolume.value = null

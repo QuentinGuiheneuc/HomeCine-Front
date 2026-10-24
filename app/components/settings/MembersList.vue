@@ -6,13 +6,13 @@ defineProps<{
   members: Member[]
 }>()
 
+// Actions non implementees : les entrees existent, elles ne font rien. Elles ne
+// loguaient que leur propre nom, ce qui ne valait pas un gestionnaire.
 const items = [{
-  label: 'Edit member',
-  onSelect: () => console.log('Edit member')
+  label: 'Edit member'
 }, {
   label: 'Remove member',
-  color: 'error' as const,
-  onSelect: () => console.log('Remove member')
+  color: 'error' as const
 }] satisfies DropdownMenuItem[]
 </script>
 
