@@ -5,8 +5,8 @@ import { CookieName, getCookie, setCookie, deleteCookie } from '@/utils/cookies'
 import { getBrowserToken } from '@/utils/browser'
 
 let redirecting = false
-let isRefreshing = false
-let refreshQueue: Array<(token: string) => void> = []
+/** Refresh en cours : toutes les requêtes et tous les appelants attendent le même */
+let refreshing: Promise<string | null> | null = null
 
 function redirectToLoginOnce() {
   if (typeof window === 'undefined' || redirecting) return
@@ -71,42 +71,20 @@ http.interceptors.response.use(
       status === 401 ||
       (status === 403 && /token|revoked|revoqu|expir|jwt|unauthor/.test(dataMsg))
 
-    // Token expiré/révoqué sur une route normale → tente UN refresh puis retry
+    // Token expiré/révoqué sur une route normale → tente UN refresh puis retry.
+    // Les requêtes qui échouent pendant ce temps attendent le même refresh.
     if (looksTokenIssue && !skip && !isAuthEndpoint && !isRefreshEndpoint && !isSpotifyEndpoint && cfg && !cfg._retried) {
-      // Refresh déjà en cours → on met la requête en file d'attente
-      if (isRefreshing) {
-        return new Promise((resolve) => {
-          refreshQueue.push((newToken: string) => {
-            cfg._retried = true
-            if (!cfg.headers) cfg.headers = new AxiosHeaders()
-            ;(cfg.headers as any)['Authorization'] = `Bearer ${newToken}`
-            resolve(http(cfg))
-          })
-        })
-      }
-
-      isRefreshing = true
-      try {
-        const { data } = await authHttp.post<{ access_token: string }>('/refresh')
-        const newToken = data.access_token
-
-        setCookie(CookieName.TOKEN, newToken)
-        refreshQueue.forEach(cb => cb(newToken))
-        refreshQueue = []
-
-        cfg._retried = true
-        if (!cfg.headers) cfg.headers = new AxiosHeaders()
-        ;(cfg.headers as any)['Authorization'] = `Bearer ${newToken}`
-        return http(cfg)
-      } catch {
+      const newToken = await refreshAccessToken()
+      if (!newToken) {
         // Refresh échoué → session morte, redirection login
-        refreshQueue = []
         deleteCookie(CookieName.TOKEN)
         redirectToLoginOnce()
         return Promise.reject(error)
-      } finally {
-        isRefreshing = false
       }
+      cfg._retried = true
+      if (!cfg.headers) cfg.headers = new AxiosHeaders()
+      ;(cfg.headers as any)['Authorization'] = `Bearer ${newToken}`
+      return http(cfg)
     }
 
     // Échec persistant après retry, ou 403 non lié au token → logout
@@ -147,26 +125,15 @@ export async function getOnce(url: string, params?: Record<string, unknown>): Pr
  * Une seule requête /refresh à la fois : les appels concurrents attendent la même.
  * Pose le cookie TOKEN et renvoie le nouveau token, ou null si la session est morte.
  */
-export async function refreshAccessToken(): Promise<string | null> {
-  if (typeof window === "undefined") return null
+export function refreshAccessToken(): Promise<string | null> {
+  if (typeof window === 'undefined') return Promise.resolve(null)
 
-  // Un refresh est déjà en cours (interceptor ou autre appelant) → on attend son résultat
-  if (isRefreshing) {
-    return new Promise<string | null>((resolve) => { refreshQueue.push((t: string) => resolve(t)) })
-  }
-
-  isRefreshing = true
-  try {
-    const { data } = await authHttp.post<{ access_token: string }>("/refresh")
-    const newToken = data.access_token
-    setCookie(CookieName.TOKEN, newToken)
-    refreshQueue.forEach(cb => cb(newToken))
-    refreshQueue = []
-    return newToken
-  } catch {
-    refreshQueue = []
-    return null
-  } finally {
-    isRefreshing = false
-  }
+  refreshing ??= authHttp.post<{ access_token: string }>('/refresh')
+    .then(({ data }) => {
+      setCookie(CookieName.TOKEN, data.access_token)
+      return data.access_token
+    })
+    .catch(() => null)
+    .finally(() => { refreshing = null })
+  return refreshing
 }
