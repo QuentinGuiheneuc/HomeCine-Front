@@ -43,6 +43,19 @@ export async function syncSnap(): Promise<any> {
 
 /* ── Serveurs Snapcast (/snap/servers) ──────────────────────────────────── */
 
+/**
+ * Config d'un serveur Snapcast → sections de snapserver.conf.
+ * Reflet de `SnapServerConfigSchema` côté serveur, qui refuse toute clé
+ * inconnue : n'ajouter un champ ici qu'une fois ajouté au schéma. Les valeurs
+ * omises prennent le défaut du générateur, rappelé en commentaire.
+ */
+export interface SnapServerConfig {
+  server?: { buffer?: number; datadir?: string }                                  // buffer = 0
+  http?:   { enabled?: boolean; bind?: string; port?: number; docRoot?: string }  // 0.0.0.0:1780
+  tcp?:    { enabled?: boolean; bind?: string; port?: number }                    // 127.0.0.1:1705
+  stream?: { bind?: string; port?: number; chunkMs?: number; codec?: string; sampleformat?: string } // 0.0.0.0:1704, 10 ms, flac, 48000:16:2
+}
+
 export interface SnapServer {
   id:        number
   ip:        string
@@ -50,8 +63,9 @@ export interface SnapServer {
   name?:     string
   enabled:   boolean
   isLocal?:  boolean
-  config?:   any
-  fifos?:    Array<number | { id: number; [k: string]: any }>
+  config?:   SnapServerConfig
+  /** null = liste jamais définie : le serveur local publie alors tous les FIFO activés. */
+  fifos?:    Array<number | { id: number; [k: string]: any }> | null
   [k: string]: any
 }
 
@@ -70,18 +84,35 @@ export async function getSnapServer(ip: string): Promise<SnapServer> {
   return unwrap(await http.get(`/snap/servers/${encodeURIComponent(ip)}`))
 }
 
-export async function createSnapServer(payload: {
-  ip: string; port?: number; name?: string; enabled?: boolean; isLocal?: boolean; config?: any; fifos?: number[]
-}): Promise<SnapServer> {
+export interface SnapServerPayload {
+  ip:       string
+  port?:    number
+  name?:    string
+  enabled?: boolean
+  isLocal?: boolean
+  config?:  SnapServerConfig
+  /** Absent : liste inchangée. `[]` : aucun stream. `null` : retour au défaut. */
+  fifos?:   number[] | null
+}
+
+/**
+ * Crée OU met à jour un serveur : `POST /snap/servers` est un upsert par `ip`.
+ *
+ * `config` REMPLACE l'ancienne en bloc — envoyer l'objet complet, jamais un
+ * fragment, sinon les sections omises disparaissent de snapserver.conf. Les
+ * champs de premier niveau (`port`, `name`, `enabled`, `isLocal`) sont eux
+ * conservés quand ils sont absents.
+ *
+ * Remplace l'ancien `PUT /snap/servers/:ip/fifos`, retiré côté serveur : la
+ * liste des flux se règle maintenant ici, ou tube par tube via
+ * `PUT /fifo/:id/enabled`.
+ */
+export async function saveSnapServer(payload: SnapServerPayload): Promise<SnapServer> {
   return unwrap(await http.post('/snap/servers', payload))
 }
 
-/** Rattache les FIFO au serveur ([] pour tout retirer) */
-export async function setSnapServerFifos(ip: string, fifos: number[] | null) {
-  return unwrap<{ ok: boolean; ip: string; fifos: number[] }>(
-    await http.put(`/snap/servers/${encodeURIComponent(ip)}/fifos`, { fifos })
-  )
-}
+/** Alias historique — même route, même upsert. */
+export const createSnapServer = saveSnapServer
 
 export async function setSnapServerEnabled(ip: string, enabled: boolean) {
   return unwrap<{ ok: boolean; ip: string; enabled: boolean }>(
