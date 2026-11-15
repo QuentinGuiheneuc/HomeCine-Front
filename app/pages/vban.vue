@@ -91,7 +91,10 @@ function assembleConfig(): VbanConfig {
     if (!key) continue
     const c = clone(ch.cfg)
     c.nameVban = c.nameVban || key
-    c.channel_use_master = range(c.stream?.channels ?? 8)
+    // `channels` a plat : c'est ce que le serveur valide (HpCfgSchema), le
+    // nombre de canaux ne vivait que dans `stream`.
+    c.channels = c.stream?.channels ?? 8
+    c.channel_use_master = range(c.channels)
     cfg[key] = c
   }
   return cfg
@@ -113,7 +116,7 @@ async function save() {
     await load()
     toast.add({ title: 'Stream enregistré', color: 'success', icon: 'i-lucide-save' })
   } catch (e: any) {
-    toast.add({ title: 'Enregistrement impossible', description: e?.response?.data?.error || e?.response?.data?.message, color: 'error' })
+    toast.add({ title: 'Enregistrement impossible', description: apiError(e), color: 'error' })
   } finally { saving.value = false }
 }
 
@@ -128,17 +131,65 @@ const sel = ref({ targetIp: '', streamId: '', startDelayMs: '' })
 const selecting = ref(false)
 const streamItems = computed(() => streams.value.map(s => ({ label: s.name, value: String(s.id) })))
 
-async function applySelect() {
-  if (!sel.value.targetIp.trim()) { toast.add({ title: 'IP cible requise', color: 'warning' }); return }
+/**
+ * Config du HP cible, a plat : le serveur valide `nameVban`, `channels` et
+ * `channel_use_master` (HpCfgSchema), pas la config complete. On la deduit du
+ * bloc dont l'ip correspond, avec repli sur `stream` pour les configs
+ * enregistrees avant que `channels` ne soit pose a plat.
+ */
+/* Config active : celle du stream choisi, sinon le formulaire en cours. */
+const selectedConfig = computed<VbanConfig>(() => {
   const s = streams.value.find(x => String(x.id) === String(sel.value.streamId))
-  const cfg = s?.config ?? assembleConfig()
+  return s?.config ?? assembleConfig()
+})
+
+/* Cibles = les blocs qui ne sont pas des recepteurs. Le Master est la machine
+   qui emet : le viser donnait « HP <ip> indisponible ». */
+const targets = computed(() =>
+  Object.entries(selectedConfig.value || {})
+    .filter(([, b]) => b?.ip && b.type !== 'receiver')
+    .map(([key, b]) => ({ nom: b.nameVban || key, ip: b.ip }))
+)
+
+function hpCfgFor(config: VbanConfig, ip: string) {
+  const bloc = Object.values(config || {}).find(b => b?.ip === ip)
+  if (!bloc) return null
+  const channels = bloc.channels ?? bloc.stream?.channels ?? 8
+  return {
+    nameVban: bloc.nameVban,
+    channels,
+    channel_use_master: bloc.channel_use_master?.length ? bloc.channel_use_master : range(channels),
+    ...(bloc.stream?.rate ? { rate: bloc.stream.rate } : {})
+  }
+}
+
+async function applySelect() {
+  const targetIp = sel.value.targetIp.trim()
+  if (!targetIp) { toast.add({ title: 'IP cible requise', color: 'warning' }); return }
+  const server = selectedConfig.value
+  const cfg = hpCfgFor(server, targetIp)
+  if (!cfg?.nameVban) {
+    toast.add({ title: 'Cible introuvable', description: `Aucun bloc VBAN avec l'IP ${targetIp}`, color: 'warning' })
+    return
+  }
   selecting.value = true
   try {
-    await selectVban({ targetIp: sel.value.targetIp.trim(), cfg, startDelayMs: sel.value.startDelayMs ? Number(sel.value.startDelayMs) : undefined })
+    const res = await selectVban({ targetIp, cfg, server, startDelayMs: sel.value.startDelayMs ? Number(sel.value.startDelayMs) : undefined })
     await load()
-    toast.add({ title: 'Sélection appliquée', color: 'success', icon: 'i-lucide-cast' })
+    // Le serveur lance le Master meme si des HP n'ont pas confirme : sans ce
+    // test on annoncerait un succes pour une piece restee muette.
+    const muets = (res?.hp ?? []).filter(h => !h.pret)
+    if (muets.length) {
+      toast.add({
+        title: `${muets.length} HP sans confirmation`,
+        description: muets.map(h => `${h.nom} (${h.ip})`).join(', '),
+        color: 'warning', icon: 'i-lucide-volume-x'
+      })
+    } else {
+      toast.add({ title: 'Sélection appliquée', color: 'success', icon: 'i-lucide-cast' })
+    }
   } catch (e: any) {
-    toast.add({ title: 'Sélection impossible', description: e?.response?.data?.error || e?.response?.data?.message, color: 'error' })
+    toast.add({ title: 'Sélection impossible', description: apiError(e), color: 'error' })
   } finally { selecting.value = false }
 }
 async function clearSel() {
@@ -211,8 +262,41 @@ onMounted(() => { load(); resetConfig() })
             <UButton v-if="state" icon="i-lucide-power-off" color="error" variant="soft" size="sm" @click="clearSel">Arrêter</UButton>
           </div>
           <div class="px-5 py-4 border-t border-default space-y-3">
-            <div class="grid gap-3 sm:grid-cols-3">
-              <UFormField label="IP cible"><UInput v-model="sel.targetIp" placeholder="192.168.1.50" icon="i-lucide-globe" class="w-full" /></UFormField>
+            <div>
+              <p class="text-xs text-dimmed mb-1.5">
+                Cible
+              </p>
+              <p v-if="!targets.length" class="text-sm text-dimmed italic">
+                Aucun haut-parleur dans cette config.
+              </p>
+              <div v-else class="flex flex-wrap gap-2">
+                <button
+                  v-for="t in targets"
+                  :key="t.ip"
+                  type="button"
+                  class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-left transition-colors"
+                  :class="sel.targetIp === t.ip ? 'border-primary bg-primary/10' : 'border-default hover:bg-elevated/40'"
+                  @click="sel.targetIp = t.ip"
+                >
+                  <UIcon
+                    name="i-lucide-speaker"
+                    class="size-4 shrink-0"
+                    :class="sel.targetIp === t.ip ? 'text-primary' : 'text-dimmed'"
+                  />
+                  <span class="text-sm font-medium">{{ t.nom }}</span>
+                  <span class="text-xs text-dimmed font-mono">{{ t.ip }}</span>
+                  <UBadge
+                    v-if="isActiveIp(t.ip)"
+                    color="success"
+                    variant="subtle"
+                    size="xs"
+                  >
+                    Actif
+                  </UBadge>
+                </button>
+              </div>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
               <UFormField label="Stream (config)"><USelect v-model="sel.streamId" :items="streamItems" placeholder="Config actuelle" icon="i-lucide-list" class="w-full" /></UFormField>
               <UFormField label="Délai (ms)"><UInput v-model="sel.startDelayMs" type="number" placeholder="0" icon="i-lucide-timer" class="w-full" /></UFormField>
             </div>
@@ -311,7 +395,7 @@ onMounted(() => { load(); resetConfig() })
           <USwitch v-model="advanced" label="Options avancées" />
         </div>
         <div class="grid gap-3 sm:grid-cols-3">
-          <UFormField label="Nom VBAN"><UInput v-model="master.nameVban" class="w-full" /></UFormField>
+          <UFormField label="Name Stream"><UInput v-model="master.nameVban" class="w-full" /></UFormField>
           <UFormField label="IP"><UInput v-model="master.ip" placeholder="192.168.1.18" class="w-full" /></UFormField>
           <UFormField label="Canaux"><UInput v-model.number="master.channels" type="number" min="1" class="w-full" /></UFormField>
           <UFormField label="Réseau — IP"><UInput v-model="master.network!.ip" placeholder="192.168.4.207" class="w-full" /></UFormField>
@@ -353,7 +437,7 @@ onMounted(() => { load(); resetConfig() })
           <UFormField label="IP"><UInput v-model="currentHp.cfg.ip" placeholder="192.168.4.181" class="w-full" /></UFormField>
           <UFormField label="Port"><UInput v-model.number="currentHp.cfg.port" type="number" class="w-full" /></UFormField>
           <template v-if="advanced">
-            <UFormField label="Nom VBAN"><UInput v-model="currentHp.cfg.nameVban" class="w-full" /></UFormField>
+            <UFormField label="Name Stream"><UInput v-model="currentHp.cfg.nameVban" class="w-full" /></UFormField>
             <UFormField label="Canaux"><UInput v-model.number="currentHp.cfg.stream.channels" type="number" class="w-full" /></UFormField>
             <UFormField label="Format"><USelect :model-value="String(currentHp.cfg.stream.format ?? '')" :items="FORMATS" class="w-full" @update:model-value="(v: string) => currentHp!.cfg.stream.format = v" /></UFormField>
             <UFormField label="Fréquence"><USelect v-model="currentHp.cfg.stream.rate" :items="RATES" class="w-full" /></UFormField>

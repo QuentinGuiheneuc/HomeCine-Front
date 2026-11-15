@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap } from '../lib/https'
 
 /**
  * Client API VBAN — streams (DB) + sélection (HP d'abord puis envoi serveur).
@@ -50,8 +50,6 @@ export interface VbanState {
   [k: string]:   any
 }
 
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
-
 /* ── Streams (DB) ───────────────────────────────────────────────────────── */
 
 export async function getVbanStreams(): Promise<VbanStream[]> {
@@ -77,10 +75,23 @@ export async function getVbanState(): Promise<VbanState | null> {
   return unwrap(await http.get('/vban/state'))
 }
 
-/** Sélectionne une cible : HP d'abord (Vban.Start) → envoi serveur → save */
+/** Confirmation d'un HP dans la réponse de /vban/select */
+export interface VbanHpAck {
+  nom: string
+  ip: string
+  pret: boolean // false = le HP n'a pas confirmé, il restera muet
+}
+
+/**
+ * Sélectionne une cible : HP d'abord (Vban.Start) → envoi serveur → save.
+ *
+ * ⚠️ `ok: true` ne veut pas dire que tous les HP ont répondu : le serveur
+ * démarre le Master malgré les silencieux et se contente de les journaliser.
+ * Tester `hp[].pret` pour les signaler.
+ */
 export async function selectVban(payload: {
   targetIp: string; cfg: any; server?: any; startDelayMs?: number
-}) {
+}): Promise<{ ok?: boolean, targetIp?: string, hp?: VbanHpAck[] }> {
   return unwrap(await http.post('/vban/select', payload))
 }
 
