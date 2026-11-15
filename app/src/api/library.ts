@@ -154,12 +154,26 @@ export function unpage<T>(res: any): Page<T> {
 }
 /** Juste le tableau d'items (listes non paginées côté UI). */
 export const listItems = <T>(res: any): T[] => unpage<T>(res).items
-/** Query de pagination (cap pageSize à 200, comme l'API). */
-export const pageParams = (p: PageParams = {}) => ({
-  page:     p.page,
-  pageSize: p.pageSize != null ? Math.min(p.pageSize, 10) : undefined,
-  offset:   p.offset,
-})
+/* Taille de page maximale par source. Les sources distantes (Spotify…) ont des
+   quotas stricts : une page côté front = N appels côté serveur. Une source
+   absente de la table prend PAGE_SIZE_MAX_DEFAULT. */
+const PAGE_SIZE_MAX: Record<string, number> = { fileplayer: 200 }
+const PAGE_SIZE_MAX_DEFAULT = 10
+
+/**
+ * Query de pagination. `sources` : la ou les sources interrogées ; le plafond
+ * de pageSize est le plus bas d'entre elles (source inconnue ou non précisée :
+ * le défaut).
+ */
+export const pageParams = (p: PageParams = {}, sources?: LibrarySource | LibrarySource[]) => {
+  const list = sources == null ? [] : [sources].flat()
+  const max = list.length ? Math.min(...list.map(s => PAGE_SIZE_MAX[s] ?? PAGE_SIZE_MAX_DEFAULT)) : PAGE_SIZE_MAX_DEFAULT
+  return {
+    page: p.page,
+    pageSize: p.pageSize != null ? Math.min(p.pageSize, max) : undefined,
+    offset: p.offset
+  }
+}
 
 /**
  * Récupère TOUTES les pages d'un endpoint paginé et concatène les items.
@@ -221,7 +235,7 @@ export async function getPlaylistsPage(
   opts: { category?: string; q?: string; sources?: LibrarySource[] } & PageParams = {}
 ): Promise<Page<LibraryPlaylist>> {
   const page = unpage<LibraryPlaylist>(await getOnce('/library/playlists',
-    { category: opts.category, q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+    { category: opts.category, q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts, opts.sources) }
   ))
   // « Titres aimés » est en tête de SON provider, donc apres toutes les sources
   // distantes dans la liste agregee — 21e element en pratique. On la remonte
@@ -235,7 +249,7 @@ export async function getAlbumsPage(
   opts: { q?: string; sources?: LibrarySource[] } & PageParams = {}
 ): Promise<Page<LibraryAlbum>> {
   return unpage<LibraryAlbum>(await getOnce('/library/albums',
-    { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+    { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts, opts.sources) }
   ))
 }
 
@@ -243,7 +257,7 @@ export async function getArtistsPage(
   opts: { q?: string; sources?: LibrarySource[] } & PageParams = {}
 ): Promise<Page<LibraryArtist>> {
   return unpage<LibraryArtist>(await getOnce('/library/artists',
-    { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+    { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts, opts.sources) }
   ))
 }
 
@@ -296,7 +310,7 @@ export async function deleteRoot(root: string) {
 
 export async function search(q: string, opts: { limit?: number; sources?: LibrarySource[] } & PageParams = {}): Promise<SearchResult> {
   const raw = unwrap<any>(await http.get('/library/search', {
-    params: { q, sources: srcParam(opts.sources), ...pageParams({ ...opts, pageSize: opts.pageSize ?? opts.limit ?? 20 }) }
+    params: { q, sources: srcParam(opts.sources), ...pageParams({ ...opts, pageSize: opts.pageSize ?? opts.limit ?? 20 }, opts.sources) }
   }))
   // Tableau, enveloppe paginée { items }, ou section absente → tableau
   const arr = (v: any) => (Array.isArray(v) ? v : (v?.items ?? []))
@@ -351,14 +365,14 @@ export async function play(args: {
 /** Toutes les pistes d'une source (ex. fileplayer) avec leur état `like` (paginé) */
 export async function getTrackliste(opts: { q?: string; sources?: LibrarySource[] } & PageParams = {}): Promise<Page<LibraryTrack>> {
   return unpage<LibraryTrack>(await http.get('/library/trackliste', {
-    params: { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+    params: { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts, opts.sources) }
   }))
 }
 
 /** Titres aimés d'un artiste pour une source (paginé) — /library/like/:source?artist= */
 export async function getLikedByArtist(source: LibrarySource, artist: string, opts: PageParams = {}): Promise<Page<LibraryTrack>> {
   return unpage<LibraryTrack>(await http.get(`/library/like/${encodeURIComponent(source)}`, {
-    params: { artist, ...pageParams(opts) }
+    params: { artist, ...pageParams(opts, source) }
   }))
 }
 
@@ -443,7 +457,7 @@ export async function getCategories(opts: { sources?: LibrarySource[] } = {}): P
 
 /** Pistes contenues dans un dossier (catégorie) d'une source (paginé) */
 export async function getCategoryTracks(source: LibrarySource, id: string, opts: PageParams = {}): Promise<Page<LibraryTrack>> {
-  return unpage<LibraryTrack>(await http.get(`/library/categories/${source}/${encodeURIComponent(id)}/tracks`, { params: pageParams(opts) }))
+  return unpage<LibraryTrack>(await http.get(`/library/categories/${source}/${encodeURIComponent(id)}/tracks`, { params: pageParams(opts, source) }))
 }
 
 /* ── Playlists ─────────────────────────────────────────────────────────────── */
@@ -454,7 +468,7 @@ export async function getPlaylists(opts: { category?: string; q?: string; source
 
 /** Pistes d'une playlist (paginé) */
 export async function getPlaylistTracks(source: LibrarySource, id: string, opts: PageParams = {}): Promise<Page<LibraryTrack>> {
-  return unpage<LibraryTrack>(await http.get(`/library/playlists/${source}/${encodeURIComponent(id)}/tracks`, { params: pageParams(opts) }))
+  return unpage<LibraryTrack>(await http.get(`/library/playlists/${source}/${encodeURIComponent(id)}/tracks`, { params: pageParams(opts, source) }))
 }
 
 /** Enfile toute la playlist dans le lecteur relié */
@@ -470,7 +484,7 @@ export async function getAlbums(opts: { q?: string; sources?: LibrarySource[] } 
 
 /** Pistes d'un album (paginé) */
 export async function getAlbumTracks(source: LibrarySource, id: string, opts: PageParams = {}): Promise<Page<LibraryTrack>> {
-  return unpage<LibraryTrack>(await http.get(`/library/albums/${source}/${encodeURIComponent(id)}/tracks`, { params: pageParams(opts) }))
+  return unpage<LibraryTrack>(await http.get(`/library/albums/${source}/${encodeURIComponent(id)}/tracks`, { params: pageParams(opts, source) }))
 }
 
 /* ── Artistes ──────────────────────────────────────────────────────────────── */
@@ -480,15 +494,15 @@ export async function getArtists(opts: { q?: string; sources?: LibrarySource[] }
 }
 
 export async function getArtistAlbums(source: LibrarySource, id: string, opts: PageParams = {}): Promise<LibraryAlbum[]> {
-  return listItems<LibraryAlbum>(await http.get(`/library/artists/${source}/${encodeURIComponent(id)}/albums`, { params: pageParams(opts) }))
+  return listItems<LibraryAlbum>(await http.get(`/library/artists/${source}/${encodeURIComponent(id)}/albums`, { params: pageParams(opts, source) }))
 }
 
 /** Albums d'un artiste (paginé — pour « Charger plus ») */
 export async function getArtistAlbumsPage(source: LibrarySource, id: string, opts: PageParams = {}): Promise<Page<LibraryAlbum>> {
-  return unpage<LibraryAlbum>(await http.get(`/library/artists/${source}/${encodeURIComponent(id)}/albums`, { params: pageParams(opts) }))
+  return unpage<LibraryAlbum>(await http.get(`/library/artists/${source}/${encodeURIComponent(id)}/albums`, { params: pageParams(opts, source) }))
 }
 
 /** Pistes d'un artiste (paginé — un artiste peut en avoir des centaines) */
 export async function getArtistTracks(source: LibrarySource, id: string, opts: PageParams = {}): Promise<Page<LibraryTrack>> {
-  return unpage<LibraryTrack>(await http.get(`/library/artists/${source}/${encodeURIComponent(id)}/tracks`, { params: pageParams(opts) }))
+  return unpage<LibraryTrack>(await http.get(`/library/artists/${source}/${encodeURIComponent(id)}/tracks`, { params: pageParams(opts, source) }))
 }

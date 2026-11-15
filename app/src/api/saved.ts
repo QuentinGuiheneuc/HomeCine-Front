@@ -11,7 +11,7 @@ const srcParam = (sources?: LibrarySource[]) => (sources?.length ? sources.join(
 /* ── Titres aimés ───────────────────────────────────────────────────────── */
 
 export async function getSavedTracks(sources?: LibrarySource[], opts: PageParams = {}): Promise<Page<LibraryTrack>> {
-  return unpage<LibraryTrack>(await http.get('/library/saved/tracks', { params: { sources: srcParam(sources), ...pageParams(opts) } }))
+  return unpage<LibraryTrack>(await http.get('/library/saved/tracks', { params: { sources: srcParam(sources), ...pageParams(opts, sources) } }))
 }
 
 export async function addSavedTrack(track: LibraryTrack) {
@@ -31,7 +31,7 @@ export async function playSavedTracks(mode: 'replace' | 'add' = 'replace') {
 /* ── Artistes suivis ────────────────────────────────────────────────────── */
 
 export async function getSavedArtists(sources?: LibrarySource[], opts: PageParams = {}): Promise<Page<LibraryArtist>> {
-  return unpage<LibraryArtist>(await http.get('/library/saved/artists', { params: { sources: srcParam(sources), ...pageParams(opts) } }))
+  return unpage<LibraryArtist>(await http.get('/library/saved/artists', { params: { sources: srcParam(sources), ...pageParams(opts, sources) } }))
 }
 
 export async function addSavedArtist(artist: LibraryArtist) {
@@ -47,7 +47,7 @@ export async function removeSavedArtist(id: number | string) {
    il manquait seulement de quoi le basculer. Meme modele que les artistes. */
 
 export async function getSavedPlaylists(sources?: LibrarySource[], opts: PageParams = {}): Promise<Page<LibraryPlaylist>> {
-  return unpage<LibraryPlaylist>(await http.get('/library/saved/playlists', { params: { sources: srcParam(sources), ...pageParams(opts) } }))
+  return unpage<LibraryPlaylist>(await http.get('/library/saved/playlists', { params: { sources: srcParam(sources), ...pageParams(opts, sources) } }))
 }
 
 export async function addSavedPlaylist(playlist: LibraryPlaylist) {
