@@ -25,7 +25,7 @@ export function useSnapWs() {
   const _notifHandlers = new Set<(data: any) => void>()
 
   const { status, error, connect, disconnect, send, on } = useWs(
-    wsProxyUrl('Snap'),
+    () => wsProxyUrl('Snap'),
     { reconnect: true, reconnectDelay: 2000 }
   )
 

@@ -30,12 +30,10 @@ function _useLecteursWs() {
   const queuesById   = ref<Record<number, QueueItem[]>>({})
   const likeById     = ref<Record<number, { sourceId?: string; like: boolean }>>({})
 
-  // URL en ref : après un refresh on la reconstruit pour que la reconnexion
-  // reparte avec le token frais (le token voyage en ?token=)
-  const wsUrl = ref(wsProxyUrl('lecteur-live'))
-
+  // URL en fonction : recalculée à chaque (re)connexion, pour repartir avec
+  // le token frais après un refresh (le token voyage en ?token=)
   const { status: wsStatus, error: wsError, connect, send, on } = useWs(
-    wsUrl,
+    () => wsProxyUrl('lecteur-live'),
     {
       reconnect: true,
       reconnectDelay: 2000,
@@ -69,7 +67,6 @@ function _useLecteursWs() {
         toast.add({ title: "Session expirée", description: reason ?? "Reconnectez-vous.", color: "error" })
         return
       }
-      wsUrl.value = wsProxyUrl("lecteur-live")    // prochaine (re)connexion = token frais
       const sent = send({ method: "Lecteur.Auth", token })
       if (!sent) connect()                        // socket fermée → reconnexion
     } finally { refreshing = false }

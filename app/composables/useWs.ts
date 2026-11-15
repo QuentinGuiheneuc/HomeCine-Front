@@ -13,15 +13,23 @@
 export type WsStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error'
 
 export interface UseWsOptions {
-  /** Reconnexion automatique après fermeture/erreur (défaut : true) */
-  reconnect?: boolean
+  /** Reconnexion automatique après fermeture/erreur (défaut : true). Une fonction est réévaluée à chaque tentative. */
+  reconnect?: boolean | (() => boolean)
   /** Délai entre deux tentatives de reconnexion en ms (défaut : 2000) */
   reconnectDelay?: number
   /** Appelé dès que la connexion est ouverte */
   onOpen?: (ws: WebSocket) => void
 }
 
-export function useWs(url: string | Ref<string>, options: UseWsOptions = {}) {
+/**
+ * La connexion elle-même, sans cycle de vie de composant : pour un socket
+ * partagé au niveau module (cf. useDeviceControlWs). Dans un composant,
+ * préférer `useWs`, qui la ferme au démontage.
+ *
+ * `url` peut être une fonction : elle est rappelée à chaque (re)connexion,
+ * pour repartir avec le token courant (il voyage dans l'URL).
+ */
+export function createWs(url: MaybeRefOrGetter<string>, options: UseWsOptions = {}) {
   const { reconnect = true, reconnectDelay = 2000, onOpen } = options
 
   const status = ref<WsStatus>('idle')
@@ -38,7 +46,7 @@ export function useWs(url: string | Ref<string>, options: UseWsOptions = {}) {
   }
 
   function scheduleReconnect() {
-    if (!reconnect || reconnectTimer) return
+    if (reconnectTimer || !(typeof reconnect === 'function' ? reconnect() : reconnect)) return
     reconnectTimer = setTimeout(() => { reconnectTimer = null; connect() }, reconnectDelay)
   }
 
@@ -46,7 +54,7 @@ export function useWs(url: string | Ref<string>, options: UseWsOptions = {}) {
 
   function connect() {
     if (!import.meta.client) return
-    const resolvedUrl = isRef(url) ? url.value : url
+    const resolvedUrl = toValue(url)
     if (!resolvedUrl) return
     if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return
 
@@ -115,7 +123,11 @@ export function useWs(url: string | Ref<string>, options: UseWsOptions = {}) {
     return () => handlers.delete(handler)
   }
 
-  onUnmounted(disconnect)
-
   return { status, error, connect, disconnect, send, on }
+}
+
+export function useWs(url: MaybeRefOrGetter<string>, options: UseWsOptions = {}) {
+  const ws = createWs(url, options)
+  onUnmounted(ws.disconnect)
+  return ws
 }

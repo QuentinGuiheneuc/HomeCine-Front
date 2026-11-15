@@ -1,4 +1,4 @@
-import type { WsStatus } from './useWs'
+import { createWs } from './useWs'
 import { wsProxyUrl } from '@/utils/ws'
 /**
  * useDeviceControlWs — WebSocket singleton pour le contrôle des appareils
@@ -21,72 +21,12 @@ import { wsProxyUrl } from '@/utils/ws'
  *   send('Set.output.volume', { deviceId: 1, channel: 0, value: 80 })
  */
 
+
 // ── État module-level (singleton) ────────────────────────────────────────────
-const _status = ref<WsStatus>('idle')
-const _error = ref<string | null>(null)
-const _handlers = new Set<(data: any) => void>()
-
-let _ws: WebSocket | null = null
 let _refCount = 0
-let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
-
-function _clearTimer() {
-  if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null }
-}
-
-function _scheduleReconnect() {
-  if (_reconnectTimer) return
-  _reconnectTimer = setTimeout(() => { _reconnectTimer = null; _connect() }, 2000)
-}
-
-function _connect() {
-  if (!import.meta.client) return
-  if (_ws?.readyState === WebSocket.OPEN || _ws?.readyState === WebSocket.CONNECTING) return
-
-  _clearTimer()
-  _status.value = 'connecting'
-  _error.value = null
-
-  try {
-    _ws = new WebSocket(wsProxyUrl('controlOfDevice'))
-  } catch (e) {
-    _status.value = 'error'
-    _error.value = String(e)
-    _scheduleReconnect()
-    return
-  }
-
-  _ws.onopen = () => {
-    _status.value = 'connected'
-    _error.value = null
-  }
-
-  _ws.onmessage = (ev) => {
-    let data: any
-    try { data = JSON.parse(ev.data) } catch { data = ev.data }
-    _handlers.forEach(h => h(data))
-  }
-
-  _ws.onerror = () => {
-    _status.value = 'error'
-    _error.value = 'Erreur WebSocket controlOfDevice'
-  }
-
-  _ws.onclose = () => {
-    _ws = null
-    if (_status.value !== 'idle') {
-      _status.value = 'disconnected'
-      if (_refCount > 0) _scheduleReconnect()
-    }
-  }
-}
-
-function _disconnect() {
-  _clearTimer()
-  _status.value = 'idle'
-  _ws?.close()
-  _ws = null
-}
+// L'URL est recalculée à chaque connexion (token courant) ; la reconnexion
+// automatique ne tourne que tant qu'un composant utilise le socket.
+const _ws = createWs(() => wsProxyUrl('controlOfDevice'), { reconnect: () => _refCount > 0 })
 
 // ── Composable public ────────────────────────────────────────────────────────
 export function useDeviceControlWs() {
@@ -94,37 +34,25 @@ export function useDeviceControlWs() {
    * Envoie une commande vers le serveur.
    * @returns true si envoyée, false si le socket n'est pas ouvert
    */
-  function send(method: string, params: object = {}): boolean {
-    if (_ws?.readyState !== WebSocket.OPEN) return false
-    _ws.send(JSON.stringify({ method, ...params }))
-    return true
-  }
-
-  /**
-   * Abonne un handler aux messages entrants.
-   * @returns fonction de désabonnement (à appeler dans onUnmounted)
-   */
-  function on(handler: (data: any) => void): () => void {
-    _handlers.add(handler)
-    return () => _handlers.delete(handler)
-  }
+  const send = (method: string, params: object = {}) => _ws.send({ method, ...params })
 
   onMounted(() => {
     _refCount++
-    if (_refCount === 1) _connect()
+    if (_refCount === 1) _ws.connect()
   })
 
   onUnmounted(() => {
     _refCount = Math.max(0, _refCount - 1)
-    if (_refCount === 0) _disconnect()
+    if (_refCount === 0) _ws.disconnect()
   })
 
   return {
-    status: readonly(_status),
-    error: readonly(_error),
+    status: readonly(_ws.status),
+    error: readonly(_ws.error),
     send,
-    on,
+    /** Abonne un handler aux messages entrants ; renvoie la fonction de désabonnement (à appeler dans onUnmounted). */
+    on: _ws.on,
     /** Ouvre la connexion si elle ne l'est pas déjà (idempotent, guardé). */
-    connect: _connect,
+    connect: _ws.connect
   }
 }
