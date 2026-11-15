@@ -46,14 +46,6 @@ const presetsOriginal = ref<ApiPreset[]>([])
 const pending = ref(false)
 const loadError = ref("")
 
-function uuid() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0
-    const v = c === 'x' ? r : (r & 0x3 | 0x8)
-    return v.toString(16)
-  })
-}
-
 async function fetchEq() {
   pending.value = true
   loadError.value = ""
@@ -262,7 +254,7 @@ function addBand(type: UiBand["type"]) {
   })
 }
 
-const eqCurve = ref<{ f: number; db: number }[]>([])
+const eqCurve = shallowRef<{ f: number; db: number }[]>([])
 
 async function recomputeCurve() {
   try {

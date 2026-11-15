@@ -44,11 +44,6 @@ const coverUrl = computed(() =>
     </svg>
   `)
 )
-const ms = (v?: number) => {
-  if (!v && v !== 0) return '0:00'
-  const s = Math.floor(v / 1000), m = Math.floor(s / 60), ss = String(s % 60).padStart(2, '0')
-  return `${m}:${ss}`
-}
 
 /** Fetch snapshot (GET) */
 async function fetchSnapshot() {
@@ -64,7 +59,7 @@ async function fetchSnapshot() {
     page.start = 0
     rows.value = all.value.slice(0, page.size)
   } catch (e: any) {
-    errorMsg.value = e?.response?.data?.error || e?.message || 'Impossible de charger les Titres likés (snapshot)'
+    errorMsg.value = apiError(e, e?.message || 'Impossible de charger les Titres likés (snapshot)')
     all.value = []; rows.value = []; page.total = 0; page.start = 0
   } finally {
     loading.value = false
@@ -79,7 +74,7 @@ async function regenerate() {
     await http.post('/spotify/me/tracks/sync-json', {})
     await fetchSnapshot()
   } catch (e: any) {
-    errorMsg.value = e?.response?.data?.error || e?.message || 'Échec de la régénération'
+    errorMsg.value = apiError(e, e?.message || 'Échec de la régénération')
   } finally {
     loading.value = false
   }
@@ -189,7 +184,7 @@ onMounted(fetchSnapshot)
           </p>
         </div>
 
-        <span class="text-xs text-dimmed w-12 text-right">{{ ms(t.duration_ms) }}</span>
+        <span class="text-xs text-dimmed w-12 text-right">{{ toTime(t.duration_ms) }}</span>
 
         <div class="ms-2 hidden items-center gap-1 group-hover:flex">
           <UButton icon="i-lucide-play"   variant="ghost" size="xs" @click="playAt(idx)" />

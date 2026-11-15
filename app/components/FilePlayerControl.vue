@@ -26,11 +26,6 @@ const positionMs = ref(0)
 watch(() => lecteur.value?.temp?.position_ms, (ms) => { if (ms != null) positionMs.value = ms }, { immediate: true })
 const durationMs = computed(() => track.value?.duration_ms ?? lecteur.value?.temp?.duration_ms ?? 0)
 
-const toTime = (ms: number) => {
-  const s = Math.max(0, Math.floor(ms / 1000))
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
-
 const _seekDebounced = useDebounceFn((p: number) => ws.seek(props.lecteurId, p), 250)
 function onSeek(ms: number) {
   positionMs.value = Math.max(0, Math.min(ms, durationMs.value))
@@ -39,7 +34,6 @@ function onSeek(ms: number) {
 
 /* ── Volume ──────────────────────────────────────────────────────────────── */
 
-const clamp = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n))
 const volume = ref(60)
 watch(() => lecteur.value?.volume, (v) => { if (v != null) volume.value = v }, { immediate: true })
 

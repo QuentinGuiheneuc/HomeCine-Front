@@ -51,15 +51,6 @@ async function onReindex() {
   try { await reindex() }
   finally { reindexing.value = false; clearLibraryCache(); reload() }
 }
-const sourceIcon = (s?: LibrarySource) => {
-  switch ((s ?? '').toLowerCase()) {
-    case 'spotify':    return 'mdi:spotify'
-    case 'fileplayer': return 'mdi:file-music'
-    case 'youtube':    return 'mdi:youtube'
-    case 'deezer':     return 'i-simple-icons-deezer'
-    default:           return 'i-lucide-music'
-  }
-}
 
 /* ── Onglets ─────────────────────────────────────────────────────────────── */
 type Section = 'playlists' | 'albums' | 'artists'
@@ -173,9 +164,9 @@ const cover = (o: any) => resolveCoverUrl(o.coverUrl ?? o.cover_url ?? o.image) 
 const trackCount = (o: any) => o.trackCount ?? o.track_count ?? null
 
 onMounted(async () => {
+  loadDb()
   await loadProviders()
   await reload()
-  loadDb()
 })
 </script>
 

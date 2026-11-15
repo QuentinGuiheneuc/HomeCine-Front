@@ -18,10 +18,6 @@ export type EqPreset = {
   bands: EqBand[]
 }
 
-function clamp(v: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, v))
-}
-
 export function useParametricEq() {
   const canPlay = ref(false)
   const isPlaying = ref(false)

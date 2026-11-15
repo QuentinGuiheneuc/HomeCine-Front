@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap } from '../lib/https'
 
 /**
  * Client API « librespot » — token Spotify par utilisateur (scopé req.user),
@@ -14,8 +14,6 @@ export interface LibrespotState {
   user?:      string | null    // libellé compte Spotify si dispo
   [k: string]: any
 }
-
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
 
 /* ── Utilisateur courant ────────────────────────────────────────────────── */
 

@@ -121,6 +121,27 @@ http.interceptors.response.use(
 
 export default http
 
+/** Deballe l'enveloppe du back : reponse axios, corps { data }, ou valeur brute. */
+export function unwrap<T>(res: unknown): T {
+  const r = res as { data?: { data?: unknown } } | null | undefined
+  return (r?.data?.data ?? r?.data ?? res) as T
+}
+
+/* GET identiques deja en cours : un seul aller-retour pour tous les appelants.
+   Sur la page Musique, la sidebar et l'accueil demandent les memes listes au
+   montage, et chaque page coute des appels Spotify cote serveur. */
+const inflight = new Map<string, Promise<{ data: unknown }>>()
+export async function getOnce(url: string, params?: Record<string, unknown>): Promise<{ data: unknown }> {
+  const key = url + JSON.stringify(params ?? {})
+  let p = inflight.get(key)
+  if (!p) {
+    p = http.get(url, { params }).finally(() => inflight.delete(key))
+    inflight.set(key, p)
+  }
+  // copie par appelant : chacun modifie sa liste sans toucher celle des autres
+  return { data: structuredClone((await p).data) }
+}
+
 /**
  * Refresh partagé (utilisable hors axios, ex. WebSocket sur Lecteur.AuthError).
  * Une seule requête /refresh à la fois : les appels concurrents attendent la même.

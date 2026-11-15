@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap, getOnce } from '../lib/https'
 import { listItems, type LibraryTrack } from './library'
 
 /**
@@ -16,12 +16,10 @@ export interface DbPlaylist {
   [k: string]:  any
 }
 
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
-
 /* ── Playlists ──────────────────────────────────────────────────────────── */
 
 export async function getDbPlaylists(): Promise<DbPlaylist[]> {
-  return listItems<DbPlaylist>(await http.get('/library/db-playlists', { params: { pageSize: 200 } }))
+  return listItems<DbPlaylist>(await getOnce('/library/db-playlists', { pageSize: 200 }))
 }
 
 export async function createDbPlaylist(

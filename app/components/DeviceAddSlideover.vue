@@ -6,7 +6,7 @@ import { useToast, useDashboard } from '#imports'
 
 /* Dashboard state */
 const { DeviceAddSlideover } = useDashboard()
-const toast = useToast?.()
+const toast = useToast()
 
 /* WS */
 const wsStatus = ref<'disconnected' | 'connecting' | 'connected'>('disconnected')
@@ -75,7 +75,7 @@ function handlePresence(msg: any): boolean {
     case 'Device.Search':
       if (!msg.error) return true          // pas d'accusé de réception attendu
       searching.value = false
-      toast?.add?.({
+      toast.add({
         title: 'Recherche refusée',
         description: String(msg.error),
         color: 'warning', icon: 'i-lucide-triangle-alert'
@@ -86,7 +86,7 @@ function handlePresence(msg: any): boolean {
       searching.value = false
       scanning.value = false
       scanRetryMs.value = Number(msg.reessayerDansMs) || null
-      toast?.add?.({
+      toast.add({
         title: 'Balayage refusé',
         description: scanRetryMs.value
           ? msg.error + ' — réessayez dans ' + Math.ceil(scanRetryMs.value / 1000) + ' s'
@@ -108,7 +108,7 @@ function handlePresence(msg: any): boolean {
       const trouvees = plages.reduce((n: number, x: any) =>
         n + (Array.isArray(x?.trouvees) ? x.trouvees.length : Number(x?.trouvees) || 0), 0)
       const sondees = plages.reduce((n: number, x: any) => n + (Number(x?.sondees) || 0), 0)
-      toast?.add?.({
+      toast.add({
         title: 'Balayage terminé',
         description: trouvees + ' adresse(s) sur ' + sondees + ' sondée(s)',
         color: 'success', icon: 'i-lucide-radar'
@@ -397,10 +397,10 @@ async function addToDb(d: FoundDevice) {
     }
 
     await http.post('/objet/add', payload)
-    toast?.add?.({ title: 'Device ajouté', description: `${d.name} ${d.ip}`, color: 'success' })
+    toast.add({ title: 'Device ajouté', description: `${d.name} ${d.ip}`, color: 'success' })
   } catch (e: any) {
     console.error(e)
-    toast?.add?.({ title: 'Ajout impossible', color: 'error' })
+    toast.add({ title: 'Ajout impossible', color: 'error' })
   }
 }
 

@@ -47,7 +47,7 @@ async function fetchDevices() {
     // ⚠️ MISE À JOUR réactive
     devices.value = res.data.devices ?? []
   } catch (e: any) {
-    errorMsg.value = e?.response?.data?.message || 'Failed to load devices'
+    errorMsg.value = apiError(e, 'Failed to load devices')
   } finally {
     loading.value = false
   }
@@ -82,7 +82,6 @@ const setVolumeDebounced = useDebounceFn(async (device: Device, pct: number) => 
     settingVolume.value = null
   }
 }, 200)
-const clamp = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n))
 function onWheelVolume(device: Device, e: WheelEvent) {
   // pas de base: 5 ; ⇧ Shift = 10
   const step = e.shiftKey ? 2 : 2
@@ -106,8 +105,7 @@ async function setVolume(device: Device, pct: number) {
   await setVolumeDebounced(device, pct)
 }
 
-// Charger au montage (ou quand le slideover s’ouvre)
-onMounted(fetchDevices)
+// Charger quand le slideover s’ouvre (le layout le monte sur toutes les pages)
 watch(isDevicSpotifyeSlideoverOpen, (open) => {
   if (open) {
     fetchDevices()

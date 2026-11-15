@@ -16,8 +16,6 @@ function resetLecteur(id: number) {
   ws.getQueue(id)
 }
 
-const clamp = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n))
-
 /* ── Volume par lecteur (local optimiste) ───────────────────────────────── */
 const volumeById = ref<Record<number, number>>({})
 

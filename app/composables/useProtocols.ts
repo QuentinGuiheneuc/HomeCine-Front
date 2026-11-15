@@ -30,7 +30,7 @@ const _useProtocols = () => {
      le cookie TOKEN et redirigeait. Le watch relance des que le jeton apparait,
      donc le menu se remplit juste apres la connexion. */
   if (import.meta.client) {
-    const token = useCookie<string | null>('TOKEN')
+    const token = useCookie<string | null>(CookieName.TOKEN)
     watch(token, (t) => {
       if (t) refresh()
     }, { immediate: true })

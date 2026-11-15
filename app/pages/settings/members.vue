@@ -15,18 +15,13 @@ const pending = ref(false)
 const users = ref<any[]>([])
 
 const isOpen = ref(false)
-const isEditing = ref(false)
 
 const isRevokeOpen = ref(false)
 const revokeUser   = ref<any>(null)
 
-const form = ref({
-  id: null,
-  name: '',
-  email: '',
-  type: 'user',
-  password: ''
-})
+const emptyForm = () => ({ id: null as number | null, name: '', email: '', type: 'user', password: '' })
+const form = ref(emptyForm())
+const isEditing = computed(() => form.value.id != null)
 
 async function loadUsers() {
   try {
@@ -66,22 +61,11 @@ const filteredUsers = computed(() => {
 })
 
 function openCreate() {
-  isEditing.value = false
-
-  form.value = {
-    id: null,
-    name: '',
-    email: '',
-    type: 'user',
-    password: ''
-  }
-
+  form.value = emptyForm()
   isOpen.value = true
 }
 
 function openEdit(user: any) {
-  isEditing.value = true
-
   form.value = {
     id: user.id,
     name: user.name,

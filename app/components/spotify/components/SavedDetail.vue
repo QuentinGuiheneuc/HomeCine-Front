@@ -5,7 +5,7 @@ import {
   getSavedTracks, removeSavedTrack, playSavedTracks,
   getSavedArtists, removeSavedArtist
 } from '@/src/api/saved'
-import { resolveCoverUrl, resolveId, type LibraryTrack, type LibraryArtist } from '@/src/api/library'
+import { coverOf as cover, resolveId, type LibraryTrack, type LibraryArtist } from '@/src/api/library'
 
 const props = defineProps<{ kind: 'tracks' | 'artists'; playerHeight?: number; currentKey?: string }>()
 const emit = defineEmits<{ (e: 'select-artist', a: LibraryArtist): void; (e: 'changed'): void; (e: 'download-track', t: LibraryTrack): void }>()
@@ -55,13 +55,6 @@ const sentinel = ref<HTMLElement | null>(null)
 useIntersectionObserver(sentinel, ([entry]) => {
   if (entry?.isIntersecting && hasMore.value && !more.value) loadMore()
 })
-
-const cover = (o: any) => resolveCoverUrl(o?.coverUrl ?? o?.cover_url ?? o?.image)
-const toTime = (ms?: number | null) => {
-  if (!ms) return ''
-  const s = Math.floor(ms / 1000)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
 
 async function play(mode: 'replace' | 'add') {
   try {
@@ -122,7 +115,7 @@ async function unfollow(a: LibraryArtist, i: number) {
               <p class="truncate text-sm font-medium" :class="{ 'text-primary': isNowPlaying(t, props.currentKey) }">{{ t.title }}</p>
               <p class="truncate text-xs text-dimmed">{{ t.artists?.join(', ') || '—' }}</p>
             </div>
-            <span class="text-xs tabular-nums text-dimmed shrink-0">{{ toTime(t.durationMs ?? t.duration_ms) }}</span>
+            <span class="text-xs tabular-nums text-dimmed shrink-0">{{ toTime(t.durationMs ?? t.duration_ms, '') }}</span>
             <UButton v-if="isYoutube(t)" size="2xs" variant="ghost" color="neutral" icon="i-lucide-download" title="Télécharger" class="opacity-0 group-hover:opacity-100 transition-opacity shrink-0" @click="emit('download-track', t)" />
             <UButton size="2xs" variant="ghost" color="error" icon="i-lucide-heart-off" class="opacity-0 group-hover:opacity-100 transition-opacity shrink-0" @click="removeTrack(t, i)" />
           </div>

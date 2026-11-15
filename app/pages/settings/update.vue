@@ -45,7 +45,7 @@ async function onUpdateYtdlp() {
     if (res.sortie) { outTitle.value = 'yt-dlp'; outText.value = res.sortie; outOpen.value = true }
     await load()
   } catch (e: any) {
-    toast.add({ title: 'Mise à jour impossible', description: e?.response?.data?.error || 'yt-dlp absent ou échec', color: 'error' })
+    toast.add({ title: 'Mise à jour impossible', description: apiError(e, 'yt-dlp absent ou échec'), color: 'error' })
   } finally { busy.value = null }
 }
 
@@ -80,7 +80,7 @@ async function onInstall(r: UpdateRepo) {
     const st = e?.response?.status
     toast.add({
       title: st === 409 ? 'Déjà en cours' : st === 400 ? 'Pas de install.sh' : 'Lancement impossible',
-      description: e?.response?.data?.error, color: st === 409 ? 'warning' : 'error'
+      description: apiError(e), color: st === 409 ? 'warning' : 'error'
     })
     if (st === 409) { await refreshInstall(r.id); ensurePolling() }
   } finally { busy.value = null }
@@ -106,7 +106,7 @@ const etatColor = (e?: string) => e === 'ok' ? 'success' : e === 'echec' ? 'erro
 async function onToggle(r: UpdateRepo, value: boolean) {
   busy.value = `en:${r.id}`
   try { await setRepoEnabled(r.id, value); r.enabled = value }
-  catch (e: any) { toast.add({ title: 'Modification impossible', description: e?.response?.data?.error, color: 'error' }) }
+  catch (e: any) { toast.add({ title: 'Modification impossible', description: apiError(e), color: 'error' }) }
   finally { busy.value = null }
 }
 
@@ -134,7 +134,7 @@ async function onCreate() {
     await load()
     toast.add({ title: 'Dépôt ajouté', description: nom, color: 'success', icon: 'i-lucide-git-branch' })
   } catch (e: any) {
-    toast.add({ title: 'Ajout impossible', description: e?.response?.data?.error || 'Chemin refusé', color: 'error' })
+    toast.add({ title: 'Ajout impossible', description: apiError(e, 'Chemin refusé'), color: 'error' })
   } finally { adding.value = false }
 }
 

@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { watch } from 'vue'
 import LocalStreamConfig from '../transports/LocalStreamConfig.vue'
 import StreamOutFifoConfig from '../transports/StreamOutFifoConfig.vue'
 import VbanConfig from '../transports/VbanConfig.vue'
 
-const props = defineProps<{ cfg: any }>()
-const emit = defineEmits<{ (e: 'update:cfg', value: any): void }>()
+const localCfg = defineModel<any>('cfg', { required: true })
 
 const streamTypeItems = [
   { label: 'StreamOutFifo', value: 'StreamOutFifo' },
@@ -13,16 +12,11 @@ const streamTypeItems = [
   { label: 'Vban',          value: 'vban' }
 ]
 
-const localCfg = computed({
-  get: () => props.cfg,
-  set: (value) => emit('update:cfg', value)
-})
-
 function ensureSubConfigs() {
   const next = { ...(localCfg.value || {}) }
   if (!next.StreamOutFifo) next.StreamOutFifo = { 'path-audio': '/tmp/youtube/out.fifo', channels: 6, rate: 48000 }
-  if (!next.localStream)   next.localStream   = { output_device_index: 0, 'path-audio': '' }
-  if (!next.vban)          next.vban          = { dest_ip: '', dest_port: 6980, stream_name: '' }
+  if (!next.localStream)   next.localStream   = defaultLocalStream()
+  if (!next.vban)          next.vban          = defaultVban()
   if (!next.typeStream)    next.typeStream    = 'StreamOutFifo'
   localCfg.value = next
 }

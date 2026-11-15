@@ -7,7 +7,7 @@ import { useRouter } from 'vue-router'
 
 /* ─── Dashboard ──────────────────────────────────────────────────────────── */
 const { isDeviceSlideoverOpen, activeDeviceKey } = useDashboard()
-const toast  = useToast?.()
+const toast  = useToast()
 const router = useRouter()
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -46,10 +46,6 @@ const typeFilter   = ref<TypeFilter>('all')
 const statusFilter = ref<StatusFilter>('online')
 
 const audioByKey        = ref<Record<string, StateAudio>>({})
-const outPercent        = ref<Record<string, number>>({})
-const inPercent         = ref<Record<string, number>>({})
-const outChannelPercent = ref<Record<string, Record<string, number>>>({})
-const inChannelPercent  = ref<Record<string, Record<string, number>>>({})
 
 const rowRefs = ref<Record<string, HTMLElement | null>>({})
 
@@ -61,9 +57,7 @@ function setTab(key: string, tab: TabName) { activeTab.value = { ...activeTab.va
 /* ─── WebSocket device control ───────────────────────────────────────────── */
 const { status: wsStatus, send: wsSend, on: wsOn } = useDeviceControlWs()
 
-watch(wsStatus, s => {
-  if (s === 'connected') { wsSend('Get.Device'); wsSend('Get.audio') }
-})
+watch(wsStatus, requestData)
 
 const offWs = wsOn((msg: any) => {
   if (msg?.msg?.method === 'State.audio' && msg.from && msg.msg?.State?.audio) {
@@ -75,7 +69,7 @@ const offWs = wsOn((msg: any) => {
     return
   }
   if (msg.method === 'Error') {
-    toast?.add?.({ title: 'Erreur device', description: msg.error || 'Erreur inconnue', color: 'error' })
+    toast.add({ title: 'Erreur device', description: msg.error || 'Erreur inconnue', color: 'error' })
   }
 })
 
@@ -148,9 +142,9 @@ async function setSnapStream(groupId: string, streamId: string) {
     await snapRpc('Group.SetStream', { id: groupId, stream_id: streamId })
     const g = snapGroups.value.find(x => x.id === groupId)
     if (g) g.stream_id = streamId
-    toast?.add?.({ title: 'Flux Snap mis à jour', color: 'success' })
+    toast.add({ title: 'Flux Snap mis à jour', color: 'success' })
   } catch (e: any) {
-    toast?.add?.({ title: 'Erreur Snap', description: e?.message, color: 'error' })
+    toast.add({ title: 'Erreur Snap', description: e?.message, color: 'error' })
   }
 }
 async function setSnapVolume(clientId: string, percent: number) {
@@ -196,7 +190,7 @@ async function fetchDevices() {
     const res = await http.get<RawDevice[]>('/objet')
     devices.value = (res.data || []).map(normalise)
   } catch {
-    toast?.add?.({ title: 'Erreur chargement devices', color: 'error' })
+    toast.add({ title: 'Erreur chargement devices', color: 'error' })
   } finally {
     loading.value = false
   }
@@ -220,43 +214,28 @@ const rows = computed(() => {
     const audio = audioByKey.value[key] ?? null
     const outVals = audio?.output?.volume ? Object.values(audio.output.volume).map(Number).filter(v => !isNaN(v)) : []
     const inVals  = audio?.input?.volume  ? Object.values(audio.input.volume).map(Number).filter(v => !isNaN(v)) : []
+    const outLevel = outVals.length ? Math.round(outVals.reduce((a, b) => a + b) / outVals.length) : 0
+    const inLevel = inVals.length ? Math.round(inVals.reduce((a, b) => a + b) / inVals.length) : 0
     return {
-      ...d, key, audio,
-      outLevel: outVals.length ? Math.round(outVals.reduce((a, b) => a + b) / outVals.length) : 0,
-      inLevel:  inVals.length  ? Math.round(inVals.reduce( (a, b) => a + b) / inVals.length)  : 0,
+      ...d, key, audio, outLevel, inLevel,
+      panels: AUDIO_PANELS.map(p => ({ ...p, audio: audio?.[p.dir] ?? null, level: p.dir === 'output' ? outLevel : inLevel }))
     }
   })
 })
 
 /* ─── Helpers sliders audio ──────────────────────────────────────────────── */
-function outVal  (key: string, fb: number) { return key in outPercent.value ? outPercent.value[key] : fb }
-function inVal   (key: string, fb: number) { return key in inPercent.value  ? inPercent.value[key]  : fb }
-function outChVal(key: string, ch: string, fb: number) { return outChannelPercent.value[key]?.[ch] ?? fb }
-function inChVal (key: string, ch: string, fb: number) { return inChannelPercent.value[key]?.[ch]  ?? fb }
+/* Sortie et Entree partagent le meme panneau : seules ces constantes changent. */
+const AUDIO_PANELS = [
+  { dir: 'output', icon: 'i-lucide-volume-2', range: 'range-primary-0', mid: '#34d399', hi: '#fbbf24', empty: 'Pas de sortie' },
+  { dir: 'input', icon: 'i-lucide-mic', range: 'range-purple-0', mid: '#a78bfa', hi: '#f59e0b', empty: "Pas d'entrée" }
+] as const
+const { val, chVal, onSlider, onChSlider } = useAudioSliders(send)
 function isMuted (mute: any) { return /on|yes|1|true/i.test(String(mute ?? '')) }
 
 /* ─── Commandes device audio ─────────────────────────────────────────────── */
 function send(key: string, method: string, extra: Record<string, any> = {}) {
   const ok = wsSend(method, { targetIp: key, ...extra })
-  if (!ok) toast?.add?.({ title: 'WS non connecté', color: 'error' })
-}
-function onOutSlider(key: string, v: number) {
-  outPercent.value = { ...outPercent.value, [key]: v }
-  const ch = { ...outChannelPercent.value }; delete ch[key]; outChannelPercent.value = ch
-  send(key, 'Set.output.volume', { percent: v })
-}
-function onInSlider(key: string, v: number) {
-  inPercent.value = { ...inPercent.value, [key]: v }
-  const ch = { ...inChannelPercent.value }; delete ch[key]; inChannelPercent.value = ch
-  send(key, 'Set.input.volume', { percent: v })
-}
-function onOutChSlider(key: string, ch: string, v: number) {
-  outChannelPercent.value = { ...outChannelPercent.value, [key]: { ...(outChannelPercent.value[key] ?? {}), [ch]: v } }
-  send(key, 'Set.output.channel', { channel: ch, percent: v })
-}
-function onInChSlider(key: string, ch: string, v: number) {
-  inChannelPercent.value = { ...inChannelPercent.value, [key]: { ...(inChannelPercent.value[key] ?? {}), [ch]: v } }
-  send(key, 'Set.input.channel', { channel: ch, percent: v })
+  if (!ok) toast.add({ title: 'WS non connecté', color: 'error' })
 }
 
 /* ─── Scroll + highlight ─────────────────────────────────────────────────── */
@@ -273,7 +252,7 @@ function requestData() {
   if (wsStatus.value === 'connected') { wsSend('Get.Device'); wsSend('Get.audio') }
 }
 
-onMounted(() => { fetchDevices(); requestData() })
+onMounted(requestData)
 onBeforeUnmount(() => { offWs(); offSnapNotif(); snapDisconnect() })
 
 watch(isDeviceSlideoverOpen, async (open) => {
@@ -374,7 +353,7 @@ watch(activeDeviceKey, async (key) => {
             <div v-if="d.audio?.output" class="shrink-0 text-right">
               <div class="text-xl font-bold font-mono leading-none tabular-nums"
                 :class="isMuted(d.audio.output.mute) ? 'text-amber-400' : 'text-emerald-400'">
-                {{ outVal(d.key, d.outLevel) }}<span class="text-xs font-normal text-dimmed">%</span>
+                {{ val('output', d.key, d.outLevel) }}<span class="text-xs font-normal text-dimmed">%</span>
               </div>
               <div class="text-[9px] text-dimmed mt-0.5">sortie</div>
             </div>
@@ -399,118 +378,65 @@ watch(activeDeviceKey, async (key) => {
           <div v-show="getTab(d.key) === 'audio'">
             <div v-if="d.audio" class="flex text-xs">
 
-              <!-- ▌GAUCHE : Sortie ─────────────────────────────────────── -->
-              <div class="w-1/2 p-4 space-y-2 min-w-0">
-                <div v-if="d.audio.output" class="space-y-2">
-                  <div class="flex items-center justify-between">
-                    <span class="flex items-center gap-1.5 font-medium text-[#ccc]">
-                      <UIcon name="i-lucide-volume-2" class="size-3.5" /> {{ d.audio?.output?.name}}
-                    </span>
-                    <span class="text-[10px]" :class="isMuted(d.audio.output.mute) ? 'text-amber-400' : 'text-dimmed'">
-                      {{ isMuted(d.audio.output.mute) ? 'MUTE' : 'off' }}
-                    </span>
-                  </div>
-                  <!-- VU bar -->
-                  <div class="h-2 rounded overflow-hidden bg-[#1c1c1c]">
-                    <div class="h-full rounded transition-[width] duration-200"
-                      :style="{ width:outVal(d.key,d.outLevel)+'%', background:'linear-gradient(to right,#059669,#34d399 55%,#fbbf24 80%,#ef4444)' }" />
-                  </div>
-                  <!-- Slider master -->
-                  <div class="flex items-center gap-2">
-                    <div class="flex-1 min-w-0">
-                      <input type="range" min="0" max="100" :value="outVal(d.key,d.outLevel)"
-                        class="range-primary-0 cursor-pointer"
-                        @input="onOutSlider(d.key,+($event.target as HTMLInputElement).value)" />
-                    </div>
-                    <span class="w-8 text-right font-mono text-[10px] shrink-0">{{ outVal(d.key,d.outLevel) }}%</span>
-                  </div>
-                  <!-- Actions -->
-                  <div class="flex gap-1 flex-wrap">
-                    <UButton size="2xs" variant="ghost" color="neutral" @click="send(d.key,'Bump.output.volume',{delta:5})">+5%</UButton>
-                    <UButton size="2xs" variant="ghost" color="neutral" @click="send(d.key,'Bump.output.volume',{delta:-5})">-5%</UButton>
-                    <UButton size="2xs" variant="ghost" color="warning" @click="send(d.key,'Toggle.output.mute')">Mute</UButton>
-                  </div>
-                  <!-- Canaux -->
-                  <details v-if="d.audio.output.volume && Object.keys(d.audio.output.volume).length" class="text-[10px]">
-                    <summary class="cursor-pointer text-dimmed select-none hover:text-foreground transition-colors">
-                      {{ Object.keys(d.audio.output.volume).length }} canaux…
-                    </summary>
-                    <div class="mt-2 space-y-2">
-                      <div v-for="(val,ch) in d.audio.output.volume" :key="ch" class="space-y-0.5">
-                        <div class="flex justify-between">
-                          <span class="text-dimmed truncate">{{ ch }}</span>
-                          <span class="font-mono">{{ outChVal(d.key,ch,Number(val)) }}</span>
-                        </div>
-                        <div class="h-1 rounded overflow-hidden bg-[#1c1c1c]">
-                          <div class="h-full rounded" :style="{ width:outChVal(d.key,ch,Number(val))+'%', background:'linear-gradient(to right,#059669,#34d399 60%,#fbbf24 80%,#ef4444)' }" />
-                        </div>
-                        <input type="range" min="0" max="100" :value="outChVal(d.key,ch,Number(val))"
-                          class="range-primary-0 cursor-pointer"
-                          @input="onOutChSlider(d.key,ch,+($event.target as HTMLInputElement).value)" />
-                      </div>
-                    </div>
-                  </details>
-                </div>
-                <div v-else class="text-dimmed text-[11px] py-2">Pas de sortie</div>
-              </div>
+              <!-- Sortie puis Entree : meme panneau, seules les constantes de AUDIO_PANELS changent -->
+              <template v-for="(p, pi) in d.panels" :key="p.dir">
+                <!-- Séparateur vertical -->
+                <div v-if="pi" class="w-px bg-[#1e1e1e] self-stretch shrink-0" />
 
-              <!-- Séparateur vertical -->
-              <div class="w-px bg-[#1e1e1e] self-stretch shrink-0" />
-
-              <!-- ▐DROITE : Entrée ─────────────────────────────────────── -->
-              <div class="w-1/2 p-4 space-y-2 min-w-0">
-                <div v-if="d.audio.input" class="space-y-2">
-                  <div class="flex items-center justify-between">
-                    <span class="flex items-center gap-1.5 font-medium text-[#ccc]">
-                      <UIcon name="i-lucide-mic" class="size-3.5" /> {{ d.audio?.input?.name}}
-                    </span>
-                    <span class="text-[10px]" :class="isMuted(d.audio.input.mute) ? 'text-amber-400' : 'text-dimmed'">
-                      {{ isMuted(d.audio.input.mute) ? 'MUTE' : 'off' }}
-                    </span>
-                  </div>
-                  <!-- VU bar -->
-                  <div class="h-2 rounded overflow-hidden bg-[#1c1c1c]">
-                    <div class="h-full rounded transition-[width] duration-200"
-                      :style="{ width:inVal(d.key,d.inLevel)+'%', background:'linear-gradient(to right,#059669,#a78bfa 55%,#f59e0b 80%,#ef4444)' }" />
-                  </div>
-                  <!-- Slider master -->
-                  <div class="flex items-center gap-2">
-                    <div class="flex-1 min-w-0">
-                      <input type="range" min="0" max="100" :value="inVal(d.key,d.inLevel)"
-                        class="range-purple-0 cursor-pointer"
-                        @input="onInSlider(d.key,+($event.target as HTMLInputElement).value)" />
+                <div class="w-1/2 p-4 space-y-2 min-w-0">
+                  <div v-if="p.audio" class="space-y-2">
+                    <div class="flex items-center justify-between">
+                      <span class="flex items-center gap-1.5 font-medium text-[#ccc]">
+                        <UIcon :name="p.icon" class="size-3.5" /> {{ p.audio.name }}
+                      </span>
+                      <span class="text-[10px]" :class="isMuted(p.audio.mute) ? 'text-amber-400' : 'text-dimmed'">
+                        {{ isMuted(p.audio.mute) ? 'MUTE' : 'off' }}
+                      </span>
                     </div>
-                    <span class="w-8 text-right font-mono text-[10px] shrink-0">{{ inVal(d.key,d.inLevel) }}%</span>
-                  </div>
-                  <!-- Actions -->
-                  <div class="flex gap-1 flex-wrap">
-                    <UButton size="2xs" variant="ghost" color="neutral" @click="send(d.key,'Bump.input.volume',{delta:5})">+5%</UButton>
-                    <UButton size="2xs" variant="ghost" color="neutral" @click="send(d.key,'Bump.input.volume',{delta:-5})">-5%</UButton>
-                    <UButton size="2xs" variant="ghost" color="warning" @click="send(d.key,'Toggle.input.mute')">Mute</UButton>
-                  </div>
-                  <!-- Canaux -->
-                  <details v-if="d.audio.input.volume && Object.keys(d.audio.input.volume).length" class="text-[10px]">
-                    <summary class="cursor-pointer text-dimmed select-none hover:text-foreground transition-colors">
-                      {{ Object.keys(d.audio.input.volume).length }} canaux…
-                    </summary>
-                    <div class="mt-2 space-y-2">
-                      <div v-for="(val,ch) in d.audio.input.volume" :key="ch" class="space-y-0.5">
-                        <div class="flex justify-between">
-                          <span class="text-dimmed truncate">{{ ch }}</span>
-                          <span class="font-mono">{{ inChVal(d.key,ch,Number(val)) }}</span>
-                        </div>
-                        <div class="h-1 rounded overflow-hidden bg-[#1c1c1c]">
-                          <div class="h-full rounded" :style="{ width:inChVal(d.key,ch,Number(val))+'%', background:'linear-gradient(to right,#059669,#a78bfa 60%,#f59e0b 80%,#ef4444)' }" />
-                        </div>
-                        <input type="range" min="0" max="100" :value="inChVal(d.key,ch,Number(val))"
-                          class="range-purple-0 cursor-pointer"
-                          @input="onInChSlider(d.key,ch,+($event.target as HTMLInputElement).value)" />
+                    <!-- VU bar -->
+                    <div class="h-2 rounded overflow-hidden bg-[#1c1c1c]">
+                      <div class="h-full rounded transition-[width] duration-200"
+                        :style="{ width: val(p.dir, d.key, p.level) + '%', background: `linear-gradient(to right,#059669,${p.mid} 55%,${p.hi} 80%,#ef4444)` }" />
+                    </div>
+                    <!-- Slider master -->
+                    <div class="flex items-center gap-2">
+                      <div class="flex-1 min-w-0">
+                        <input type="range" min="0" max="100" :value="val(p.dir, d.key, p.level)"
+                          class="cursor-pointer" :class="p.range"
+                          @input="onSlider(p.dir, d.key, +($event.target as HTMLInputElement).value)" />
                       </div>
+                      <span class="w-8 text-right font-mono text-[10px] shrink-0">{{ val(p.dir, d.key, p.level) }}%</span>
                     </div>
-                  </details>
+                    <!-- Actions -->
+                    <div class="flex gap-1 flex-wrap">
+                      <UButton size="2xs" variant="ghost" color="neutral" @click="send(d.key, `Bump.${p.dir}.volume`, { delta: 5 })">+5%</UButton>
+                      <UButton size="2xs" variant="ghost" color="neutral" @click="send(d.key, `Bump.${p.dir}.volume`, { delta: -5 })">-5%</UButton>
+                      <UButton size="2xs" variant="ghost" color="warning" @click="send(d.key, `Toggle.${p.dir}.mute`)">Mute</UButton>
+                    </div>
+                    <!-- Canaux -->
+                    <details v-if="p.audio.volume && Object.keys(p.audio.volume).length" class="text-[10px]">
+                      <summary class="cursor-pointer text-dimmed select-none hover:text-foreground transition-colors">
+                        {{ Object.keys(p.audio.volume).length }} canaux…
+                      </summary>
+                      <div class="mt-2 space-y-2">
+                        <div v-for="(v, ch) in p.audio.volume" :key="ch" class="space-y-0.5">
+                          <div class="flex justify-between">
+                            <span class="text-dimmed truncate">{{ ch }}</span>
+                            <span class="font-mono">{{ chVal(p.dir, d.key, ch, Number(v)) }}</span>
+                          </div>
+                          <div class="h-1 rounded overflow-hidden bg-[#1c1c1c]">
+                            <div class="h-full rounded" :style="{ width: chVal(p.dir, d.key, ch, Number(v)) + '%', background: `linear-gradient(to right,#059669,${p.mid} 60%,${p.hi} 80%,#ef4444)` }" />
+                          </div>
+                          <input type="range" min="0" max="100" :value="chVal(p.dir, d.key, ch, Number(v))"
+                            class="cursor-pointer" :class="p.range"
+                            @input="onChSlider(p.dir, d.key, ch, +($event.target as HTMLInputElement).value)" />
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                  <div v-else class="text-dimmed text-[11px] py-2">{{ p.empty }}</div>
                 </div>
-                <div v-else class="text-dimmed text-[11px] py-2">Pas d'entrée</div>
-              </div>
+              </template>
             </div>
 
             <div v-else class="px-4 py-3 flex items-center gap-2 text-dimmed text-xs">

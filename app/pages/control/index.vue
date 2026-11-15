@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import http from '@/src/lib/https'
 import { useToast } from '#imports'
 
-const toast = useToast?.()
+const toast = useToast()
 
 /* ---------------------------------
  * state
@@ -18,14 +18,12 @@ const errorMsg = ref(null)
 
 const overview = ref({
   modulesin: {},
-  modulesout: {},
-  modulesAll: {}
+  modulesout: {}
 })
 
 const schema = ref({
   inputs: {},
-  outputs: {},
-  ruleFormat: {}
+  outputs: {}
 })
 
 const rules = ref([])
@@ -451,44 +449,19 @@ function updateTargetFunction(index) {
   }
 }
 
-function makeVolumeDeltaPreset(index, delta) {
-  const target = editor.value.targets[index]
-  target.moduleName = 'snap'
-  target.fn = 'volumeDelta'
-  target.argsModel = buildArgsModelFromSchema('snap', 'volumeDelta', {
-    id: '',
-    delta
-  })
-  target.argsText = prettyJson({
-    id: '',
-    delta
-  })
-}
+const SNAP_PRESETS = [
+  { label: 'Preset snap volume -3', fn: 'volumeDelta', args: { id: '', delta: -3 } },
+  { label: 'Preset snap volume +3', fn: 'volumeDelta', args: { id: '', delta: 3 } },
+  { label: 'Preset snap toggleMute', fn: 'toggleMute', args: { id: '' } },
+  { label: 'Preset snap setVolume 50', fn: 'setVolume', args: { id: '', percent: 50 } }
+]
 
-function makeToggleMutePreset(index) {
+function applySnapPreset(index, { fn, args }) {
   const target = editor.value.targets[index]
   target.moduleName = 'snap'
-  target.fn = 'toggleMute'
-  target.argsModel = buildArgsModelFromSchema('snap', 'toggleMute', {
-    id: ''
-  })
-  target.argsText = prettyJson({
-    id: ''
-  })
-}
-
-function makeSetVolumePreset(index, percent = 50) {
-  const target = editor.value.targets[index]
-  target.moduleName = 'snap'
-  target.fn = 'setVolume'
-  target.argsModel = buildArgsModelFromSchema('snap', 'setVolume', {
-    id: '',
-    percent
-  })
-  target.argsText = prettyJson({
-    id: '',
-    percent
-  })
+  target.fn = fn
+  target.argsModel = buildArgsModelFromSchema('snap', fn, args)
+  target.argsText = prettyJson(args)
 }
 
 /* ---------------------------------
@@ -502,13 +475,12 @@ async function fetchOverview() {
     const res = await http.get('/control')
     overview.value = {
       modulesin: res.data?.modulesin || {},
-      modulesout: res.data?.modulesout || {},
-      modulesAll: res.data?.modulesAll || {}
+      modulesout: res.data?.modulesout || {}
     }
   } catch (e) {
     console.error(e)
     errorMsg.value = 'Impossible de charger le résumé control.'
-    toast?.add?.({ title: 'Erreur', description: errorMsg.value, color: 'red' })
+    toast.add({ title: 'Erreur', description: errorMsg.value, color: 'red' })
   } finally {
     loadingOverview.value = false
   }
@@ -521,12 +493,11 @@ async function fetchSchema() {
     const res = await http.get('/control/schema')
     schema.value = {
       inputs: res.data?.inputs || {},
-      outputs: res.data?.outputs || {},
-      ruleFormat: res.data?.ruleFormat || {}
+      outputs: res.data?.outputs || {}
     }
   } catch (e) {
     console.error(e)
-    toast?.add?.({
+    toast.add({
       title: 'Erreur schema',
       description: 'Impossible de charger le schema des règles.',
       color: 'red'
@@ -544,7 +515,7 @@ async function fetchRules() {
     rules.value = res.data?.rules || []
   } catch (e) {
     console.error(e)
-    toast?.add?.({
+    toast.add({
       title: 'Erreur règles',
       description: 'Impossible de charger les règles.',
       color: 'red'
@@ -571,7 +542,7 @@ async function validateEditor() {
     const res = await http.post('/control/rules/validate', payload)
 
     validationResult.value = res.data
-    toast?.add?.({
+    toast.add({
       title: 'Validation OK',
       description: 'La règle est valide.',
       color: 'green'
@@ -584,7 +555,7 @@ async function validateEditor() {
       errors: ['Validation impossible']
     }
 
-    toast?.add?.({
+    toast.add({
       title: 'Validation KO',
       description: 'La règle est invalide.',
       color: 'amber'
@@ -606,7 +577,7 @@ async function saveEditor() {
       res = await http.post('/control/rules', payload)
     }
 
-    toast?.add?.({
+    toast.add({
       title: editor.value.id ? 'Règle modifiée' : 'Règle créée',
       description: res.data?.rule?.name || res.data?.rule?.id || 'OK',
       color: 'green'
@@ -621,7 +592,7 @@ async function saveEditor() {
       ? apiErrors.join(' | ')
       : e?.message || 'Enregistrement impossible.'
 
-    toast?.add?.({
+    toast.add({
       title: 'Erreur',
       description: msg,
       color: 'red'
@@ -639,14 +610,14 @@ async function toggleRule(rule) {
     await http.patch(`/control/rules/${rule.id}/toggle`)
     await fetchRules()
 
-    toast?.add?.({
+    toast.add({
       title: 'Règle mise à jour',
       description: rule.name || rule.id,
       color: 'green'
     })
   } catch (e) {
     console.error(e)
-    toast?.add?.({
+    toast.add({
       title: 'Erreur',
       description: 'Impossible de changer l’état de la règle.',
       color: 'red'
@@ -665,14 +636,14 @@ async function deleteRule(rule) {
     await http.delete(`/control/rules/${rule.id}`)
     await fetchRules()
 
-    toast?.add?.({
+    toast.add({
       title: 'Règle supprimée',
       description: rule.name || rule.id,
       color: 'green'
     })
   } catch (e) {
     console.error(e)
-    toast?.add?.({
+    toast.add({
       title: 'Erreur suppression',
       description: 'Impossible de supprimer la règle.',
       color: 'red'
@@ -684,7 +655,7 @@ async function deleteRule(rule) {
 
 function copyRuleAsJson(rule) {
   navigator.clipboard?.writeText(prettyJson(rule))
-  toast?.add?.({
+  toast.add({
     title: 'Copié',
     description: rule.name || rule.id,
     color: 'green'
@@ -920,45 +891,18 @@ onMounted(async () => {
               </div>
 
               <div class="flex flex-wrap gap-2">
-                <UButton
-                  v-if="target.moduleName === 'snap'"
-                  size="2xs"
-                  color="neutral"
-                  variant="ghost"
-                  @click="makeVolumeDeltaPreset(index, -3)"
-                >
-                  Preset snap volume -3
-                </UButton>
-
-                <UButton
-                  v-if="target.moduleName === 'snap'"
-                  size="2xs"
-                  color="neutral"
-                  variant="ghost"
-                  @click="makeVolumeDeltaPreset(index, 3)"
-                >
-                  Preset snap volume +3
-                </UButton>
-
-                <UButton
-                  v-if="target.moduleName === 'snap'"
-                  size="2xs"
-                  color="neutral"
-                  variant="ghost"
-                  @click="makeToggleMutePreset(index)"
-                >
-                  Preset snap toggleMute
-                </UButton>
-
-                <UButton
-                  v-if="target.moduleName === 'snap'"
-                  size="2xs"
-                  color="neutral"
-                  variant="ghost"
-                  @click="makeSetVolumePreset(index, 50)"
-                >
-                  Preset snap setVolume 50
-                </UButton>
+                <template v-if="target.moduleName === 'snap'">
+                  <UButton
+                    v-for="preset in SNAP_PRESETS"
+                    :key="preset.label"
+                    size="2xs"
+                    color="neutral"
+                    variant="ghost"
+                    @click="applySnapPreset(index, preset)"
+                  >
+                    {{ preset.label }}
+                  </UButton>
+                </template>
               </div>
 
               <div

@@ -85,13 +85,6 @@ const cover = computed(() =>
   props.item?.images?.[0]?.url || 'https://via.placeholder.com/180x180?text=Playlist'
 )
 
-const ms = (v: number) => {
-  const s = Math.floor(v / 1000)
-  const m = Math.floor(s / 60)
-  const ss = String(s % 60).padStart(2, '0')
-  return `${m}:${ss}`
-}
-
 /** Supprime les balises HTML d'une description Spotify (ex: <a href="…">…</a>) */
 const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').trim()
 
@@ -236,7 +229,7 @@ function onRowPlay(idx: number) {
             :title="src(t).like ? 'Retirer des aimés' : 'Aimer'"
             @click.stop="emit('save-track', src(t))"
           />
-          <span class="text-xs tabular-nums text-dimmed w-9 text-right">{{ ms(t.duration_ms) }}</span>
+          <span class="text-xs tabular-nums text-dimmed w-9 text-right">{{ toTime(t.duration_ms) }}</span>
         </div>
       </div>
 

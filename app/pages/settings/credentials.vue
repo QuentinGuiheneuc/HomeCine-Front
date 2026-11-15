@@ -69,15 +69,6 @@ async function load() {
 const sourceKey     = (p: LibraryProvider) => String(p.source ?? p.id)
 const playerCount   = (p: LibraryProvider) =>
   Array.isArray(p.lecteurId) ? p.lecteurId.length : (p.lecteurId != null ? 1 : 0)
-const sourceIcon    = (s: string) =>
-  s === 'spotify' ? 'mdi:spotify'
-  : s === 'deezer' ? 'i-simple-icons-deezer'
-  : s === 'youtube' ? 'mdi:youtube'
-  : s === 'soundcloud' ? 'i-simple-icons-soundcloud'
-  : s === 'tidal' ? 'i-simple-icons-tidal'
-  : s === 'fileplayer' ? 'mdi:file-music'
-  : s === 'playlist' ? 'i-lucide-list-music'
-  : 'i-lucide-database'
 
 const reindexBusy = ref<string | null>(null)
 async function reindexSource(p: LibraryProvider) {
@@ -144,7 +135,7 @@ async function submitDeezer() {
       toast.add({ title: 'ARL invalide', color: 'error' })
     }
   } catch (e: any) {
-    toast.add({ title: 'ARL invalide', description: e?.response?.data?.error, color: 'error' })
+    toast.add({ title: 'ARL invalide', description: apiError(e), color: 'error' })
   } finally {
     connectingDeezer.value = false
   }
@@ -256,7 +247,7 @@ async function saveProvider() {
     await loadKeys()
     keysView.value = 'list'
   } catch (e: any) {
-    toast.add({ title: 'Enregistrement impossible', description: e?.response?.data?.error, color: 'error' })
+    toast.add({ title: 'Enregistrement impossible', description: apiError(e), color: 'error' })
   } finally { keyBusy.value = false }
 }
 
@@ -389,7 +380,7 @@ async function lsExchange() {
     lsModalOpen.value = false
     await loadLibrespot()
   } catch (e: any) {
-    toast.add({ title: 'Échange impossible', description: e?.response?.data?.error, color: 'error' })
+    toast.add({ title: 'Échange impossible', description: apiError(e), color: 'error' })
   } finally { lsExchanging.value = false }
 }
 
@@ -643,7 +634,7 @@ onMounted(() => { load(); loadRoots(); loadLibrespot() })
         <!-- En-tête source -->
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3 min-w-0">
-            <UIcon :name="sourceIcon(sourceKey(p))" class="size-7 shrink-0 text-primary" />
+            <UIcon :name="sourceIcon(sourceKey(p), 'i-lucide-database')" class="size-7 shrink-0 text-primary" />
             <div class="min-w-0">
               <p class="font-semibold capitalize truncate">{{ p.name || sourceKey(p) }}</p>
               <p class="text-xs text-dimmed">{{ playerCount(p) }} lecteur{{ playerCount(p) > 1 ? 's' : '' }}</p>
@@ -885,7 +876,7 @@ onMounted(() => { load(); loadRoots(); loadLibrespot() })
               class="w-full flex items-center gap-3 px-2 py-2 rounded-md bg-muted/30 text-sm text-left hover:bg-muted/50 transition-colors"
               @click="editProvider(prov)"
             >
-              <UIcon :name="sourceIcon(prov)" class="size-5 shrink-0" />
+              <UIcon :name="sourceIcon(prov, 'i-lucide-database')" class="size-5 shrink-0" />
               <span class="font-medium capitalize flex-1 truncate">{{ prov }}</span>
               <UBadge :color="keysMap[prov]?.enabled ? 'success' : 'neutral'" variant="subtle" size="xs">
                 {{ keysMap[prov]?.enabled ? 'Activé' : 'Désactivé' }}
@@ -902,7 +893,7 @@ onMounted(() => { load(); loadRoots(); loadLibrespot() })
         <!-- Vue FORMULAIRE : un provider -->
         <div v-else class="p-6 space-y-4">
           <div class="flex items-center gap-3">
-            <UIcon :name="sourceIcon(keyProvider)" class="size-7 shrink-0" />
+            <UIcon :name="sourceIcon(keyProvider, 'i-lucide-database')" class="size-7 shrink-0" />
             <p class="font-semibold capitalize flex-1 truncate">{{ keyProvider }}</p>
             <USwitch v-model="keyForm.enabled" label="Activé" />
           </div>

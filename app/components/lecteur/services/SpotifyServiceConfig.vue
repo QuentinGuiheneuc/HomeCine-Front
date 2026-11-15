@@ -6,34 +6,12 @@ import LocalStreamConfig from '../transports/LocalStreamConfig.vue'
 import StreamOutFifoConfig from '../transports/StreamOutFifoConfig.vue'
 import VbanConfig from '../transports/VbanConfig.vue'
 
-const props = defineProps<{
-  cfg: any
-}>()
-
-const emit = defineEmits<{
-  (e: 'update:cfg', value: any): void
-}>()
-
-const streamTypeItems = [
-  { label: 'LocalStream', value: 'localStream' },
-  { label: 'StreamOutFifo', value: 'StreamOutFifo' },
-  { label: 'Vban', value: 'vban' }
-]
-
-const localCfg = computed({
-  get: () => props.cfg,
-  set: (value) => emit('update:cfg', value)
-})
+const localCfg = defineModel<any>('cfg', { required: true })
 
 function ensureSubConfigs() {
   const next = { ...(localCfg.value || {}) }
 
-  if (!next.localStream) {
-    next.localStream = {
-      output_device_index: 0,
-      'path-audio': ''
-    }
-  }
+  if (!next.localStream) next.localStream = defaultLocalStream()
 
   if (!next.StreamOutFifo) {
     next.StreamOutFifo = {
@@ -44,13 +22,7 @@ function ensureSubConfigs() {
     }
   }
 
-  if (!next.vban) {
-    next.vban = {
-      dest_ip: '',
-      dest_port: 6980,
-      stream_name: ''
-    }
-  }
+  if (!next.vban) next.vban = defaultVban()
 
   if (!next.typeStream) next.typeStream = 'localStream'
   if (!next.backend) next.backend = 'pipe'
@@ -113,7 +85,7 @@ const framesPerBufferItems = computed(() => typeStreamOptions.spotify?.frames_pe
 
       <div class="md:col-span-2">
         <label class="text-sm text-dimmed">Type Stream</label>
-        <USelect v-model="localCfg.typeStream" :items="streamTypeItems" />
+        <USelect v-model="localCfg.typeStream" :items="STREAM_TYPE_ITEMS" />
       </div>
     </div>
 

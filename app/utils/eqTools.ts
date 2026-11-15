@@ -35,7 +35,7 @@ export function uiTypeToApi(t: EqType): number {
   if (t === "highshelf") return 6
   return 0
 }
-function uuid() {
+export function uuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0
     const v = c === 'x' ? r : (r & 0x3 | 0x8)
@@ -72,6 +72,10 @@ export function bandsToApiCells(bands: UiBand[], channel?: string): ApiCell[] {
 
 export type CurvePoint = { f: number; db: number }
 
+/* Un contexte hors-ligne par frequence d'echantillonnage : la courbe est
+   recalculee a chaque mouvement de curseur, inutile d'en recreer un a chaque fois. */
+const _octx = new Map<number, OfflineAudioContext>()
+
 function logspace(n: number, fMin: number, fMax: number) {
   const out = new Float32Array(n)
   const a = Math.log10(fMin)
@@ -96,7 +100,11 @@ export async function computeEqCurveWebAudio(
   const maxF = Math.min(fMax, sr / 2 - 1)
   const freqs = logspace(points, fMin, Math.max(fMin + 1, maxF))
 
-  const octx = new OfflineAudioContext(1, 1, sr)
+  let octx = _octx.get(sr)
+  if (!octx) {
+    octx = new OfflineAudioContext(1, 1, sr)
+    _octx.set(sr, octx)
+  }
   const acc = new Float32Array(points).fill(1)
   const mag = new Float32Array(points)
   const phase = new Float32Array(points)

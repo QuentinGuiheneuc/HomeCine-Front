@@ -65,13 +65,6 @@ const rows = computed<AlbumTrack[]>(() =>
   props.item?.tracks?.items ?? []
 )
 
-const ms = (v: number) => {
-  const s = Math.floor(v / 1000)
-  const m = Math.floor(s / 60)
-  const ss = String(s % 60).padStart(2, '0')
-  return `${m}:${ss}`
-}
-
 const albumTypeLabel = computed(() => {
   switch (props.item?.album_type) {
     case 'single':      return 'Single'
@@ -168,7 +161,7 @@ useIntersectionObserver(sentinel, ([entry]) => {
 
         <div class="flex items-center justify-end gap-1">
           <UButton v-if="isYoutube(t)" icon="i-lucide-download" size="2xs" variant="ghost" color="neutral" title="Télécharger" class="opacity-0 group-hover:opacity-100" @click.stop="$emit('download-track', t)" />
-          <span class="text-xs tabular-nums text-dimmed text-right">{{ ms(t.duration_ms) }}</span>
+          <span class="text-xs tabular-nums text-dimmed text-right">{{ toTime(t.duration_ms) }}</span>
         </div>
       </div>
 

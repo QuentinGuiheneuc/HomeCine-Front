@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap } from '../lib/https'
 
 /**
  * Client API Connexions (Auth) — gestion centralisée des comptes par provider.
@@ -23,8 +23,6 @@ export interface ProviderStatus {
   connected: boolean
   accounts:  ProviderAccount[]
 }
-
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
 
 /** État de tous les providers : connecté ? comptes liés ? */
 export async function getProviders(): Promise<ProviderStatus[]> {

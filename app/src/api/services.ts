@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap } from '../lib/https'
 
 /**
  * Services système (protocoles : snapcast, vban, dlna…).
@@ -13,8 +13,6 @@ export interface Service {
   available?: boolean
   [k: string]: any
 }
-
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
 
 export async function getServices(): Promise<Service[]> {
   const d = unwrap<any>(await http.get('/services'))

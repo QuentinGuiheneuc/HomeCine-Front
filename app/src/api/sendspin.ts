@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap } from '../lib/https'
 
 /**
  * Client API SendSpin — un émetteur audio unique (config + état running).
@@ -19,8 +19,6 @@ export interface SendspinState {
   config:  SendspinConfig | null
   running: boolean
 }
-
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
 
 /** État courant : config enregistrée + actif ? */
 export async function getSendspin(): Promise<SendspinState> {

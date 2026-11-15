@@ -140,10 +140,6 @@ const viewArtists = computed(() => filterByQuery(sliceTab(MOCK_ARTISTS)))
 const viewTracks = computed(() => filterByQuery(sliceTab(MOCK_TRACKS)))
 
 /** ---------- Helpers ---------- */
-const ms = (v: number) => {
-  const s = Math.floor(v / 1000), m = Math.floor(s / 60), ss = String(s % 60).padStart(2, '0')
-  return `${m}:${ss}`
-}
 const rangeLabel = computed(() => {
   const start = page.offset + 1
   const end = Math.min(page.offset + page.limit, totalForTab.value)
@@ -270,7 +266,7 @@ function nextPage() {
             <p class="truncate text-xs text-dimmed">{{ t.artists.join(', ') }}</p>
           </div>
 
-          <span class="text-xs text-dimmed w-12 text-right">{{ ms(t.duration_ms) }}</span>
+          <span class="text-xs text-dimmed w-12 text-right">{{ toTime(t.duration_ms) }}</span>
 
           <div class="ms-2 hidden items-center gap-1 group-hover:flex">
             <UButton icon="i-lucide-play" variant="ghost" size="xs" @click="playTrack(t.id)" />

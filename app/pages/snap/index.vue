@@ -102,14 +102,14 @@ const offNotif = onNotif((msg) => {
   if (msg?.method === 'Client.OnVolumeChanged' && msg.params) {
     const clientId = String(msg.params.id || '')
     const volume = msg.params.volume as SnapVolume
-    if (clientId && volume) upsertClientVolume(clientId, volume)
+    if (clientId && volume) patchClientConfig(clientId, { volume })
     return
   }
 
   if (msg?.method === 'Client.OnChannelMapChanged' && msg.params) {
     const clientId = String(msg.params.id || '')
     const channelMap = msg.params.channel_map as number[]
-    if (clientId && Array.isArray(channelMap)) upsertClientChannelMap(clientId, channelMap)
+    if (clientId && Array.isArray(channelMap)) patchClientConfig(clientId, { channel_map: channelMap })
     return
   }
 
@@ -158,51 +158,12 @@ function alive(b: boolean) {
   return b ? 'En ligne' : 'Hors ligne'
 }
 
-function clamp(n: number, min = 0, max = 100) {
-  return Math.min(max, Math.max(min, n))
-}
-
-function upsertClientVolume(clientId: string, volume: SnapVolume) {
+/* Met a jour la config d'un client dans la liste a plat et dans les groupes. */
+function patchClientConfig(clientId: string, patch: { volume: SnapVolume } | { channel_map: number[] }) {
   const cid = clientId.toLowerCase()
-
-  const c = clients.value.find(x => x.id.toLowerCase() === cid)
-  if (c) {
-    c.config = {
-      ...c.config,
-      volume
-    }
-  }
-
-  for (const g of groups.value) {
-    const gc = g.clients?.find(x => x.id.toLowerCase() === cid)
-    if (gc) {
-      gc.config = {
-        ...gc.config,
-        volume
-      }
-    }
-  }
-}
-
-function upsertClientChannelMap(clientId: string, channel_map: number[]) {
-  const cid = clientId.toLowerCase()
-
-  const c = clients.value.find(x => x.id.toLowerCase() === cid)
-  if (c) {
-    c.config = {
-      ...c.config,
-      channel_map
-    }
-  }
-
-  for (const g of groups.value) {
-    const gc = g.clients?.find(x => x.id.toLowerCase() === cid)
-    if (gc) {
-      gc.config = {
-        ...gc.config,
-        channel_map
-      }
-    }
+  for (const list of [clients.value, ...groups.value.map(g => g.clients ?? [])]) {
+    const c = list.find(x => x.id.toLowerCase() === cid)
+    if (c) c.config = { ...c.config, ...patch }
   }
 }
 
@@ -228,9 +189,6 @@ function refresh() {
 }
 
 /** ========= Commands ========= */
-function rpcClientSetGroup(clientId: string, groupId: string) {
-  return rpc('Client.SetGroup', { id: clientId, group: groupId })
-}
 
 function rpcGroupSetName(groupId: string, name: string) {
   return rpc('Group.SetName', { id: groupId, name })
@@ -244,7 +202,7 @@ async function setClientVolume(clientId: string, percent: number) {
   const safe = clamp(percent)
   try {
     await rpc('Client.SetVolume', { id: clientId, volume: { muted: false, percent: safe } })
-    upsertClientVolume(clientId, { muted: false, percent: safe })
+    patchClientConfig(clientId, { volume: { muted: false, percent: safe } })
   } catch (e: any) {
     err(e?.message || 'Client.SetVolume a échoué')
   }
@@ -255,7 +213,7 @@ async function toggleMute(clientId: string, v?: SnapVolume) {
   const percent = Number(v?.percent ?? 0)
   try {
     await rpc('Client.SetVolume', { id: clientId, volume: { muted: !muted, percent } })
-    upsertClientVolume(clientId, { muted: !muted, percent })
+    patchClientConfig(clientId, { volume: { muted: !muted, percent } })
   } catch (e: any) {
     err(e?.message || 'Mute a échoué')
   }
@@ -272,7 +230,7 @@ function streamChannels(streamId?: string): number {
 async function applyChannelMap(clientId: string, channel_map: number[]) {
   try {
     await rpc('Client.SetChannelMap', { id: clientId, channel_map })
-    upsertClientChannelMap(clientId, channel_map)
+    patchClientConfig(clientId, { channel_map })
     ok('Channel map mis à jour')
   } catch (e: any) {
     err(e?.message || 'Client.SetChannelMap a échoué')
@@ -504,7 +462,7 @@ async function restoreState() {
     ok('Configuration restaurée')
     setTimeout(refresh, 400)
   } catch (e: any) {
-    err(e?.response?.data?.error || e?.message || 'Restauration impossible')
+    err(apiError(e, e?.message || 'Restauration impossible'))
   } finally { restoring.value = false }
 }
 
@@ -516,7 +474,7 @@ async function clearState() {
     snapHasState.value = false
     ok('Configuration sauvegardée effacée')
   } catch (e: any) {
-    err(e?.response?.data?.error || 'Suppression impossible')
+    err(apiError(e, 'Suppression impossible'))
   } finally { stateBusy.value = false }
 }
 

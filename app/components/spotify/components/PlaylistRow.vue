@@ -13,11 +13,6 @@ const emit = defineEmits<{
   (e: 'move', payload: { from: number; to: number }): void
 }>()
 
-const ms = (v: number) => {
-  const s = Math.floor(v / 1000), m = Math.floor(s / 60), ss = String(s % 60).padStart(2,'0')
-  return `${m}:${ss}`
-}
-
 function onDblClick() {
   emit('playAt', props.index)
 }
@@ -42,7 +37,7 @@ function onDblClick() {
       <p class="truncate text-xs text-dimmed">{{ track.artists.map(a => a.name).join(', ') }}</p>
     </div>
 
-    <span class="text-xs text-dimmed w-12 text-right">{{ ms(track.duration_ms) }}</span>
+    <span class="text-xs text-dimmed w-12 text-right">{{ toTime(track.duration_ms) }}</span>
 
     <!-- Actions visibles au survol, comme sur le lecteur -->
     <div class="ms-2 hidden items-center gap-1 group-hover:flex">

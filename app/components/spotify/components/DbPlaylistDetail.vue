@@ -5,7 +5,7 @@ import {
   deleteDbPlaylist, updateDbPlaylist,
   type DbPlaylist
 } from '@/src/api/dbPlaylists'
-import { resolveCoverUrl, sourceKey, type LibraryTrack } from '@/src/api/library'
+import { coverOf as cover, sourceKey, type LibraryTrack } from '@/src/api/library'
 import { addSavedTrack, removeSavedTrack } from '@/src/api/saved'
 
 const props = defineProps<{ id: number | string; playerHeight?: number; currentKey?: string }>()
@@ -36,13 +36,6 @@ async function load() {
   }
 }
 watch(() => props.id, load, { immediate: true })
-
-const cover = (o: any) => resolveCoverUrl(o?.coverUrl ?? o?.cover_url ?? o?.image)
-const toTime = (ms?: number | null) => {
-  if (!ms) return ''
-  const s = Math.floor(ms / 1000)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
 
 /* ── Actions ────────────────────────────────────────────────────────────── */
 /** Délégué au parent → sélecteur de lecteur (la source peut avoir plusieurs lecteurs) */
@@ -166,7 +159,7 @@ async function saveName() {
             class="shrink-0"
             @click="toggleLike(t)"
           />
-          <span class="text-xs tabular-nums text-dimmed shrink-0">{{ toTime(t.durationMs ?? t.duration_ms) }}</span>
+          <span class="text-xs tabular-nums text-dimmed shrink-0">{{ toTime(t.durationMs ?? t.duration_ms, '') }}</span>
           <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
             <UButton v-if="isYoutube(t)" size="2xs" variant="ghost" color="neutral" icon="i-lucide-download" title="Télécharger" @click="emit('download-track', t)" />
             <UButton size="2xs" variant="ghost" color="neutral" icon="i-lucide-chevron-up"   :disabled="i === 0"                  @click="move(i, -1)" />

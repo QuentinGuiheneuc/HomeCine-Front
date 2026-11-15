@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import LocalStreamConfig from '../transports/LocalStreamConfig.vue'
 import StreamOutFifoConfig from '../transports/StreamOutFifoConfig.vue'
 import VbanConfig from '../transports/VbanConfig.vue'
@@ -8,8 +8,7 @@ import VbanConfig from '../transports/VbanConfig.vue'
  * Configuration FilePlayer (cf. app/API.md — Contrat FilePlayer).
  * Gère : queue de fichiers, volume initial, repeat, shuffle + transport.
  */
-const props = defineProps<{ cfg: any }>()
-const emit = defineEmits<{ (e: 'update:cfg', value: any): void }>()
+const localCfg = defineModel<any>('cfg', { required: true })
 
 const streamTypeItems = [
   { label: 'StreamOutFifo', value: 'StreamOutFifo' },
@@ -17,15 +16,10 @@ const streamTypeItems = [
   { label: 'Vban (sendVban)', value: 'sendVban' }
 ]
 
-const localCfg = computed({
-  get: () => props.cfg,
-  set: (value) => emit('update:cfg', value)
-})
-
 function ensureSubConfigs() {
   const next = { ...(localCfg.value || {}) }
-  if (!next.StreamOutFifo) next.StreamOutFifo = { fifo_id: null, 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
-  if (!next.localStream)   next.localStream   = { output_device_index: 0, 'path-audio': '' }
+  if (!next.StreamOutFifo) next.StreamOutFifo = defaultStreamOutFifo()
+  if (!next.localStream)   next.localStream   = defaultLocalStream()
   if (!next.sendVban)      next.sendVban      = { stream: { host: '127.0.0.1', port: 6980, name: 'stream', channels: 2, rate: 44100 } }
   if (!next.typeStream)    next.typeStream    = 'StreamOutFifo'
   if (!Array.isArray(next.queue)) next.queue  = []

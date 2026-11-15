@@ -42,14 +42,14 @@ async function save() {
     if (s && (s.config !== undefined)) applyState(s); else await load()
     toast.add({ title: 'Configuration enregistrée', color: 'success', icon: 'i-lucide-save' })
   } catch (e: any) {
-    toast.add({ title: 'Enregistrement impossible', description: e?.response?.data?.error || e?.response?.data?.message, color: 'error' })
+    toast.add({ title: 'Enregistrement impossible', description: apiError(e), color: 'error' })
   } finally { saving.value = false }
 }
 
 async function start() {
   busy.value = true
   try { await startSendspin(); await load(); toast.add({ title: 'SendSpin démarré', color: 'success', icon: 'i-lucide-play' }) }
-  catch (e: any) { toast.add({ title: 'Démarrage impossible', description: e?.response?.data?.error, color: 'error' }) }
+  catch (e: any) { toast.add({ title: 'Démarrage impossible', description: apiError(e), color: 'error' }) }
   finally { busy.value = false }
 }
 async function stop() {

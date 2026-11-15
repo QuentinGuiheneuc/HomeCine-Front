@@ -197,7 +197,7 @@ function addBand(type: UiBand["type"]) {
   })
 }
 
-const eqCurve = ref<{ f: number; db: number }[]>([])
+const eqCurve = shallowRef<{ f: number; db: number }[]>([])
 
 async function recomputeCurve() {
   try {

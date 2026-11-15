@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap, getOnce } from '../lib/https'
 import { listItems, unpage, pageParams, type LibraryTrack, type Page, type PageParams } from './library'
 
 /**
@@ -16,12 +16,10 @@ export interface Genre {
   [k: string]: any
 }
 
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
-
 /* ── Genres ─────────────────────────────────────────────────────────────── */
 
 export async function getGenres(): Promise<Genre[]> {
-  return listItems<Genre>(await http.get('/library/genres', { params: { pageSize: 200 } }))
+  return listItems<Genre>(await getOnce('/library/genres', { pageSize: 200 }))
 }
 
 /** Lit un genre + ses pistes (par id) */

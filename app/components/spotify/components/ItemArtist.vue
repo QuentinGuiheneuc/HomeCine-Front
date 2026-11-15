@@ -102,13 +102,6 @@ const tracksCountLabel = computed(() => {
   return `${n}${props.hasMoreTracks ? '+' : ''} titre${n > 1 ? 's' : ''}`
 })
 
-const ms = (v: number) => {
-  const s = Math.floor(v / 1000)
-  const m = Math.floor(s / 60)
-  const ss = String(s % 60).padStart(2, '0')
-  return `${m}:${ss}`
-}
-
 /* ---------- Discographie groupée ---------- */
 const albumYear = (a: Album) => a.release_date?.split('-')[0] ?? ''
 const discoGroups = computed(() => {
@@ -274,7 +267,7 @@ function playArtist() {
             <UButton v-if="isYoutube(src(t))" icon="i-lucide-download" size="xs" variant="ghost" color="neutral" title="Télécharger" class="opacity-0 group-hover:opacity-100" @click.stop="emit('download-track', src(t))" />
             <UButton icon="i-lucide-list-plus"   size="xs" variant="ghost" color="neutral" title="Ajouter à la file"      class="opacity-0 group-hover:opacity-100 hidden sm:inline-flex" @click.stop="emit('enqueue-track', src(t))" />
             <UButton icon="i-lucide-folder-plus" size="xs" variant="ghost" color="neutral" title="Ajouter à une collection" class="opacity-0 group-hover:opacity-100" @click.stop="emit('add-to-playlist', src(t))" />
-            <span class="text-xs tabular-nums text-dimmed w-10 text-right">{{ ms(t.duration_ms) }}</span>
+            <span class="text-xs tabular-nums text-dimmed w-10 text-right">{{ toTime(t.duration_ms) }}</span>
           </div>
         </div>
 

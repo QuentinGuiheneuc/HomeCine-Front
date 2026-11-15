@@ -2,7 +2,7 @@
 import { useDebounceFn } from '@vueuse/core'
 import {
   search, getPlaylistsPage, getAlbumsPage, getArtistsPage, getProviders, getCategories,
-  resolveId, resolveCoverUrl,
+  resolveId, coverOf as cover,
   type LibrarySource, type LibraryTrack, type LibraryPlaylist,
   type LibraryAlbum, type LibraryArtist, type LibraryCategory, type SearchResult,
   type LibraryProvider
@@ -43,16 +43,6 @@ const expanded = ref<Record<'playlists' | 'albums' | 'artists' | 'folders' | 'ca
 })
 
 const sourceLabel = (p: LibraryProvider) => p.name ?? p.id
-const sourceIcon = (s?: LibrarySource) => {
-  switch ((s ?? '').toLowerCase()) {
-    case 'spotify':    return 'mdi:spotify'
-    case 'fileplayer': return 'mdi:file-music'
-    case 'youtube':    return 'mdi:youtube'
-    case 'deezer':     return 'i-simple-icons-deezer'
-    default:           return 'i-lucide-music'
-  }
-}
-const cover = (o: any) => resolveCoverUrl(o?.coverUrl ?? o?.cover_url ?? o?.image)
 const trackCount = (o: any) => o?.trackCount ?? o?.track_count ?? null
 
 /* ── Providers & filtre source (persisté + partagé) ──────────────────────── */
@@ -183,6 +173,33 @@ const filteredAlbums    = computed(() => albums.value)
 const filteredArtists   = computed(() => artists.value)
 const filteredResults   = computed<SearchResult>(() => results.value)
 
+/* Les trois rangees de l'accueil (playlists, albums, artistes) partagent la meme carte :
+   seuls ces champs changent. */
+type HomeItem = LibraryPlaylist | LibraryAlbum | LibraryArtist
+type HomeRow = {
+  key: HomeSection
+  title: string
+  items: HomeItem[]
+  type: 'playlist' | 'album' | 'artist'
+  icon: string
+  round: boolean
+  select: (x: HomeItem) => void
+}
+const homeSections = computed<HomeRow[]>(() => [
+  {
+    key: 'playlists', title: 'Playlists', items: filteredPlaylists.value, type: 'playlist',
+    icon: 'i-lucide-list-music', round: false, select: x => emit('select-playlist', x as LibraryPlaylist)
+  },
+  {
+    key: 'albums', title: 'Albums', items: filteredAlbums.value, type: 'album',
+    icon: 'i-lucide-disc-3', round: false, select: x => emit('select-album', x as LibraryAlbum)
+  },
+  {
+    key: 'artists', title: 'Artistes', items: filteredArtists.value, type: 'artist',
+    icon: 'i-lucide-user-round', round: true, select: x => emit('select-artist', x as LibraryArtist)
+  }
+])
+
 const greeting = computed(() => {
   const h = new Date().getHours()
   if (h < 12) return 'Bonjour'
@@ -299,7 +316,7 @@ async function doAdd() {
     importOpen.value = false
     await loadHome()
   } catch (e: any) {
-    toast.add({ title: 'Opération impossible', description: e?.response?.data?.error || e?.response?.data?.message, color: 'error' })
+    toast.add({ title: 'Opération impossible', description: apiError(e), color: 'error' })
   } finally { importing.value = false }
 }
 
@@ -484,97 +501,36 @@ onMounted(async () => {
       </template>
 
       <template v-else>
-        <!-- Playlists -->
-        <section v-if="filteredPlaylists.length" class="mb-3">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-xl font-bold">Playlists</h2>
-            <UButton
-              v-if="filteredPlaylists.length > 6"
-              size="xs" variant="link" color="primary"
-              :trailing-icon="expanded.playlists ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-              @click="expanded.playlists = !expanded.playlists"
-            >{{ expanded.playlists ? 'Voir moins' : 'Voir plus' }}</UButton>
-          </div>
-          <component :is="expanded.playlists ? 'div' : HScroll" :class="expanded.playlists ? 'flex flex-wrap gap-3' : ''">
-            <div v-for="p in filteredPlaylists" :key="p.source + p.id" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-playlist', p)">
-              <div class="relative h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
-                <img v-if="cover(p)" :src="cover(p)" class="h-full w-full object-cover" alt="" loading="lazy" />
-                <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-list-music" class="size-8 text-dimmed" /></div>
-                <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(p, 'playlist')" />
-              </div>
-              <p class="text-sm font-semibold truncate">{{ p.name }}</p>
-              <!-- <p class="text-xs text-dimmed truncate">{{ trackCount(p) ? trackCount(p) + ' titres' : p.source }}</p> -->
+        <!-- Playlists, Albums, Artistes : meme rangee de cartes, decrite par homeSections -->
+        <template v-for="s in homeSections" :key="s.key">
+          <section v-if="s.items.length" class="mb-3">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-xl font-bold">{{ s.title }}</h2>
+              <UButton
+                v-if="s.items.length > 6"
+                size="xs" variant="link" color="primary"
+                :trailing-icon="expanded[s.key] ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                @click="expanded[s.key] = !expanded[s.key]"
+              >{{ expanded[s.key] ? 'Voir moins' : 'Voir plus' }}</UButton>
             </div>
-          </component>
-
-          <!-- Charger plus (playlists) -->
-          <div v-if="homeHasMore.playlists" class="flex justify-center pt-2">
-            <UButton size="xs" variant="soft" color="neutral" :loading="homeLoading.playlists" @click="loadMoreHome('playlists')">
-              {{ homeLoading.playlists ? 'Chargement…' : 'Charger plus' }}
-            </UButton>
-          </div>
-        </section>
-
-        <!-- Albums -->
-        <section v-if="filteredAlbums.length" class="mb-3">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-xl font-bold">Albums</h2>
-            <UButton
-              v-if="filteredAlbums.length > 6"
-              size="xs" variant="link" color="primary"
-              :trailing-icon="expanded.albums ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-              @click="expanded.albums = !expanded.albums"
-            >{{ expanded.albums ? 'Voir moins' : 'Voir plus' }}</UButton>
-          </div>
-          <component :is="expanded.albums ? 'div' : HScroll" :class="expanded.albums ? 'flex flex-wrap gap-3' : ''">
-            <div v-for="a in filteredAlbums" :key="a.source + resolveId(a)" class="group shrink-0 w-28 cursor-pointer" @click="emit('select-album', a)">
-              <div class="relative h-28 w-28 rounded-md overflow-hidden mb-2 bg-elevated">
-                <img v-if="cover(a)" :src="cover(a)" class="h-full w-full object-cover" alt="" loading="lazy" />
-                <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-disc-3" class="size-8 text-dimmed" /></div>
-                <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(a, 'album')" />
+            <component :is="expanded[s.key] ? 'div' : HScroll" :class="expanded[s.key] ? ['flex flex-wrap gap-3', s.round && 'justify-items-center'] : ''">
+              <div v-for="x in s.items" :key="x.source + resolveId(x)" class="group shrink-0 w-28 cursor-pointer" :class="s.round && 'text-center'" @click="s.select(x)">
+                <div class="relative h-28 w-28 overflow-hidden mb-2 bg-elevated" :class="s.round ? 'rounded-full mx-auto' : 'rounded-md'">
+                  <img v-if="cover(x)" :src="cover(x)" class="h-full w-full object-cover" alt="" loading="lazy" />
+                  <div v-else class="h-full w-full flex items-center justify-center"><UIcon :name="s.icon" class="size-8 text-dimmed" /></div>
+                  <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(x, s.type)" />
+                </div>
+                <p class="text-sm font-semibold truncate">{{ x.name }}</p>
               </div>
-              <p class="text-sm font-semibold truncate">{{ a.name }}</p>
-             <!--  <p class="text-xs text-dimmed truncate">{{ a.artists?.join(', ') }}</p> -->
+            </component>
+
+            <div v-if="homeHasMore[s.key]" class="flex justify-center pt-2">
+              <UButton size="xs" variant="soft" color="neutral" :loading="homeLoading[s.key]" @click="loadMoreHome(s.key)">
+                {{ homeLoading[s.key] ? 'Chargement…' : 'Charger plus' }}
+              </UButton>
             </div>
-          </component>
-
-          <!-- Charger plus (albums) -->
-          <div v-if="homeHasMore.albums" class="flex justify-center pt-2">
-            <UButton size="xs" variant="soft" color="neutral" :loading="homeLoading.albums" @click="loadMoreHome('albums')">
-              {{ homeLoading.albums ? 'Chargement…' : 'Charger plus' }}
-            </UButton>
-          </div>
-        </section>
-
-        <!-- Artistes -->
-        <section v-if="filteredArtists.length" class="mb-3">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-xl font-bold">Artistes</h2>
-            <UButton
-              v-if="filteredArtists.length > 6"
-              size="xs" variant="link" color="primary"
-              :trailing-icon="expanded.artists ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-              @click="expanded.artists = !expanded.artists"
-            >{{ expanded.artists ? 'Voir moins' : 'Voir plus' }}</UButton>
-          </div>
-          <component :is="expanded.artists ? 'div' : HScroll" :class="expanded.artists ? 'flex flex-wrap gap-3 justify-items-center' : ''">
-            <div v-for="ar in filteredArtists" :key="ar.source + resolveId(ar)" class="group shrink-0 w-28 cursor-pointer text-center" @click="emit('select-artist', ar)">
-              <div class="relative h-28 w-28 rounded-full overflow-hidden mb-2 mx-auto bg-elevated">
-                <img v-if="cover(ar)" :src="cover(ar)" class="h-full w-full object-cover" alt="" loading="lazy" />
-                <div v-else class="h-full w-full flex items-center justify-center"><UIcon name="i-lucide-user-round" class="size-8 text-dimmed" /></div>
-                <UButton icon="i-lucide-play" size="sm" color="primary" square class="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" @click.stop="playCtx(ar, 'artist')" />
-              </div>
-              <p class="text-sm font-semibold truncate">{{ ar.name }}</p>
-            </div>
-          </component>
-
-          <!-- Charger plus (artists) -->
-          <div v-if="homeHasMore.artists" class="flex justify-center pt-2">
-            <UButton size="xs" variant="soft" color="neutral" :loading="homeLoading.artists" @click="loadMoreHome('artists')">
-              {{ homeLoading.artists ? 'Chargement…' : 'Charger plus' }}
-            </UButton>
-          </div>
-        </section>
+          </section>
+        </template>
 
         <!-- Dossiers (categories) + Tous les titres -->
         <section v-if="folders.length || activeSources.includes('fileplayer')" class="mb-3">

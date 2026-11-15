@@ -36,10 +36,11 @@ const { activeLecteurId } = useDashboard()
 const { sources: librarySources } = useLibrarySources()
 const playerHeight = 104
 const sidebarOpen  = ref(false)
-
-/* Monté côté client (remplace <ClientOnly> qui ne re-rend pas le lecteur
-   après une navigation SPA → le lecteur disparaissait au retour sur Musique) */
-const isMounted = ref(false)
+/* La copie mobile de la sidebar n'est montee qu'a sa premiere ouverture. */
+const mobileSidebarMounted = ref(false)
+watchOnce(sidebarOpen, () => {
+  mobileSidebarMounted.value = true
+})
 
 /* Piste en cours (lecteur actif ou premier en lecture) → indicateur dans les listes */
 const lecteursWs = useLecteursWs()
@@ -86,18 +87,31 @@ async function loadTrackListFirst() {
   finally { trackListLoading.value = false }
 }
 /** Charge la page suivante et l'ajoute à la liste */
-async function loadMoreTracks() {
-  if (!trackListFetcher || !trackListHasMore.value || trackListMore.value) return
-  trackListMore.value = true
+function loadMoreTracks() {
+  return loadNext({ page: trackListPage, hasMore: trackListHasMore, busy: trackListMore }, trackListFetcher, (items) => {
+    indexTracks(items)
+    trackListTracks.value = [...trackListTracks.value, ...items]
+  })
+}
+
+/* Page suivante d'une liste paginee : garde-fous, compteur de page et toast d'erreur communs
+   a tous les « Charger plus ». `fetch` absent = rien a charger. */
+async function loadNext<T>(
+  s: { page: Ref<number>, hasMore: Ref<boolean>, busy: Ref<boolean> },
+  fetch: ((page: number) => Promise<Page<T>>) | null | undefined,
+  append: (items: T[]) => void,
+  errTitle = 'Chargement impossible'
+) {
+  if (!fetch || !s.hasMore.value || s.busy.value) return
+  s.busy.value = true
   try {
-    const next = trackListPage.value + 1
-    const res = await trackListFetcher(next)
-    indexTracks(res.items)
-    trackListTracks.value = [...trackListTracks.value, ...res.items]
-    trackListPage.value = next
-    trackListHasMore.value = res.hasMore
-  } catch { toast.add({ title: 'Chargement impossible', color: 'error' }) }
-  finally { trackListMore.value = false }
+    const next = s.page.value + 1
+    const res = await fetch(next)
+    append(res.items)
+    s.page.value = next
+    s.hasMore.value = res.hasMore
+  } catch { toast.add({ title: errTitle, color: 'error' }) }
+  finally { s.busy.value = false }
 }
 
 /* Pagination des pistes d'artiste (Top titres — Charger plus) */
@@ -134,35 +148,24 @@ async function onRequestLikedArtist() {
   } catch { toast.add({ title: 'Titres aimés indisponibles', color: 'error' }) }
   finally { artistLikedMore.value = false }
 }
-async function loadMoreLikedArtist() {
+function loadMoreLikedArtist() {
   const ar = currentArtist.value
-  if (!ar || !artistLikedHasMore.value || artistLikedMore.value) return
-  artistLikedMore.value = true
-  try {
-    const next = artistLikedPage.value + 1
-    const res = await getLikedByArtist(ar.source, ar.name, { page: next, pageSize: 50 })
-    indexTracks(res.items)
-    const base = artistLikedTracks.value.length
-    artistLikedTracks.value = [...artistLikedTracks.value, ...res.items.map((t, i) => mapTrack(t, base + i))]
-    artistLikedPage.value = next
-    artistLikedHasMore.value = res.hasMore
-  } catch { toast.add({ title: 'Chargement impossible', color: 'error' }) }
-  finally { artistLikedMore.value = false }
+  return loadNext(
+    { page: artistLikedPage, hasMore: artistLikedHasMore, busy: artistLikedMore },
+    ar && (page => getLikedByArtist(ar.source, ar.name, { page, pageSize: 50 })),
+    (items) => {
+      indexTracks(items)
+      const base = artistLikedTracks.value.length
+      artistLikedTracks.value = [...artistLikedTracks.value, ...items.map((t, i) => mapTrack(t, base + i))]
+    }
+  )
 }
 
 /** Lit les titres aimés de l'artiste (1ʳᵉ piste puis enfile le reste) */
 function playLikedArtist() {
   const raw = artistLikedTracks.value.map((t: any) => t.__src as LibraryTrack).filter(Boolean)
-  const first = raw[0]
-  if (!first) { toast.add({ title: 'Aucun titre aimé', color: 'warning' }); return }
-  const source = (currentArtist.value?.source ?? first.source) as LibrarySource
-  requestPlay({
-    source, type: 'track', title: `${currentArtist.value?.name ?? ''} · Aimés`,
-    run: async (lecteurId) => {
-      await play({ source: first.source, type: 'track', uri: first.uri ?? '', lecteurId })
-      for (const t of raw.slice(1)) await enqueueTrack(t, lecteurId)
-    }
-  })
+  if (!raw[0]) { toast.add({ title: 'Aucun titre aimé', color: 'warning' }); return }
+  playTracks(raw, (currentArtist.value?.source ?? raw[0].source) as LibrarySource, `${currentArtist.value?.name ?? ''} · Aimés`)
 }
 
 /* Pagination des pistes de détail playlist / album (Charger plus) */
@@ -172,18 +175,15 @@ const detailTracksMore    = ref(false)
 let   detailTracksFetcher: ((page: number) => Promise<Page<LibraryTrack>>) | null = null
 let   detailTracksAppend:  ((items: LibraryTrack[]) => void) | null = null
 
-async function loadMoreDetailTracks() {
-  if (!detailTracksFetcher || !detailTracksAppend || !detailTracksHasMore.value || detailTracksMore.value) return
-  detailTracksMore.value = true
-  try {
-    const next = detailTracksPage.value + 1
-    const res = await detailTracksFetcher(next)
-    indexTracks(res.items)
-    detailTracksAppend(res.items)
-    detailTracksPage.value = next
-    detailTracksHasMore.value = res.hasMore
-  } catch { toast.add({ title: 'Chargement impossible', color: 'error' }) }
-  finally { detailTracksMore.value = false }
+function loadMoreDetailTracks() {
+  return loadNext(
+    { page: detailTracksPage, hasMore: detailTracksHasMore, busy: detailTracksMore },
+    detailTracksAppend && detailTracksFetcher,
+    (items) => {
+      indexTracks(items)
+      detailTracksAppend?.(items)
+    }
+  )
 }
 
 /* Playlist perso (DB) sélectionnée */
@@ -416,38 +416,29 @@ async function openArtist(ar: LibraryArtist) {
 }
 
 /** Charge la page suivante des pistes d'artiste et l'ajoute aux Top titres */
-async function loadMoreArtistTracks() {
-  if (!artistTracksFetcher || !artistTracksHasMore.value || artistTracksMore.value) return
-  artistTracksMore.value = true
-  try {
-    const next = artistTracksPage.value + 1
-    const res = await artistTracksFetcher(next)
-    indexTracks(res.items)
+function loadMoreArtistTracks() {
+  return loadNext({ page: artistTracksPage, hasMore: artistTracksHasMore, busy: artistTracksMore }, artistTracksFetcher, (items) => {
+    indexTracks(items)
     const base = artistDetail.value?.topTracks?.length ?? 0
-    const mapped = res.items.map((t, i) => mapTrack(t, base + i))
+    const mapped = items.map((t, i) => mapTrack(t, base + i))
     if (artistDetail.value) artistDetail.value.topTracks = [...(artistDetail.value.topTracks ?? []), ...mapped]
-    artistTracksPage.value = next
-    artistTracksHasMore.value = res.hasMore
-  } catch { toast.add({ title: 'Chargement impossible', color: 'error' }) }
-  finally { artistTracksMore.value = false }
+  })
 }
 
 /** Charge la page suivante des albums de l'artiste (discographie) */
-async function loadMoreArtistAlbums() {
+function loadMoreArtistAlbums() {
   const ar = currentArtist.value
   const id = ar ? sourceKey(ar) : ''
-  if (!ar || !id || !artistAlbumsHasMore.value || artistAlbumsMore.value) return
-  artistAlbumsMore.value = true
-  try {
-    const next = artistAlbumsPage.value + 1
-    const res = await getArtistAlbumsPage(ar.source, id, { page: next, pageSize: ARTIST_ALBUMS_SIZE })
-    if (artistDetail.value) {
-      artistDetail.value.albums = [...(artistDetail.value.albums ?? []), ...res.items.map(mapArtistAlbum)]
-    }
-    artistAlbumsPage.value = next
-    artistAlbumsHasMore.value = res.hasMore
-  } catch { toast.add({ title: 'Chargement des albums impossible', color: 'error' }) }
-  finally { artistAlbumsMore.value = false }
+  return loadNext(
+    { page: artistAlbumsPage, hasMore: artistAlbumsHasMore, busy: artistAlbumsMore },
+    ar && id ? page => getArtistAlbumsPage(ar.source, id, { page, pageSize: ARTIST_ALBUMS_SIZE }) : null,
+    (items) => {
+      if (artistDetail.value) {
+        artistDetail.value.albums = [...(artistDetail.value.albums ?? []), ...items.map(mapArtistAlbum)]
+      }
+    },
+    'Chargement des albums impossible'
+  )
 }
 
 /* ─── Liste de pistes (dossier fileplayer / toute la trackliste) ──────────── */
@@ -703,18 +694,21 @@ async function openTrackliste() {
 /* ─── ▶ Lire toute la liste (dossier / trackliste) ────────────────────────── */
 function playAllTracks() {
   const tracks = trackListTracks.value
-  const first = tracks[0]
+  playTracks(tracks, (currentCtx.value?.source ?? tracks[0]?.source) as LibrarySource, trackListTitle.value)
+}
+/* Lit la 1re piste (remplace la file) puis enfile le reste dans l'ordre. */
+function playTracks(tracks: LibraryTrack[], source: LibrarySource, title: string) {
+  const [first, ...rest] = tracks
   if (!first) return
-  const source = (currentCtx.value?.source ?? first.source) as LibrarySource
   requestPlay({
-    source, type: 'track', title: trackListTitle.value,
+    source, type: 'track', title,
     run: async (lecteurId) => {
-      // Lire la 1ʳᵉ piste (remplace la file) puis enfiler le reste dans l'ordre
       await play({ source: first.source, type: 'track', uri: first.uri ?? '', lecteurId })
-      for (const t of tracks.slice(1)) await enqueueTrack(t, lecteurId)
+      for (const t of rest) await enqueueTrack(t, lecteurId)
     }
   })
 }
+const playTrack = (t: LibraryTrack) => requestPlay({ source: t.source, type: 'track', uri: t.uri ?? '', title: t.title })
 
 /* Navigation interne album↔artiste : on n'a que des id → reconstruire un objet minimal */
 function openAlbumById(source: LibrarySource, id: string) {
@@ -748,8 +742,10 @@ function onDownloadTrack(t: any) {
 const lecteurs  = ref<Lecteur[]>([])
 const providers = ref<LibraryProvider[]>([])
 async function loadLecteurs() {
-  try { lecteurs.value = await getLecteurs() } catch { /* noop */ }
-  try { providers.value = await getProviders() } catch { /* noop */ }
+  await Promise.all([
+    getLecteurs().then((v) => { lecteurs.value = v }).catch(() => { /* noop */ }),
+    getProviders().then((v) => { providers.value = v }).catch(() => { /* noop */ })
+  ])
 }
 
 /** Liste des ids de lecteurs rattachés à une source (provider.lecteurId, normalisé en tableau) */
@@ -799,7 +795,7 @@ async function confirmPlay(lecteurId: number) {
     else await play({ source: p.source, type: p.type, id: p.id, uri: p.uri, lecteurId })
     toast.add({ title: 'Lecture lancée', description: p.title, color: 'success', icon: 'i-lucide-play' })
   } catch (e: any) {
-    const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || `HTTP ${e?.response?.status}`
+    const msg = apiError(e, e?.message || `HTTP ${e?.response?.status}`)
     toast.add({ title: 'Lecture impossible', description: `${p.source}/${p.type} · ${msg}`, color: 'error' })
   }
   pendingPlay.value = null
@@ -845,16 +841,6 @@ function playTrackByUri(uri: string) {
 function onPlaylistRow(payload: { offset: number }) {
   const t = (playlistDetail.value?.tracks?.items?.[payload.offset]?.track)?.__src as LibraryTrack | undefined
   if (t?.uri) playTrackByUri(t.uri)
-}
-
-const lecteurIcon = (type?: string) => {
-  switch ((type ?? '').toLowerCase()) {
-    case 'spotify':    return 'mdi:spotify'
-    case 'fileplayer': return 'mdi:file-music'
-    case 'youtube':    return 'mdi:youtube'
-    case 'deezer':     return 'i-simple-icons-deezer'
-    default:           return 'i-lucide-music'
-  }
 }
 
 /* ─── Ajouter une piste à une collection perso (playlist / album) ────────── */
@@ -967,7 +953,7 @@ async function createAndAdd() {
   } catch { toast.add({ title: 'Création impossible', color: 'error' }) }
 }
 
-onMounted(() => { isMounted.value = true; loadLecteurs() })
+onMounted(loadLecteurs)
 </script>
 
 <template>
@@ -996,6 +982,7 @@ onMounted(() => { isMounted.value = true; loadLecteurs() })
         </Transition>
         <div class="md:hidden fixed left-0 top-0 bottom-0 z-50 w-72 transition-transform duration-200" :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
           <LibrarySidebar
+            v-if="mobileSidebarMounted"
             ref="sidebarRefMobile"
             :player-height="playerHeight"
             @select-playlist="(p) => { openPlaylist(p); sidebarOpen = false }"
@@ -1101,7 +1088,7 @@ onMounted(() => { isMounted.value = true; loadLecteurs() })
                   :current-key="nowPlayingKey"
                   @deleted="() => { clearSelection(); reloadSidebarDb() }"
                   @changed="reloadSidebarDb"
-                  @play-track="(t) => requestPlay({ source: t.source, type: 'track', uri: t.uri ?? '', title: t.title })"
+                  @play-track="playTrack"
                   @play-all="onDbPlayAll"
                   @download-track="onDownloadTrack"
                 />
@@ -1130,7 +1117,7 @@ onMounted(() => { isMounted.value = true; loadLecteurs() })
                   :loading-more="trackListMore"
                   :current-key="nowPlayingKey"
                   :player-height="playerHeight"
-                  @play-track="(t) => requestPlay({ source: t.source, type: 'track', uri: t.uri ?? '', title: t.title })"
+                  @play-track="playTrack"
                   @save-track="onSaveTrack"
                   @enqueue-track="doEnqueueTrack"
                   @add-to-playlist="onAddToPlaylist"
@@ -1157,7 +1144,7 @@ onMounted(() => { isMounted.value = true; loadLecteurs() })
                   @select-album="openAlbum"
                   @select-artist="openArtist"
                   @enqueue-track="doEnqueueTrack"
-                  @play-track="(t) => requestPlay({ source: t.source, type: 'track', uri: t.uri ?? '', title: t.title })"
+                  @play-track="playTrack"
                   @add-to-playlist="onAddToPlaylist"
                   @download-track="onDownloadTrack"
                   @save-track="onSaveTrack"
@@ -1189,7 +1176,7 @@ onMounted(() => { isMounted.value = true; loadLecteurs() })
               class="w-full flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-elevated/60 text-left transition-colors"
               @click="confirmPlay(l.id)"
             >
-              <UIcon :name="lecteurIcon(l.type)" class="size-5 shrink-0" />
+              <UIcon :name="sourceIcon(l.type)" class="size-5 shrink-0" />
               <div class="flex-1 min-w-0">
                 <p class="truncate text-sm font-medium">{{ l.name || 'Sans nom' }}</p>
                 <p class="text-xs text-dimmed">{{ l.type }}</p>
@@ -1398,7 +1385,7 @@ onMounted(() => { isMounted.value = true; loadLecteurs() })
       </template>
     </UModal>
 
-    <!-- PLAYER (v-if isMounted = client-only fiable, survit aux navigations) -->
+    <!-- PLAYER -->
     <Lecture/>
   </div>
 </template>

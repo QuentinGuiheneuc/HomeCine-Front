@@ -97,27 +97,18 @@ const notifTime = (n: any) => {
 
 onMounted(async () => {
   if (devCtrl.status.value === 'connected') requestDevices()
-  try { providers.value = await getProviders() } catch { /* noop */ }
   loadRules()
   notif.loadHistory()
+  try { providers.value = await getProviders() } catch { /* noop */ }
 })
 onUnmounted(() => offDevCtrl())
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
-const toTime = (ms?: number | null) => {
-  if (!ms) return '0:00'
-  const s = Math.floor(ms / 1000)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
 const progress = (l: any) => {
   const pos = l.temp?.position_ms ?? 0
   const dur = l.track?.duration_ms ?? l.temp?.duration_ms ?? 0
   return dur ? Math.min(100, (pos / dur) * 100) : 0
 }
-const lecteurIcon = (type?: string) =>
-  type === 'spotify' ? 'mdi:spotify' : type === 'fileplayer' ? 'mdi:file-music' : type === 'youtube' ? 'mdi:youtube' : type === 'deezer' ? 'i-simple-icons-deezer' : 'i-lucide-music'
-const sourceIcon = (s?: string) =>
-  s === 'spotify' ? 'mdi:spotify' : s === 'fileplayer' ? 'mdi:file-music' : s === 'youtube' ? 'mdi:youtube' : s === 'deezer' ? 'i-simple-icons-deezer' : 'i-lucide-music'
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -257,13 +248,13 @@ const shortcuts = [
                   class="h-14 w-14 rounded-lg object-cover shrink-0"
                 />
                 <div v-else class="h-14 w-14 rounded-lg bg-elevated flex items-center justify-center shrink-0">
-                  <UIcon :name="lecteurIcon(l.type)" class="size-6 text-dimmed" />
+                  <UIcon :name="sourceIcon(l.type)" class="size-6 text-dimmed" />
                 </div>
                 <div class="min-w-0 flex-1">
                   <MarqueeText class="font-medium" :text="l.track?.title ?? 'Aucune piste'" />
                   <MarqueeText class="text-xs text-dimmed" :text="(l.track?.artists ?? []).join(', ') || l.name" />
                   <div class="flex items-center gap-1.5 mt-0.5">
-                    <UIcon :name="lecteurIcon(l.device_type ?? l.type)" class="size-3 text-dimmed" />
+                    <UIcon :name="sourceIcon(l.device_type ?? l.type)" class="size-3 text-dimmed" />
                     <span class="text-[11px] text-dimmed truncate">{{ l.name }}</span>
                   </div>
                 </div>

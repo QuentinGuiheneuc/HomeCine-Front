@@ -40,7 +40,7 @@ export function usePlaylists() {
       })
       playlist.value = data
     } catch (e: any) {
-      errorMsg.value = e?.response?.data?.error || e?.message || 'Chargement de la playlist échoué'
+      errorMsg.value = apiError(e, e?.message || 'Chargement de la playlist échoué')
       console.error('[fetchPlaylist]', e)
     } finally {
       loading.value = false

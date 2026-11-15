@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap } from '../lib/https'
 
 /**
  * Client API « FIFO » — tubes nommés exposés comme streams dans snapserver.conf.
@@ -39,8 +39,6 @@ export interface FifoCreated extends Fifo {
   ok?:      boolean
   created?: boolean
 }
-
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
 
 export async function getFifos(): Promise<Fifo[]> {
   const d = unwrap<any>(await http.get('/fifo'))

@@ -138,7 +138,7 @@ async function onCreate() {
     addOpen.value = false
     await load(); await resync()
   } catch (e: any) {
-    toast.add({ title: 'Création impossible', description: e?.response?.data?.error || 'Chemin ou libellé refusé', color: 'error' })
+    toast.add({ title: 'Création impossible', description: apiError(e, 'Chemin ou libellé refusé'), color: 'error' })
   } finally { adding.value = false }
 }
 
@@ -151,7 +151,7 @@ async function onToggle(f: Fifo, value: boolean) {
     await resync()
     toast.add({ title: value ? 'Stream activé' : 'Stream désactivé', description: f.label || f.path, color: value ? 'success' : 'neutral' })
   } catch (e: any) {
-    toast.add({ title: 'Modification impossible', description: e?.response?.data?.error, color: 'error' })
+    toast.add({ title: 'Modification impossible', description: apiError(e), color: 'error' })
   } finally { busy.value = null }
 }
 
@@ -180,7 +180,7 @@ async function onDelete(f: Fifo, withFile: boolean) {
       toast.add({ title: 'FIFO supprimé', color: 'success' })
     }
   } catch (e: any) {
-    toast.add({ title: 'Suppression impossible', description: e?.response?.data?.error, color: 'error' })
+    toast.add({ title: 'Suppression impossible', description: apiError(e), color: 'error' })
   } finally { busy.value = null }
 }
 

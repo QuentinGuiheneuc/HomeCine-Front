@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap, getOnce } from '../lib/https'
 import appConfig from '../config'
 
 /**
@@ -13,6 +13,10 @@ export function resolveCoverUrl(url?: string | null): string | null {
   if (url.startsWith('//')) return 'https:' + url          // URL protocol-relative (ex. //yt3.ggpht.com/…)
   return appConfig.API_URL + (url.startsWith('/') ? url : '/' + url)
 }
+
+/** Pochette d'un objet de bibliotheque, quel que soit le nom du champ renvoye par le back. */
+export const coverOf = (o?: { coverUrl?: string | null, cover_url?: string | null, image?: string | null } | null) =>
+  resolveCoverUrl(o?.coverUrl ?? o?.cover_url ?? o?.image)
 
 /**
  * Client API Library — bibliothèque musicale multi-source (fileplayer, spotify…).
@@ -123,8 +127,6 @@ function srcParam(sources?: LibrarySource[]): string | undefined {
   return sources?.length ? sources.join(',') : undefined
 }
 
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
-
 /* ── Pagination ─────────────────────────────────────────────────────────────── */
 
 /** Enveloppe paginée renvoyée par l'API : { items, total, page, pageSize, hasMore } */
@@ -218,9 +220,9 @@ async function getAllPages<T>(url: string, params: Record<string, any> = {}): Pr
 export async function getPlaylistsPage(
   opts: { category?: string; q?: string; sources?: LibrarySource[] } & PageParams = {}
 ): Promise<Page<LibraryPlaylist>> {
-  const page = unpage<LibraryPlaylist>(await http.get('/library/playlists', {
-    params: { category: opts.category, q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
-  }))
+  const page = unpage<LibraryPlaylist>(await getOnce('/library/playlists',
+    { category: opts.category, q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+  ))
   // « Titres aimés » est en tête de SON provider, donc apres toutes les sources
   // distantes dans la liste agregee — 21e element en pratique. On la remonte
   // ici, au seul endroit que la sidebar et l'accueil partagent.
@@ -232,23 +234,23 @@ export async function getPlaylistsPage(
 export async function getAlbumsPage(
   opts: { q?: string; sources?: LibrarySource[] } & PageParams = {}
 ): Promise<Page<LibraryAlbum>> {
-  return unpage<LibraryAlbum>(await http.get('/library/albums', {
-    params: { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
-  }))
+  return unpage<LibraryAlbum>(await getOnce('/library/albums',
+    { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+  ))
 }
 
 export async function getArtistsPage(
   opts: { q?: string; sources?: LibrarySource[] } & PageParams = {}
 ): Promise<Page<LibraryArtist>> {
-  return unpage<LibraryArtist>(await http.get('/library/artists', {
-    params: { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
-  }))
+  return unpage<LibraryArtist>(await getOnce('/library/artists',
+    { q: opts.q, sources: srcParam(opts.sources), ...pageParams(opts) }
+  ))
 }
 
 /* ── Providers / index ─────────────────────────────────────────────────────── */
 
 export async function getProviders(): Promise<LibraryProvider[]> {
-  const raw = unwrap<any[]>(await http.get('/library/providers')) ?? []
+  const raw = unwrap<any[]>(await getOnce('/library/providers')) ?? []
   // Normalise : l'API renvoie { source, lecteurId, canReindex } → on expose id/name
   return raw.map((p: any) => ({
     ...p,

@@ -1,15 +1,6 @@
 // composables/spotify/useLikedSync.ts
 import http from '@/src/lib/https'
-
-type Paging<T> = {
-  href: string
-  items: T[]
-  limit: number
-  next: string | null
-  offset: number
-  previous: string | null
-  total: number
-}
+import type { Paging } from '@/components/spotify/type/spotify'
 
 type SavedTrack = {
   added_at?: string

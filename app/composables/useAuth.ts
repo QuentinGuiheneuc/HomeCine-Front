@@ -3,7 +3,7 @@ import http from '../src/lib/https'
 export type LoginBody = { email: string; password: string }
 
 export function useAuth() {
-  const token = useCookie<string | null>('TOKEN', { sameSite: 'lax', path: '/' })
+  const token = useCookie<string | null>(CookieName.TOKEN, { sameSite: 'lax', path: '/' })
   const isAuthenticated = computed(() => Boolean(token.value))
 
   async function login(body: LoginBody) {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
-import { resolveCoverUrl, type LibraryTrack } from '@/src/api/library'
+import { coverOf, resolveCoverUrl, type LibraryTrack } from '@/src/api/library'
 
 /**
  * Vue liste de pistes générique :
@@ -47,18 +47,11 @@ useIntersectionObserver(sentinel, ([entry]) => {
   if (entry?.isIntersecting && props.hasMore && !props.loadingMore) emit('load-more')
 })
 
-const cover = (o: any) => resolveCoverUrl(o?.coverUrl ?? o?.cover_url ?? o?.image)
-
 /* L'en-tete recoit un coverUrl brut (ex. /library/cover/default/category). Sans
    prefixe, le navigateur le demande sur l'origine du front : Nuxt n'y a ni page
    ni regle de proxy, d'ou un avertissement de routeur et une image manquante.
    `props.cover` reste brut pour l'edition, qui enregistre la valeur telle quelle. */
 const coverSrc = computed(() => resolveCoverUrl(props.cover))
-const toTime = (ms?: number | null) => {
-  if (!ms) return ''
-  const s = Math.floor(ms / 1000)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
 
 /* Renommage inline */
 const editingName = ref(false)
@@ -136,7 +129,7 @@ function onDelete() {
             <span v-else class="text-xs text-dimmed tabular-nums group-hover:hidden">{{ i + 1 }}</span>
             <UButton icon="i-lucide-play" size="2xs" variant="ghost" color="neutral" class="hidden group-hover:flex" @click.stop="emit('play-track', t)" />
           </div>
-          <img v-if="cover(t)" :src="cover(t)!" class="h-9 w-9 rounded object-cover shrink-0" alt="" />
+          <img v-if="coverOf(t)" :src="coverOf(t)!" class="h-9 w-9 rounded object-cover shrink-0" alt="" />
           <div v-else class="h-9 w-9 rounded bg-elevated flex items-center justify-center shrink-0"><UIcon name="i-lucide-music" class="size-4 text-dimmed" /></div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-medium" :class="{ 'text-primary': isNowPlaying(t, props.currentKey) }">{{ t.title }}</p>
@@ -150,7 +143,7 @@ function onDelete() {
             class="shrink-0"
             @click="emit('save-track', t)"
           />
-          <span class="text-xs tabular-nums text-dimmed shrink-0">{{ toTime(t.durationMs ?? t.duration_ms) }}</span>
+          <span class="text-xs tabular-nums text-dimmed shrink-0">{{ toTime(t.durationMs ?? t.duration_ms, '') }}</span>
           <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
             <UButton v-if="isFp(t)" size="2xs" variant="ghost" color="neutral" icon="i-lucide-wand-sparkles" title="Enrichir (tags + pochette)" @click="emit('enrich-track', t)" />
             <UButton v-if="isYoutube(t)" size="2xs" variant="ghost" color="neutral" icon="i-lucide-download" title="Télécharger" @click="emit('download-track', t)" />

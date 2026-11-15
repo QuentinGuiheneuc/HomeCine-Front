@@ -1,23 +1,11 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { watch } from 'vue'
 import LocalStreamConfig from '../transports/LocalStreamConfig.vue'
 import StreamOutFifoConfig from '../transports/StreamOutFifoConfig.vue'
 import VbanConfig from '../transports/VbanConfig.vue'
 import { LAYOUT_ITEMS } from '@/utils/audioLayouts'
 
-const props = defineProps<{ cfg: any }>()
-const emit = defineEmits<{ (e: 'update:cfg', value: any): void }>()
-
-const streamTypeItems = [
-  { label: 'LocalStream', value: 'localStream' },
-  { label: 'StreamOutFifo', value: 'StreamOutFifo' },
-  { label: 'Vban', value: 'vban' }
-]
-
-const localCfg = computed({
-  get: () => props.cfg,
-  set: (value) => emit('update:cfg', value)
-})
+const localCfg = defineModel<any>('cfg', { required: true })
 
 function ensureSubConfigs() {
   const next = { ...(localCfg.value || {}) }
@@ -31,9 +19,9 @@ function ensureSubConfigs() {
   else next.output = { layout: '7.1', rate: 48000, master_gain_db: -5, remap: [0, 1, 2, 3, 4, 5, 6, 7], ...next.output }
 
   // Transports
-  if (!next.localStream) next.localStream = { output_device_index: 0, 'path-audio': '' }
-  if (!next.StreamOutFifo) next.StreamOutFifo = { fifo_id: null, 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
-  if (!next.vban) next.vban = { dest_ip: '', dest_port: 6980, stream_name: '' }
+  if (!next.localStream) next.localStream = defaultLocalStream()
+  if (!next.StreamOutFifo) next.StreamOutFifo = defaultStreamOutFifo()
+  if (!next.vban) next.vban = defaultVban()
   if (!next.typeStream) next.typeStream = 'localStream'
 
   localCfg.value = next
@@ -108,7 +96,7 @@ watch(() => localCfg.value?.typeStream, ensureSubConfigs, { immediate: true })
         <UIcon name="i-lucide-send" class="size-4" />
         Transport de sortie
       </div>
-      <USelect v-model="localCfg.typeStream" :items="streamTypeItems" />
+      <USelect v-model="localCfg.typeStream" :items="STREAM_TYPE_ITEMS" />
     </div>
 
     <LocalStreamConfig

@@ -38,7 +38,6 @@ const errorMsg = ref<string | null>(null)
 const adapters = ref<BtAdapter[]>([])
 const devices = ref<BtDevice[]>([])
 const scanResults = ref<BtDevice[]>([])
-const btStatus = ref<any>(null)
 
 /* ---------- filters ---------- */
 const q = ref('')
@@ -104,7 +103,7 @@ async function fetchAdapters() {
   } catch (e: any) {
     console.error(e)
     errorMsg.value = 'Impossible de charger les adaptateurs Bluetooth.'
-    toast?.add?.({ title: 'Erreur', description: errorMsg.value, color: 'red' })
+    toast.add({ title: 'Erreur', description: errorMsg.value, color: 'red' })
   } finally {
     loadingAdapters.value = false
   }
@@ -131,19 +130,9 @@ async function fetchDevices() {
   } catch (e: any) {
     console.error(e)
     errorMsg.value = 'Impossible de charger les devices Bluetooth.'
-    toast?.add?.({ title: 'Erreur', description: errorMsg.value, color: 'red' })
+    toast.add({ title: 'Erreur', description: errorMsg.value, color: 'red' })
   } finally {
     loadingDevices.value = false
-  }
-}
-
-async function fetchStatus(target?: string) {
-  try {
-    const params = target ? { target } : {}
-    const res = await http.get('/bt/status', { params })
-    btStatus.value = res.data?.status ?? null
-  } catch (e: any) {
-    console.error(e)
   }
 }
 
@@ -161,7 +150,7 @@ async function scanBt() {
     })
 
     scanResults.value = res.data?.devices || []
-    toast?.add?.({
+    toast.add({
       title: 'Scan terminé',
       description: `${scanResults.value.length} device(s) trouvé(s)`,
       color: 'green'
@@ -170,80 +159,44 @@ async function scanBt() {
   } catch (e: any) {
     console.error(e)
     errorMsg.value = 'Scan Bluetooth impossible.'
-    toast?.add?.({ title: 'Erreur scan', description: errorMsg.value, color: 'red' })
+    toast.add({ title: 'Erreur scan', description: errorMsg.value, color: 'red' })
   } finally {
     scanning.value = false
   }
 }
 
-async function pairDevice(target?: string) {
+/* Action sur un device : indicateur de chargement, toast de resultat, puis liste rafraichie. */
+async function btAction(
+  kind: string, target: string | undefined, call: (t: string) => Promise<unknown>,
+  okTitle: string, koTitle: string, okColor: 'green' | 'amber' = 'green'
+) {
   if (!target) return
   try {
-    actionLoading.value = `pair:${target}`
-    await http.post('/bt/pair', { target })
-    toast?.add?.({ title: 'Pairing OK', description: target, color: 'green' })
-    await Promise.all([fetchDevices(), fetchStatus(target)])
+    actionLoading.value = `${kind}:${target}`
+    await call(target)
+    toast.add({ title: okTitle, description: target, color: okColor })
+    await fetchDevices()
   } catch (e: any) {
     console.error(e)
-    toast?.add?.({ title: 'Pairing impossible', description: target, color: 'red' })
+    toast.add({ title: koTitle, description: target, color: 'red' })
   } finally {
     actionLoading.value = null
   }
 }
 
-async function connectDevice(target?: string) {
-  if (!target) return
-  try {
-    actionLoading.value = `connect:${target}`
-    await http.post('/bt/connect', { target, retries: 3 })
-    toast?.add?.({ title: 'Connexion OK', description: target, color: 'green' })
-    await Promise.all([fetchDevices(), fetchStatus(target)])
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Connexion impossible', description: target, color: 'red' })
-  } finally {
-    actionLoading.value = null
-  }
-}
-
-async function disconnectDevice(target?: string) {
-  if (!target) return
-  try {
-    actionLoading.value = `disconnect:${target}`
-    await http.post('/bt/disconnect', { target })
-    toast?.add?.({ title: 'Déconnexion OK', description: target, color: 'amber' })
-    await Promise.all([fetchDevices(), fetchStatus(target)])
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Déconnexion impossible', description: target, color: 'red' })
-  } finally {
-    actionLoading.value = null
-  }
-}
-
-async function removeDevice(target?: string) {
-  if (!target) return
-  if (!confirm(`Supprimer le device ${target} ?`)) return
-
-  try {
-    actionLoading.value = `remove:${target}`
-    await http.delete('/bt/device', { data: { target } })
-    toast?.add?.({ title: 'Device supprimé', description: target, color: 'green' })
-    await Promise.all([fetchDevices(), fetchStatus()])
-  } catch (e: any) {
-    console.error(e)
-    toast?.add?.({ title: 'Suppression impossible', description: target, color: 'red' })
-  } finally {
-    actionLoading.value = null
-  }
+const pairDevice = (target?: string) =>
+  btAction('pair', target, t => http.post('/bt/pair', { target: t }), 'Pairing OK', 'Pairing impossible')
+const connectDevice = (target?: string) =>
+  btAction('connect', target, t => http.post('/bt/connect', { target: t, retries: 3 }), 'Connexion OK', 'Connexion impossible')
+const disconnectDevice = (target?: string) =>
+  btAction('disconnect', target, t => http.post('/bt/disconnect', { target: t }), 'Déconnexion OK', 'Déconnexion impossible', 'amber')
+function removeDevice(target?: string) {
+  if (!target || !confirm(`Supprimer le device ${target} ?`)) return
+  return btAction('remove', target, t => http.delete('/bt/device', { data: { target: t } }), 'Device supprimé', 'Suppression impossible')
 }
 
 async function refreshAll() {
-  await Promise.all([
-    fetchAdapters(),
-    fetchDevices(),
-    fetchStatus()
-  ])
+  await Promise.all([fetchAdapters(), fetchDevices()])
 }
 
 onMounted(async () => {

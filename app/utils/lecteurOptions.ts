@@ -51,3 +51,14 @@ export const typeStreamOptions: Record<string, StreamOptions> = {
     frames_per_bufferItems: framesPerBufferItems
   }
 }
+
+/* Transports de sortie d'un lecteur. Des fabriques et non des constantes : les
+   formulaires modifient ces objets en place, chaque config doit avoir les siens. */
+export const STREAM_TYPE_ITEMS: SelectItem[] = [
+  { label: 'LocalStream', value: 'localStream' },
+  { label: 'StreamOutFifo', value: 'StreamOutFifo' },
+  { label: 'Vban', value: 'vban' }
+]
+export const defaultLocalStream = () => ({ 'output_device_index': 0, 'path-audio': '' })
+export const defaultStreamOutFifo = () => ({ 'fifo_id': null, 'path-audio': '', 'channels': 8, 'rate': 48000, 'config': '7.1' })
+export const defaultVban = () => ({ dest_ip: '', dest_port: 6980, stream_name: '' })

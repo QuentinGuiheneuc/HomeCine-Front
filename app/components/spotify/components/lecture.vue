@@ -99,13 +99,6 @@ watch(
   { immediate: true }
 )
 
-const toTime = (ms: number) => {
-  const s  = Math.max(0, Math.floor(ms / 1000))
-  const m  = Math.floor(s / 60)
-  const ss = s % 60
-  return `${m}:${ss.toString().padStart(2, '0')}`
-}
-
 /* ── Like de la piste courante (WS Lecteur.ToggleLike / GetLike) ──────────── */
 const isLiked = computed(() => activeLecteur.value ? !!ws.likeById.value[activeLecteur.value.id]?.like : false)
 
@@ -124,15 +117,13 @@ function downloadCurrent() {
 
 /* Demande l'état du like au changement de lecteur / de piste */
 watch(
-  () => [activeLecteur.value?.id, activeLecteur.value?.track?.uri ?? activeLecteur.value?.track?.title],
+  [() => activeLecteur.value?.id, () => activeLecteur.value?.track?.uri ?? activeLecteur.value?.track?.title],
   () => { if (activeLecteur.value) ws.getLike(activeLecteur.value.id) },
   { immediate: true }
 )
 
 /* ── Volume (local) ─────────────────────────────────────────────────────── */
 
-
-const clamp  = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n))
 
 const _setVolumeDebounced = useDebounceFn((value: number) => {
   ws.setVolume(activeLecteur.value?.id, clamp(value))

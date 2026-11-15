@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap } from '../lib/https'
 
 /**
  * Client API « Clés d'application » — configuration des providers (app_key).
@@ -15,8 +15,6 @@ export interface ProviderKeys {
 
 /** Map { spotify: {...}, deezer: {...}, … } */
 export type KeysMap = Record<string, ProviderKeys>
-
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
 
 /** Toutes les clés par provider (secrets masqués) */
 export async function getKeys(): Promise<KeysMap> {

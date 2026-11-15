@@ -18,7 +18,7 @@ function decodeJwt(token: string): any {
 }
 
 const _useCurrentUser = () => {
-  const token = useCookie<string | null>('TOKEN')
+  const token = useCookie<string | null>(CookieName.TOKEN)
 
   const user = computed<CurrentUser | null>(() => {
     if (!token.value) return null

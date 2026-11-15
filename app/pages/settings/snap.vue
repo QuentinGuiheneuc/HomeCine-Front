@@ -85,7 +85,6 @@ const okMsg = ref<string | null>(null)
 const applying = ref(false)
 const saving = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
-const actionBusy = ref<string | null>(null)
 
 const savedSnapshot = ref(JSON.stringify(cfg))
 const canSave = computed(() => JSON.stringify(cfg) !== savedSnapshot.value)

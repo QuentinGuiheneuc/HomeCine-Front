@@ -26,15 +26,6 @@ const errorMsg = ref<string | null>(null)
 
 const lecteur = ref<Lecteur | null>(null)
 
-const rateItems = [
-  { label: '22050 Hz', value: 22050 },
-  { label: '24000 Hz', value: 24000 },
-  { label: '32000 Hz', value: 32000 },
-  { label: '44100 Hz', value: 44100 },
-  { label: '48000 Hz', value: 48000 },
-  { label: '96000 Hz', value: 96000 }
-]
-
 const streamTypeItems = [
   { label: 'LocalStream', value: 'localStream' },
   { label: 'StreamOutFifo', value: 'StreamOutFifo' }
@@ -47,13 +38,6 @@ const audioConfigItems = [
   { label: '7.1', value: '7.1' }
 ]
 
-const channelItems = [
-  { label: 'FL', value: 'FL' }, { label: 'FR', value: 'FR' },
-  { label: 'FC', value: 'FC' }, { label: 'LFE', value: 'LFE' },
-  { label: 'BL', value: 'BL' }, { label: 'BR', value: 'BR' },
-  { label: 'SL', value: 'SL' }, { label: 'SR', value: 'SR' }
-]
-
 const cfg = ref<any>({
   name: '',
   backend: 'pipe',
@@ -64,13 +48,13 @@ const cfg = ref<any>({
   'path-audio': '/tmp/',
   typeStream: 'localStream',
   frames_per_buffer: 1024,
-  localStream: { output_device_index: 0, 'path-audio': '' },
-  StreamOutFifo: { fifo_id: null, 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
+  localStream: defaultLocalStream(),
+  StreamOutFifo: defaultStreamOutFifo()
 })
 
 function ensureSubConfigs() {
-  if (!cfg.value.localStream) cfg.value.localStream = { output_device_index: 0, 'path-audio': '' }
-  if (!cfg.value.StreamOutFifo) cfg.value.StreamOutFifo = { fifo_id: null, 'path-audio': '', channels: 8, rate: 48000, config: '7.1' }
+  if (!cfg.value.localStream) cfg.value.localStream = defaultLocalStream()
+  if (!cfg.value.StreamOutFifo) cfg.value.StreamOutFifo = defaultStreamOutFifo()
   if (!cfg.value.typeStream) cfg.value.typeStream = 'localStream'
 }
 
@@ -81,7 +65,6 @@ const confEq = ref({
   path_eq: '',
   order: ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'SL', 'SR']
 })
-const newChannel = ref<string>('FL')
 
 /* ── EQ Presets ─────────────────────────────────────── */
 const eqPresets     = ref<EqPreset[]>([])
@@ -224,15 +207,6 @@ async function onStop() {
   } catch {
     toast.add({ title: 'Stop impossible', color: 'error' })
   }
-}
-
-function removeChannel(i: number) {
-  confEq.value.order.splice(i, 1)
-}
-function addChannel() {
-  const ch = newChannel.value
-  if (!ch || confEq.value.order.includes(ch)) return
-  confEq.value.order.push(ch)
 }
 
 onMounted(async () => {

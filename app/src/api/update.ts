@@ -1,4 +1,4 @@
-import http from '../lib/https'
+import http, { unwrap } from '../lib/https'
 
 /**
  * Client API « Mise à jour » — versions des outils et dépôts git suivis.
@@ -42,8 +42,6 @@ export interface InstallState {
   sortie?: string         // les 8 derniers Ko du script
   [k: string]: any
 }
-
-const unwrap = <T>(res: any): T => res?.data?.data ?? res?.data ?? res
 
 /* ── Helpers d'affichage ────────────────────────────────────────────────── */
 
