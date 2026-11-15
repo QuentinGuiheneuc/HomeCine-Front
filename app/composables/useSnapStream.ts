@@ -79,9 +79,13 @@ export function useSnapStream(opts: UseSnapStreamOptions) {
   const error = ref<string | null>(null)
   const format = ref<SnapFormat | null>(null)
   /** RMS lissé par canal, en dBFS (-60 = silence). */
-  const levels = ref<number[]>([])
+  const levels = shallowRef<number[]>([])
   /** Identité de notre client côté snapserver — sert à retrouver notre groupe. */
-  const clientId = `homecine-eq-meter-${Math.random().toString(36).slice(2, 10)}`
+  /* Snapcast reconnait un client par l'ID de son Hello. Un ID stable lui fait
+     retrouver son volume et son groupe ; un ID aleatoire creait un client de
+     plus a chaque connexion, qui s'accumulaient dans la liste. */
+  const { user } = useCurrentUser()
+  const clientId = `homecine-eq-meter-${user.value?.id ?? 'anon'}`
 
   let ws: WebSocket | null = null
   let decoder: SnapDecoder | null = null
@@ -104,7 +108,7 @@ export function useSnapStream(opts: UseSnapStreamOptions) {
      Afficher les niveaux à l'arrivée les ferait donc bouger ~1 s avant le son.
      On retarde l'affichage d'autant pour coller à ce qu'on entend. */
   const bufferMs = ref(0)
-  let pending: ReturnType<typeof setTimeout>[] = []
+  const pending = new Set<ReturnType<typeof setTimeout>>()
 
   /** Publie les niveaux à l'instant où le son sera réellement joué. */
   function publish(next: number[]) {
@@ -114,10 +118,10 @@ export function useSnapStream(opts: UseSnapStreamOptions) {
       return
     }
     const t = setTimeout(() => {
-      pending = pending.filter(x => x !== t)
+      pending.delete(t)
       applyBallistics(next)
     }, delay)
-    pending.push(t)
+    pending.add(t)
   }
 
   /**
@@ -291,9 +295,23 @@ export function useSnapStream(opts: UseSnapStreamOptions) {
       error.value = 'Connexion impossible au pont /snaplive'
     }
 
-    ws.onclose = () => {
-      if (status.value !== 'error') status.value = 'disconnected'
+    ws.onclose = (e: CloseEvent) => {
       stopTimers()
+      if (status.value === 'error') return
+      status.value = e.code === 4000 ? 'idle' : 'disconnected'
+
+      // 4000 = le meme utilisateur a ouvert /snaplive ailleurs. Se reconnecter
+      // ferait se couper deux onglets a l'infini : on s'arrete et on le dit.
+      if (e.code === 4000) {
+        levels.value = []
+        error.value = 'Écoute reprise sur un autre appareil'
+      } else if (e.code === 1013) {
+        error.value = e.reason || 'Flux interrompu : reconnecte-toi pour repartir en direct'
+      } else if (e.code === 1008) {
+        error.value = `Authentification refusée (${e.reason || 'token'})`
+      } else if (e.code !== 1000) {
+        error.value = e.reason || `Connexion fermée (code ${e.code})`
+      }
     }
   }
 
@@ -316,7 +334,7 @@ export function useSnapStream(opts: UseSnapStreamOptions) {
     seen = 0
     decoding = false
     pending.forEach(clearTimeout)
-    pending = []
+    pending.clear()
     bufferMs.value = 0
     // Les navigateurs plafonnent le nombre d'AudioContext simultanés : on rend
     // celui-ci plutôt que de le laisser ouvert entre deux connexions.
