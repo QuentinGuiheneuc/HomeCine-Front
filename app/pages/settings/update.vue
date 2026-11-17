@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
-  getUpdateState, updateYtdlp, getRepos, addRepo, setRepoEnabled, deleteRepo,
-  startInstall, getInstall, toolText, toolOk, formatUptime,
+  getUpdateState, updateYtdlp, addRepo, setRepoEnabled, deleteRepo,
+  startInstall, getInstall, toolText, toolOk, formatUptime, verifBadge,
   type UpdateState, type UpdateRepo, type InstallState
 } from '@/src/api/update'
 import { getOta, fetchOta, updateOta, otaEtat, type OtaDepot, type OtaClient } from '@/src/api/ota'
@@ -27,7 +27,7 @@ async function load() {
   try {
     const st = await getUpdateState()
     state.value = st
-    repos.value = Array.isArray(st.repos) && st.repos.length ? st.repos : await getRepos().catch(() => [])
+    repos.value = st.repos ?? []
   } catch {
     toast.add({ title: 'État indisponible', color: 'error' })
   } finally { pending.value = false }
@@ -46,7 +46,8 @@ async function onUpdateYtdlp() {
     if (res.sortie) { outTitle.value = 'yt-dlp'; outText.value = res.sortie; outOpen.value = true }
     await load()
   } catch (e: any) {
-    toast.add({ title: 'Mise à jour impossible', description: apiError(e, 'yt-dlp absent ou échec'), color: 'error' })
+    // 400 : `indice` donne la commande à lancer quand yt-dlp vient de pip, à afficher tel quel
+    toast.add({ title: 'Mise à jour impossible', description: e?.response?.data?.indice ?? apiError(e, 'yt-dlp absent ou échec'), color: 'error' })
   } finally { busy.value = null }
 }
 
@@ -66,11 +67,19 @@ function ensurePolling() {
   if (poll) return
   poll = setInterval(async () => {
     if (!runningIds.value.length) { clearInterval(poll!); poll = null; return }
-    for (const id of runningIds.value) await refreshInstall(id)
+    for (const id of runningIds.value) {
+      await refreshInstall(id)
+      const st = installs.value[id]
+      if (st?.etat === 'en cours') continue
+      // terminé, ou suivi perdu (install.sh a redémarré le serveur) : relire les dépôts, montrer la sortie
+      load()
+      if (st) openSortie(st.repo ?? String(id), st)
+    }
   }, 2000)
 }
 
 async function onInstall(r: UpdateRepo) {
+  if (r.id == null) return
   busy.value = `inst:${r.id}`
   try {
     await startInstall(r.id)
@@ -93,26 +102,33 @@ const outTitle = ref('')
 const outText  = ref('')
 
 async function showInstall(r: UpdateRepo) {
+  if (r.id == null) return
   await refreshInstall(r.id)
   const st = installs.value[r.id]
   if (!st) { toast.add({ title: 'Jamais lancé', description: r.nom, color: 'neutral' }); return }
-  outTitle.value = `${r.nom} — ${st.etat}`
-  outText.value  = st.sortie || '(aucune sortie)'
-  outOpen.value  = true
+  openSortie(r.nom, st)
+}
+
+function openSortie(nom: string, st: InstallState) {
+  outTitle.value = `${nom} — ${st.etat}`
+  outText.value = st.sortie || '(aucune sortie)'
+  outOpen.value = true
 }
 
 const etatColor = (e?: string) => e === 'ok' ? 'success' : e === 'echec' ? 'error' : e === 'en cours' ? 'warning' : 'neutral'
 
 /* ── Dépôts ─────────────────────────────────────────────────────────────── */
 async function onToggle(r: UpdateRepo, value: boolean) {
+  if (r.id == null) return
   busy.value = `en:${r.id}`
-  try { await setRepoEnabled(r.id, value); r.enabled = value }
+  // puis relire GET /update : activer fait apparaître branche, commit et vérification
+  try { await setRepoEnabled(r.id, value); r.enabled = value; await load() }
   catch (e: any) { toast.add({ title: 'Modification impossible', description: apiError(e), color: 'error' }) }
   finally { busy.value = null }
 }
 
 async function onDelete(r: UpdateRepo) {
-  if (!confirm(`Retirer le dépôt « ${r.nom} » du suivi ?`)) return
+  if (r.id == null || !confirm(`Retirer le dépôt « ${r.nom} » du suivi ?`)) return
   busy.value = `del:${r.id}`
   try { await deleteRepo(r.id); await load(); toast.add({ title: 'Dépôt retiré', color: 'success' }) }
   catch { toast.add({ title: 'Suppression impossible', color: 'error' }) }
@@ -232,7 +248,7 @@ onUnmounted(() => {
   <div>
     <UPageCard
       title="Mise à jour"
-      description="Versions des outils et dépôts git suivis. L'état des dépôts est local : aucun git fetch n'est fait."
+      description="Versions des outils et dépôts git suivis. Le serveur vérifie chaque heure le retard des dépôts activés sur leur origine, sans rien installer."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
@@ -283,7 +299,7 @@ onUnmounted(() => {
     </UPageCard>
 
     <div v-else class="grid gap-2">
-      <UPageCard v-for="r in repos" :key="r.id" variant="subtle" :ui="{ container: 'p-4 gap-y-3' }">
+      <UPageCard v-for="r in repos" :key="r.chemin" variant="subtle" :ui="{ container: 'p-4 gap-y-3' }">
         <div class="flex items-center gap-3">
           <UIcon name="i-lucide-git-branch" class="size-6 shrink-0" :class="r.erreur ? 'text-error' : r.enabled ? 'text-primary' : 'text-dimmed'" />
 
@@ -294,7 +310,17 @@ onUnmounted(() => {
               <UBadge v-if="r.propre === false" color="warning" variant="subtle" size="xs" icon="i-lucide-triangle-alert">
                 modifs non commitées
               </UBadge>
-              <UBadge v-if="installs[r.id]?.etat" :color="etatColor(installs[r.id]?.etat)" variant="subtle" size="xs">
+              <UTooltip v-if="verifBadge(r.verification)" :text="verifBadge(r.verification)!.info">
+                <UBadge
+                  :color="verifBadge(r.verification)!.color"
+                  variant="subtle"
+                  size="xs"
+                  icon="i-lucide-git-compare"
+                >
+                  {{ verifBadge(r.verification)!.label }}
+                </UBadge>
+              </UTooltip>
+              <UBadge v-if="r.id != null && installs[r.id]?.etat" :color="etatColor(installs[r.id]?.etat)" variant="subtle" size="xs">
                 install : {{ installs[r.id]?.etat }}
               </UBadge>
             </div>
@@ -303,12 +329,24 @@ onUnmounted(() => {
             <p v-else-if="r.commit" class="text-[11px] text-dimmed font-mono truncate mt-0.5">{{ r.commit }}</p>
           </div>
 
-          <div class="flex items-center gap-2 shrink-0">
+          <UButton
+            v-if="r.id != null && r.verification?.enRetard"
+            label="Installer"
+            size="xs"
+            color="primary"
+            variant="soft"
+            icon="i-lucide-play"
+            class="shrink-0"
+            :loading="busy === `inst:${r.id}`"
+            @click="onInstall(r)"
+          />
+          <div v-if="r.id != null" class="flex items-center gap-2 shrink-0">
             <span class="text-xs text-dimmed hidden sm:inline">Suivi</span>
             <USwitch :model-value="!!r.enabled" :disabled="busy === `en:${r.id}`" @update:model-value="(v) => onToggle(r, v)" />
           </div>
 
           <UDropdownMenu
+            v-if="r.id != null"
             :items="[[
               { label: 'Lancer install.sh', icon: 'i-lucide-play',       onSelect: () => onInstall(r) },
               { label: 'Voir la sortie',    icon: 'i-lucide-scroll-text', onSelect: () => showInstall(r) },

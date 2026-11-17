@@ -2,15 +2,23 @@ import http, { unwrap } from '../lib/https'
 
 /**
  * Client API « Mise à jour » — versions des outils et dépôts git suivis.
- * ⚠️ GET /update ne fait aucun `git fetch` : il rend l'état LOCAL du serveur,
- * il ne signalera donc jamais un retard sur l'origine.
+ * Contrat : HomeCine-Serv/docs/update.md. GET /update ne fait aucun appel réseau ;
+ * le retard sur l'origine (`verification`) vient d'un service du serveur (toutes les heures).
  */
 
 /** Version d'un outil, ou { erreur } s'il n'est pas installé */
 export type ToolInfo = string | { erreur: string } | null | undefined
 
+/** Dernière comparaison avec l'origine ; `erreur` : fetch impossible ou branche sans suivi distant */
+export interface RepoVerification {
+  enRetard?: number
+  erreur?: string
+  le: string
+}
+
 export interface UpdateRepo {
-  id:       number
+  /** absent quand la liste vient du repli (base vide) : rien à activer ni installer */
+  id?:      number
   nom:      string
   chemin:   string
   enabled?: boolean
@@ -18,6 +26,8 @@ export interface UpdateRepo {
   commit?:  string        // "47dabd1 2026-08-27 sujet du commit"
   propre?:  boolean       // false = modifications non commitées sur le serveur
   erreur?:  string        // remplace branche/commit si le dossier est illisible
+  /** absente avant la première vérification, et pour un dépôt désactivé */
+  verification?: RepoVerification
   [k: string]: any
 }
 
@@ -60,6 +70,16 @@ export function formatUptime(sec?: number): string {
   const h = Math.floor((sec % 86400) / 3600)
   const m = Math.floor((sec % 3600) / 60)
   return [d ? `${d} j` : '', h ? `${h} h` : '', `${m} min`].filter(Boolean).join(' ')
+}
+
+/** Badge du retard sur l'origine (doc §6) ; null avant la première vérification */
+export function verifBadge(v?: RepoVerification) {
+  if (!v) return null
+  if (v.erreur) return { label: 'origine non vérifiée', color: 'warning' as const, info: v.erreur }
+  const n = v.enRetard ?? 0
+  const info = `vérifié le ${new Date(v.le).toLocaleString()}`
+  if (!n) return { label: 'à jour', color: 'success' as const, info }
+  return { label: `${n} commit${n > 1 ? 's' : ''} de retard`, color: 'info' as const, info }
 }
 
 /* ── État global ────────────────────────────────────────────────────────── */
