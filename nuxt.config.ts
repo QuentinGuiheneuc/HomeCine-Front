@@ -15,6 +15,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // Variables uniquement serveur
     hostServ: process.env.HOST_SERV || '192.168.1.19',
+    portServ: Number(process.env.PORT_SERV || 3007),
     port: Number(process.env.PORT || 3007),
 
     public: {
@@ -37,19 +38,8 @@ export default defineNuxtConfig({
 
   compatibilityDate: '2024-07-11',
 
-  nitro: {
-    routeRules: {
-      // Refresh token
-      '/refresh': {
-        proxy: `http://${process.env.HOST_SERV || '192.168.1.19'}:${process.env.PORT_SERV || 3007}/refresh`
-      },
-
-      // API backend
-      '/proxy/**': {
-        proxy: `http://${process.env.HOST_SERV || '192.168.1.19'}:${process.env.PORT_SERV || 3007}/**`
-      }
-    }
-  },
+  // Le relais vers le back-end (/proxy/** et /refresh) est dans
+  // server/middleware/backend.ts : il lit HOST_SERV / PORT_SERV à l'exécution.
 
   eslint: {
     config: {

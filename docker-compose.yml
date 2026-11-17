@@ -1,0 +1,22 @@
+# Front HomeCine dans un conteneur :
+#   docker compose up -d --build
+#
+# Les réglages viennent de .env (sinon des valeurs par défaut ci-dessous) et
+# sont lus au démarrage du conteneur : après un changement, `docker compose up -d`
+# suffit, sans reconstruire l'image.
+#
+# HOST n'est volontairement pas transmis : le conteneur écoute sur ses propres
+# interfaces. API_URL garde sa valeur par défaut (/proxy).
+services:
+  front:
+    build: .
+    image: homecine-front
+    environment:
+      HOST_SERV: ${HOST_SERV:-192.168.1.19}
+      PORT_SERV: ${PORT_SERV:-3007}
+      PORT_WS: ${PORT_WS:-8099}
+      PORT_WS_BROADCAST: ${PORT_WS_BROADCAST:-9086}
+      PORT: ${PORT:-3001}
+    ports:
+      - "${PORT:-3001}:${PORT:-3001}"
+    restart: unless-stopped

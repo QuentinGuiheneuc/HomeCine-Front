@@ -85,6 +85,34 @@ pnpm dev
 - le back-end **HomeCine-Serv** joignable : REST sur `:3007`, WebSocket sur `:8099`
   (+ `:9086` pour la découverte des devices).
 
+### Docker
+
+```bash
+docker compose up -d --build
+```
+
+Le front répond alors sur `http://localhost:3001`.
+
+Les réglages sont lus **au démarrage du conteneur**, dans `.env` ou à défaut :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `HOST_SERV` | `192.168.1.19` | Adresse du back-end HomeCine-Serv |
+| `PORT_SERV` | `3007` | Port REST du back-end (relais `/proxy/**` et `/refresh`) |
+| `PORT_WS` | `8099` | Port WebSocket principal |
+| `PORT_WS_BROADCAST` | `9086` | Port WebSocket de découverte des devices |
+| `PORT` | `3001` | Port d'écoute du front, publié sur l'hôte |
+
+Après un changement, `docker compose up -d` suffit : l'image n'est pas reconstruite.
+`HOST` n'est pas transmis au conteneur (il écoute sur ses propres interfaces) et `API_URL` garde `/proxy`.
+
+Sans compose :
+
+```bash
+docker build -t homecine-front .
+docker run -d -p 3001:3001 -e HOST_SERV=192.168.1.40 homecine-front
+```
+
 ---
 
 ## Configuration & proxy

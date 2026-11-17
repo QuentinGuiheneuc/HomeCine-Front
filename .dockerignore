@@ -1,0 +1,23 @@
+# Dépendances et sorties de build : reconstruites dans l'image
+**/node_modules
+**/.nuxt
+.output
+.nitro
+.cache
+.data
+dist
+
+# Valeurs locales : l'adresse du back-end passe par les arguments de build
+.env
+.env.*
+!.env.example
+
+# Sans utilité pour l'image
+.git
+.github
+.claude
+*.log
+README.pdf
+Dockerfile
+docker-compose.yml
+.dockerignore
