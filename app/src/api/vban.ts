@@ -43,7 +43,7 @@ export interface VbanStream {
 }
 
 export interface VbanState {
-  targetIp?:     string
+  targetIp?:     string | string[] // un HP, ou la liste des HP
   cfg?:          any
   server?:       any
   startDelayMs?: number
@@ -83,15 +83,17 @@ export interface VbanHpAck {
 }
 
 /**
- * Sélectionne une cible : HP d'abord (Vban.Start) → envoi serveur → save.
+ * Sélectionne les HP : HP d'abord (Vban.Start) → envoi serveur → save.
+ * Chaque HP reçoit SON flux, lu par le serveur dans la sortie de `server` qui
+ * vise son IP ; `cfg` ne sert que pour un HP qu'aucune sortie ne vise.
  *
  * ⚠️ `ok: true` ne veut pas dire que tous les HP ont répondu : le serveur
  * démarre le Master malgré les silencieux et se contente de les journaliser.
  * Tester `hp[].pret` pour les signaler.
  */
 export async function selectVban(payload: {
-  targetIp: string; cfg: any; server?: any; startDelayMs?: number
-}): Promise<{ ok?: boolean, targetIp?: string, hp?: VbanHpAck[] }> {
+  targetIp: string | string[]; cfg?: any; server?: any; startDelayMs?: number
+}): Promise<{ ok?: boolean, targetIp?: string | string[], hp?: VbanHpAck[] }> {
   return unwrap(await http.post('/vban/select', payload))
 }
 

@@ -21,8 +21,12 @@ const range = (n?: number) => Array.from({ length: Math.max(0, Math.floor(n || 0
 const RATES   = [44100, 48000, 96000, 192000].map(v => ({ label: `${v} Hz`, value: v }))
 const FORMATS = ['paInt16', 'paInt24', 'paFloat32'].map(v => ({ label: v, value: v }))
 
-const activeTarget = computed(() => state.value?.targetIp ?? null)
-const isActiveIp   = (ip?: string) => !!ip && ip === activeTarget.value
+/* targetIp de l'état : une IP, ou la liste des HP */
+const activeTargets = computed(() => {
+  const t = state.value?.targetIp
+  return Array.isArray(t) ? t : t ? [t] : []
+})
+const isActiveIp   = (ip?: string) => !!ip && activeTargets.value.includes(ip)
 
 /* ── Config de travail ──────────────────────────────────────────────────── */
 const advanced   = ref(false)
@@ -71,6 +75,12 @@ function loadStream(s: VbanStream) {
 const hpIndex   = ref(-1)
 const currentHp = computed(() => (hpIndex.value >= 0 ? channels.value[hpIndex.value] ?? null : null))
 function editHp(i: number) { hpIndex.value = i; hpOpen.value = true }
+
+/* Routage d'un HP (comme le Routage Snapcast) : sa sortie i reçoit le canal channel_use_master[i]
+   du Master, sélection faite par le serveur. Sans routage enregistré : les premiers canaux, dans l'ordre. */
+const routageDe = (b: VbanBlock) => b.channel_use_master ?? range(b.stream?.channels ?? 8)
+/* Lignes de la matrice : Master.channel_use_master, tel qu'assembleConfig l'enregistre */
+const masterCanaux = computed(() => range(master.value.channels ?? 8))
 function addHp() {
   channels.value.push(defaultChannel(`CH${channels.value.length + 1}`))
   hpIndex.value = channels.value.length - 1
@@ -91,10 +101,11 @@ function assembleConfig(): VbanConfig {
     if (!key) continue
     const c = clone(ch.cfg)
     c.nameVban = c.nameVban || key
-    // `channels` a plat : c'est ce que le serveur valide (HpCfgSchema), le
-    // nombre de canaux ne vivait que dans `stream`.
-    c.channels = c.stream?.channels ?? 8
-    c.channel_use_master = range(c.channels)
+    // `channels` a plat : c'est ce que le serveur valide (HpCfgSchema). Lui et
+    // `stream.channels` suivent le routage.
+    c.channel_use_master = routageDe(c)
+    c.channels = c.channel_use_master.length
+    c.stream.channels = c.channels
     cfg[key] = c
   }
   return cfg
@@ -127,16 +138,10 @@ async function onDelete(s: VbanStream) {
 }
 
 /* ── Sélection ──────────────────────────────────────────────────────────── */
-const sel = ref({ targetIp: '', streamId: '', startDelayMs: '' })
+const sel = ref({ targetIps: [] as string[], streamId: '', startDelayMs: '' })
 const selecting = ref(false)
 const streamItems = computed(() => streams.value.map(s => ({ label: s.name, value: String(s.id) })))
 
-/**
- * Config du HP cible, a plat : le serveur valide `nameVban`, `channels` et
- * `channel_use_master` (HpCfgSchema), pas la config complete. On la deduit du
- * bloc dont l'ip correspond, avec repli sur `stream` pour les configs
- * enregistrees avant que `channels` ne soit pose a plat.
- */
 /* Config active : celle du stream choisi, sinon le formulaire en cours. */
 const selectedConfig = computed<VbanConfig>(() => {
   const s = streams.value.find(x => String(x.id) === String(sel.value.streamId))
@@ -151,30 +156,20 @@ const targets = computed(() =>
     .map(([key, b]) => ({ nom: b.nameVban || key, ip: b.ip }))
 )
 
-function hpCfgFor(config: VbanConfig, ip: string) {
-  const bloc = Object.values(config || {}).find(b => b?.ip === ip)
-  if (!bloc) return null
-  const channels = bloc.channels ?? bloc.stream?.channels ?? 8
-  return {
-    nameVban: bloc.nameVban,
-    channels,
-    channel_use_master: bloc.channel_use_master?.length ? bloc.channel_use_master : range(channels),
-    ...(bloc.stream?.rate ? { rate: bloc.stream.rate } : {})
-  }
+function toggleTarget(ip: string) {
+  const l = sel.value.targetIps
+  sel.value.targetIps = l.includes(ip) ? l.filter(x => x !== ip) : [...l, ip]
 }
 
 async function applySelect() {
-  const targetIp = sel.value.targetIp.trim()
-  if (!targetIp) { toast.add({ title: 'IP cible requise', color: 'warning' }); return }
+  // seulement les HP de la config choisie : changer de stream peut en retirer
+  const targetIp = sel.value.targetIps.filter(ip => targets.value.some(t => t.ip === ip))
+  if (!targetIp.length) { toast.add({ title: 'Choisir au moins un HP', color: 'warning' }); return }
   const server = selectedConfig.value
-  const cfg = hpCfgFor(server, targetIp)
-  if (!cfg?.nameVban) {
-    toast.add({ title: 'Cible introuvable', description: `Aucun bloc VBAN avec l'IP ${targetIp}`, color: 'warning' })
-    return
-  }
   selecting.value = true
   try {
-    const res = await selectVban({ targetIp, cfg, server, startDelayMs: sel.value.startDelayMs ? Number(sel.value.startDelayMs) : undefined })
+    // pas de `cfg` : le serveur donne à chaque HP le flux de sa sortie dans `server`
+    const res = await selectVban({ targetIp, server, startDelayMs: sel.value.startDelayMs ? Number(sel.value.startDelayMs) : undefined })
     await load()
     // Le serveur lance le Master meme si des HP n'ont pas confirme : sans ce
     // test on annoncerait un succes pour une piece restee muette.
@@ -233,7 +228,7 @@ onMounted(() => { load(); resetConfig() })
               <div class="flex items-center gap-3 min-w-0"><UIcon name="i-lucide-cast" class="size-7 shrink-0 text-primary" /><p class="font-semibold truncate">Sélection</p></div>
               <UBadge :color="state ? 'success' : 'neutral'" variant="subtle" :icon="state ? 'i-lucide-check-circle' : 'i-lucide-circle-dashed'">{{ state ? 'En diffusion' : 'Arrêté' }}</UBadge>
             </div>
-            <p class="text-xs text-dimmed truncate">{{ state ? state.targetIp : 'Aucune cible active' }}</p>
+            <p class="text-xs text-dimmed truncate">{{ state ? activeTargets.join(', ') : 'Aucune cible active' }}</p>
           </UPageCard>
 
           <UPageCard variant="subtle" class="cursor-pointer transition-shadow" :class="tab === 'streams' ? 'ring-2 ring-primary' : 'hover:ring-1 hover:ring-default'" :ui="{ container: 'p-4 gap-y-2' }" @click="tab = 'streams'">
@@ -254,7 +249,7 @@ onMounted(() => { load(); resetConfig() })
             <div class="min-w-0 flex-1">
               <p class="text-[11px] uppercase tracking-widest text-dimmed">Sélection active</p>
               <template v-if="state">
-                <p class="text-lg font-bold leading-tight truncate">{{ state.targetIp || '—' }}</p>
+                <p class="text-lg font-bold leading-tight truncate">{{ activeTargets.join(', ') || '—' }}</p>
                 <p v-if="state.startDelayMs != null" class="text-xs text-dimmed">Délai : {{ state.startDelayMs }} ms</p>
               </template>
               <p v-else class="text-base font-medium text-dimmed">Aucune cible active</p>
@@ -264,7 +259,7 @@ onMounted(() => { load(); resetConfig() })
           <div class="px-5 py-4 border-t border-default space-y-3">
             <div>
               <p class="text-xs text-dimmed mb-1.5">
-                Cible
+                Cibles
               </p>
               <p v-if="!targets.length" class="text-sm text-dimmed italic">
                 Aucun haut-parleur dans cette config.
@@ -275,13 +270,14 @@ onMounted(() => { load(); resetConfig() })
                   :key="t.ip"
                   type="button"
                   class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-left transition-colors"
-                  :class="sel.targetIp === t.ip ? 'border-primary bg-primary/10' : 'border-default hover:bg-elevated/40'"
-                  @click="sel.targetIp = t.ip"
+                  :class="sel.targetIps.includes(t.ip) ? 'border-primary bg-primary/10' : 'border-default hover:bg-elevated/40'"
+                  :aria-pressed="sel.targetIps.includes(t.ip)"
+                  @click="toggleTarget(t.ip)"
                 >
                   <UIcon
                     name="i-lucide-speaker"
                     class="size-4 shrink-0"
-                    :class="sel.targetIp === t.ip ? 'text-primary' : 'text-dimmed'"
+                    :class="sel.targetIps.includes(t.ip) ? 'text-primary' : 'text-dimmed'"
                   />
                   <span class="text-sm font-medium">{{ t.nom }}</span>
                   <span class="text-xs text-dimmed font-mono">{{ t.ip }}</span>
@@ -438,13 +434,23 @@ onMounted(() => { load(); resetConfig() })
           <UFormField label="Port"><UInput v-model.number="currentHp.cfg.port" type="number" class="w-full" /></UFormField>
           <template v-if="advanced">
             <UFormField label="Name Stream"><UInput v-model="currentHp.cfg.nameVban" class="w-full" /></UFormField>
-            <UFormField label="Canaux"><UInput v-model.number="currentHp.cfg.stream.channels" type="number" class="w-full" /></UFormField>
             <UFormField label="Format"><USelect :model-value="String(currentHp.cfg.stream.format ?? '')" :items="FORMATS" class="w-full" @update:model-value="(v: string) => currentHp!.cfg.stream.format = v" /></UFormField>
             <UFormField label="Fréquence"><USelect v-model="currentHp.cfg.stream.rate" :items="RATES" class="w-full" /></UFormField>
             <UFormField label="Retard"><UInput v-model.number="currentHp.cfg.retard" type="number" class="w-full" /></UFormField>
             <UFormField label="Func"><UInput v-model="currentHp.cfg.stream.func" class="w-full" /></UFormField>
           </template>
         </div>
+        <template v-if="advanced">
+          <USeparator label="Canaux" />
+          <RoutageMatrice
+            :model-value="routageDe(currentHp.cfg)"
+            :sources="masterCanaux"
+            @update:model-value="(m: number[]) => currentHp!.cfg.channel_use_master = m"
+          />
+          <p class="text-xs text-dimmed font-mono">
+            [{{ routageDe(currentHp.cfg).join(', ') }}]
+          </p>
+        </template>
         <div class="flex items-center justify-between border-t border-default pt-3">
           <UButton label="Supprimer" color="error" variant="soft" icon="i-lucide-trash-2" @click="removeHp(hpIndex)" />
           <UButton label="OK" color="primary" icon="i-lucide-check" @click="hpOpen = false" />
