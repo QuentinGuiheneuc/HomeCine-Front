@@ -6,7 +6,7 @@ import {
   pullRepo, getBranches, setBranch,
   type UpdateState, type UpdateRepo, type InstallState, type RepoAction, type RepoBranche
 } from '@/src/api/update'
-import { getOta, fetchOta, updateOta, otaEtat, type OtaDepot, type OtaClient } from '@/src/api/ota'
+import { getOta, verifyOta, fetchOta, updateOta, otaEtat, type OtaDepot, type OtaClient } from '@/src/api/ota'
 
 definePageMeta({ middleware: 'admin' })
 
@@ -267,6 +267,17 @@ function suivreOta() {
   }, 3000)
 }
 
+async function onOtaVerify() {
+  busy.value = 'ota:verify'
+  try {
+    ota.value = { ...ota.value, depot: await verifyOta() }
+  } catch (e) {
+    toast.add({ title: 'Vérification impossible', description: apiError(e), color: 'error' })
+  } finally {
+    busy.value = null
+  }
+}
+
 async function onOtaFetch() {
   busy.value = 'ota:fetch'
   try {
@@ -455,6 +466,14 @@ onUnmounted(() => {
     >
       <div class="flex gap-2 lg:ms-auto">
         <UButton
+          label="Vérifier"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-refresh-cw"
+          :loading="busy === 'ota:verify'"
+          @click="onOtaVerify"
+        />
+        <UButton
           label="Récupérer"
           color="neutral"
           variant="soft"
@@ -493,6 +512,16 @@ onUnmounted(() => {
             {{ ota.depot.branche }}
           </UBadge>
           <span v-if="ota.depot.date" class="text-xs text-dimmed">{{ new Date(ota.depot.date).toLocaleString() }}</span>
+          <UTooltip v-if="verifBadge(ota.depot.verification, true)" :text="verifBadge(ota.depot.verification, true)!.info">
+            <UBadge
+              :color="verifBadge(ota.depot.verification, true)!.color"
+              variant="subtle"
+              size="xs"
+              icon="i-lucide-git-compare"
+            >
+              {{ verifBadge(ota.depot.verification, true)!.label }}
+            </UBadge>
+          </UTooltip>
         </div>
         <p v-if="ota.depot.sujet" class="text-xs text-dimmed truncate">
           {{ ota.depot.sujet }}

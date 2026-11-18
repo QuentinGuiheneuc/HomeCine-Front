@@ -72,14 +72,18 @@ export function formatUptime(sec?: number): string {
   return [d ? `${d} j` : '', h ? `${h} h` : '', `${m} min`].filter(Boolean).join(' ')
 }
 
-/** Badge du retard sur l'origine (doc §6) ; null avant la première vérification */
-export function verifBadge(v?: RepoVerification) {
+/**
+ * Badge du retard sur l'origine (doc §6) ; null avant la première vérification.
+ * `dispo` : formulé « N commits disponibles » (clone OTA, docs/ota.md §2).
+ */
+export function verifBadge(v?: RepoVerification, dispo = false) {
   if (!v) return null
   if (v.erreur) return { label: 'origine non vérifiée', color: 'warning' as const, info: v.erreur }
   const n = v.enRetard ?? 0
   const info = `vérifié le ${new Date(v.le).toLocaleString()}`
   if (!n) return { label: 'à jour', color: 'success' as const, info }
-  return { label: `${n} commit${n > 1 ? 's' : ''} de retard`, color: 'info' as const, info }
+  const s = n > 1 ? 's' : ''
+  return { label: dispo ? `${n} commit${s} disponible${s}` : `${n} commit${s} de retard`, color: 'info' as const, info }
 }
 
 /* ── État global ────────────────────────────────────────────────────────── */

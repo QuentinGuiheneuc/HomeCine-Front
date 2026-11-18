@@ -1,4 +1,5 @@
 import http, { unwrap } from '../lib/https'
+import type { RepoVerification } from './update'
 
 /**
  * Client API « OTA » — mise à jour des HP (HomeCine-Client) depuis le serveur.
@@ -10,6 +11,8 @@ export interface OtaDepot {
   branche?: string
   date?: string
   sujet?: string
+  /** clone du serveur comparé à GitHub ; absent tant qu'aucune vérification depuis le démarrage */
+  verification?: RepoVerification
 }
 
 /** Dernière mise à jour demandée à un HP (en mémoire côté serveur) */
@@ -39,6 +42,11 @@ export interface OtaClient {
 export async function getOta(): Promise<{ depot: OtaDepot, clients: OtaClient[] }> {
   const d = unwrap<{ depot: OtaDepot, clients?: OtaClient[] }>(await http.get('/ota/client'))
   return { depot: d.depot, clients: d.clients ?? [] }
+}
+
+/** git fetch du clone : combien de commits GitHub a de plus (rien n'est récupéré). 503 = clone absent */
+export async function verifyOta(): Promise<OtaDepot> {
+  return unwrap<{ depot: OtaDepot }>(await http.post('/ota/client/verify')).depot
 }
 
 /** git pull --ff-only du clone client sur le serveur */
