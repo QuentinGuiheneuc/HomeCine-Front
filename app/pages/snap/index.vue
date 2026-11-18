@@ -260,12 +260,8 @@ function openChannelMap(c: SnapClient, g: SnapGroup) {
 function applyDraft() {
   if (cmClient.value) applyChannelMap(cmClient.value.id, [...cmDraft.value])
 }
-function setOutput(i: number, src: number) { cmDraft.value[i] = src; applyDraft() }
-function addOutput() {
-  if (cmDraft.value.length >= cmMaxOutputs.value) return   // pas plus que device.channels
-  cmDraft.value.push(0); applyDraft()
-}
-function removeOutput(i: number) { cmDraft.value.splice(i, 1); applyDraft() }
+function setDraft(m: number[]) { cmDraft.value = m; applyDraft() }
+const cmSources = computed(() => Array.from({ length: cmChannels.value }, (_, i) => i))
 async function removeClientFromGroup(groupId: string, clientId: string) {
   const group = groups.value.find(g => g.id === groupId)
 
@@ -870,52 +866,13 @@ onUnmounted(() => {
     <UModal v-model:open="cmOpen" :title="`Routage — ${cmClient?.name || cmClient?.host?.name || cmClient?.id || ''}`" :ui="{ content: 'max-w-fit' }">
       <template #content>
         <div class="p-5 space-y-3">
-          <div class="flex items-center justify-between gap-4">
-            <p class="text-xs text-dimmed">
-              Ligne = <b>source</b>, colonne = <b>sortie</b>. Clic = router (en direct).
-              <span class="text-dimmed/70">· {{ cmDraft.length }}/{{ cmMaxOutputs }} sorties</span>
-            </p>
-            <UButton
-              icon="i-lucide-plus" size="xs" variant="soft" color="neutral"
-              :disabled="cmDraft.length >= cmMaxOutputs"
-              @click="addOutput"
-            >Sortie</UButton>
-          </div>
-
-          <p v-if="!cmDraft.length || !cmChannels" class="text-sm text-dimmed italic py-2">Aucune sortie / flux sans canaux.</p>
-
-          <div v-else class="overflow-auto max-h-[62vh]">
-            <table class="border-separate" style="border-spacing: 4px">
-              <thead>
-                <tr>
-                  <th class="w-8 h-8 text-dimmed">
-                    <UIcon name="i-lucide-x" class="size-4" />
-                  </th>
-                  <th v-for="(src, o) in cmDraft" :key="o" class="align-bottom">
-                    <div class="flex flex-col items-center gap-0.5">
-                      <span class="text-[11px] font-mono text-dimmed">{{ o }}</span>
-                      <UButton icon="i-lucide-x" size="2xs" color="error" variant="ghost" :padded="false" class="p-0.5" @click="removeOutput(o)" />
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="s in cmChannels" :key="s">
-                  <td class="text-[11px] font-mono text-dimmed text-right pr-1 w-8">{{ s - 1 }}</td>
-                  <td v-for="(src, o) in cmDraft" :key="o" class="p-0">
-                    <button
-                      class="w-8 h-8 rounded-md border border-default/60 transition-colors"
-                      :class="cmDraft[o] === (s - 1)
-                        ? 'bg-primary hover:bg-primary/90'
-                        : 'bg-error/15 hover:bg-error/30'"
-                      :title="`Sortie ${o} ← Source ${s - 1}`"
-                      @click="setOutput(o, s - 1)"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <!-- appliqué en direct : chaque clic envoie Client.SetChannelMap -->
+          <RoutageMatrice
+            :model-value="cmDraft"
+            :sources="cmSources"
+            :max="cmMaxOutputs"
+            @update:model-value="setDraft"
+          />
 
           <div class="flex items-center justify-between border-t border-default pt-3">
             <span class="text-xs text-dimmed font-mono">[{{ cmDraft.join(', ') }}]</span>
