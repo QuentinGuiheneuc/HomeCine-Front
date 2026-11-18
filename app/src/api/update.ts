@@ -112,6 +112,48 @@ export async function setRepoEnabled(id: number | string, enabled: boolean) {
   )
 }
 
+/** git fetch + retard sur l'origine, tout de suite (jusqu'à ~40 s). Un fetch raté est dans `verification.erreur`. */
+export async function verifyRepo(id: number | string) {
+  return unwrap<{ id: number, nom: string, verification: RepoVerification }>(
+    await http.post(`/update/repos/${id}/verify`, {})
+  )
+}
+
+export interface RepoBranche {
+  nom: string
+  /** existe dans le dépôt du serveur */
+  locale: boolean
+  /** existe sur l'origine, au dernier fetch */
+  distante: boolean
+}
+
+/** Réponse de …/pull et …/branch (aussi en 400, avec ok: false : refusé par git, rien n'est touché) */
+export interface RepoAction {
+  id: number
+  nom: string
+  ok: boolean
+  sortie: string
+  /** même forme qu'une entrée de GET /update : remplace la carte du dépôt */
+  etat?: UpdateRepo
+}
+
+/** git pull --ff-only, sans rien installer ni redémarrer. 409 = installation en cours */
+export async function pullRepo(id: number | string) {
+  return unwrap<RepoAction>(await http.post(`/update/repos/${id}/pull`, {}))
+}
+
+/** Branches locales et distantes (au dernier fetch, aucun appel réseau) */
+export async function getBranches(id: number | string) {
+  return unwrap<{ id: number, nom: string, actuelle: string, branches: RepoBranche[] }>(
+    await http.get(`/update/repos/${id}/branches`)
+  )
+}
+
+/** git switch (une branche seulement distante est créée et suit l'origine). Rien n'est installé. */
+export async function setBranch(id: number | string, branche: string) {
+  return unwrap<RepoAction>(await http.put(`/update/repos/${id}/branch`, { branche }))
+}
+
 export async function deleteRepo(id: number | string) {
   return unwrap<{ ok: boolean; id: number }>(await http.delete(`/update/repos/${id}`))
 }

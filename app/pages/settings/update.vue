@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
-  getUpdateState, updateYtdlp, addRepo, setRepoEnabled, deleteRepo,
+  getUpdateState, updateYtdlp, addRepo, setRepoEnabled, deleteRepo, verifyRepo,
   startInstall, getInstall, toolText, toolOk, formatUptime, verifBadge,
-  type UpdateState, type UpdateRepo, type InstallState
+  pullRepo, getBranches, setBranch,
+  type UpdateState, type UpdateRepo, type InstallState, type RepoAction, type RepoBranche
 } from '@/src/api/update'
 import { getOta, fetchOta, updateOta, otaEtat, type OtaDepot, type OtaClient } from '@/src/api/ota'
 
@@ -125,6 +126,68 @@ async function onToggle(r: UpdateRepo, value: boolean) {
   try { await setRepoEnabled(r.id, value); r.enabled = value; await load() }
   catch (e: any) { toast.add({ title: 'Modification impossible', description: apiError(e), color: 'error' }) }
   finally { busy.value = null }
+}
+
+async function onVerify(r: UpdateRepo) {
+  if (r.id == null) return
+  busy.value = `verif:${r.id}`
+  try {
+    r.verification = (await verifyRepo(r.id)).verification
+  } catch (e) {
+    toast.add({ title: 'Vérification impossible', description: apiError(e), color: 'error' })
+  } finally {
+    busy.value = null
+  }
+}
+
+/* …/pull et …/branch : `etat` remplace la carte ; en 400, git a refusé et rien n'est touché */
+async function repoAction(r: UpdateRepo, cle: string, titre: string, appel: () => Promise<RepoAction>) {
+  busy.value = cle
+  try {
+    const res = await appel()
+    if (res.etat) repos.value = repos.value.map(x => (x.id === r.id ? res.etat! : x))
+    toast.add({ title: titre, description: res.sortie.split('\n')[0], color: 'success', icon: 'i-lucide-check' })
+  } catch (e) {
+    const rep = (e as { response?: { status?: number, data?: { sortie?: unknown } } }).response
+    const sortie = rep?.data?.sortie
+    if (typeof sortie === 'string') {
+      outTitle.value = `${titre} — refusé`
+      outText.value = sortie || '(aucune sortie)'
+      outOpen.value = true
+    }
+    toast.add({
+      title: `${titre} : impossible`,
+      description: typeof sortie === 'string' ? 'Refusé par git, rien n\'a été touché.' : apiError(e),
+      color: rep?.status === 409 ? 'warning' : 'error'
+    })
+  } finally {
+    busy.value = null
+  }
+}
+
+async function onPull(r: UpdateRepo) {
+  if (r.id == null) return
+  const id = r.id
+  await repoAction(r, `pull:${id}`, `${r.nom} — git pull`, () => pullRepo(id))
+}
+
+/* Branches : chargées à chaque ouverture de la liste (git local, rapide) ; après Vérifier, elles incluent les nouvelles de l'origine */
+const branches = ref<Record<number, RepoBranche[]>>({})
+async function loadBranches(r: UpdateRepo) {
+  if (r.id == null) return
+  try {
+    branches.value = { ...branches.value, [r.id]: (await getBranches(r.id)).branches }
+  } catch { /* la liste garde la branche actuelle */ }
+}
+const brancheItems = (r: UpdateRepo) =>
+  (r.id != null ? branches.value[r.id] : undefined)?.map(b => ({ label: b.locale ? b.nom : `${b.nom} (origine)`, value: b.nom }))
+  ?? [{ label: r.branche ?? '', value: r.branche ?? '' }]
+
+async function onBranch(r: UpdateRepo, branche: string) {
+  if (r.id == null || !branche || branche === r.branche) return
+  if (!confirm(`Passer « ${r.nom} » sur la branche ${branche} ?\nRien n'est installé : le code qui tourne ne change qu'après un redémarrage ou install.sh.`)) return
+  const id = r.id
+  await repoAction(r, `br:${id}`, `${r.nom} — branche ${branche}`, () => setBranch(id, branche))
 }
 
 async function onDelete(r: UpdateRepo) {
@@ -306,7 +369,18 @@ onUnmounted(() => {
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2 min-w-0 flex-wrap">
               <p class="font-semibold truncate">{{ r.nom }}</p>
-              <UBadge v-if="r.branche" color="neutral" variant="subtle" size="xs" class="font-mono">{{ r.branche }}</UBadge>
+              <USelect
+                v-if="r.branche && r.id != null"
+                :model-value="r.branche"
+                :items="brancheItems(r)"
+                size="xs"
+                variant="soft"
+                class="font-mono min-w-28"
+                :loading="busy === `br:${r.id}`"
+                @update:open="(o: boolean) => o && loadBranches(r)"
+                @update:model-value="(b: string) => onBranch(r, b)"
+              />
+              <UBadge v-else-if="r.branche" color="neutral" variant="subtle" size="xs" class="font-mono">{{ r.branche }}</UBadge>
               <UBadge v-if="r.propre === false" color="warning" variant="subtle" size="xs" icon="i-lucide-triangle-alert">
                 modifs non commitées
               </UBadge>
@@ -340,6 +414,17 @@ onUnmounted(() => {
             :loading="busy === `inst:${r.id}`"
             @click="onInstall(r)"
           />
+          <UButton
+            v-if="r.id != null && r.enabled"
+            label="Vérifier"
+            size="xs"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-refresh-cw"
+            class="shrink-0"
+            :loading="busy === `verif:${r.id}`"
+            @click="onVerify(r)"
+          />
           <div v-if="r.id != null" class="flex items-center gap-2 shrink-0">
             <span class="text-xs text-dimmed hidden sm:inline">Suivi</span>
             <USwitch :model-value="!!r.enabled" :disabled="busy === `en:${r.id}`" @update:model-value="(v) => onToggle(r, v)" />
@@ -348,12 +433,13 @@ onUnmounted(() => {
           <UDropdownMenu
             v-if="r.id != null"
             :items="[[
+              { label: 'Récupérer (git pull)', icon: 'i-lucide-git-pull-request', onSelect: () => onPull(r) },
               { label: 'Lancer install.sh', icon: 'i-lucide-play',       onSelect: () => onInstall(r) },
               { label: 'Voir la sortie',    icon: 'i-lucide-scroll-text', onSelect: () => showInstall(r) },
               { label: 'Retirer du suivi',  icon: 'i-lucide-trash-2',    onSelect: () => onDelete(r) }
             ]]"
           >
-            <UButton icon="i-lucide-ellipsis-vertical" color="neutral" variant="ghost" square :loading="busy === `inst:${r.id}` || busy === `del:${r.id}`" />
+            <UButton icon="i-lucide-ellipsis-vertical" color="neutral" variant="ghost" square :loading="busy === `inst:${r.id}` || busy === `del:${r.id}` || busy === `pull:${r.id}`" />
           </UDropdownMenu>
         </div>
       </UPageCard>
